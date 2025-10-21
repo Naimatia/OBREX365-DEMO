@@ -1,0 +1,197 @@
+.employees-container {
+  padding: 16px;
+}
+
+.employees-container .ant-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+}
+
+.employees-container .ant-table-thead > tr > th {
+  background-color: #fafafa;
+  font-weight: 600;
+}
+
+.employees-container .ant-statistic {
+  text-align: center;
+  padding: 16px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  height: 100%;
+}
+
+.employees-container .ant-statistic-title {
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: 16px;
+}
+
+.employee-stats {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 24px;
+}
+
+.employee-stat-card {
+  text-align: center;
+  padding: 16px;
+  border-radius: 4px;
+}
+
+.employee-stat-number {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.employee-stat-label {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* Employee table styles */
+.ant-table-tbody > tr:hover > td {
+  cursor: pointer;
+  background-color: #f5f5f5;
+}
+
+.employee-name-cell {
+  display: flex;
+  align-items: center;
+}
+
+.employees-container .ant-tag {
+  min-width: 80px;
+  text-align: center;
+}
+
+/* Vacation cards */
+.vacation-card {
+  margin-bottom: 8px;
+  border-radius: 4px;
+}
+
+/* Employee detail styles */
+.info-card {
+  transition: all 0.3s;
+  border-radius: 8px;
+  height: 100%;
+}
+
+.info-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.info-title {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.45);
+  margin-bottom: 4px;
+}
+
+.info-content {
+  font-size: 16px;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.info-card-row {
+  margin-bottom: 24px;
+}
+
+/* Timeline styles */
+.ant-timeline-item-label {
+  width: 80px !important;
+}
+
+.vacation-timeline-container {
+  padding: 16px;
+  background-color: #fafafa;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.vacation-title {
+  font-size: 15px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.vacation-reason {
+  font-size: 14px;
+  color: #333;
+}
+
+.vacation-history-list {
+  padding: 16px;
+  background-color: #fafafa;
+  border-radius: 8px;
+}
+
+.vacation-history-card {
+  transition: all 0.3s;
+}
+
+.vacation-history-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* Responsive drawer width adjustments */
+@media (max-width: 768px) {
+  .ant-drawer-content-wrapper {
+    width: 100% !important;
+  }
+  
+  .vacation-timeline-container,
+  .vacation-history-list {
+    padding: 8px;
+  }
+}
+
+
+.employee-info-card {
+  margin-bottom: 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.3s;
+}
+
+.employee-info-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.employee-info-header {
+  padding: 16px;
+  background-color: #f9f9f9;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.employee-info-content {
+  padding: 16px;
+}
+
+.vacation-timeline {
+  margin-top: 20px;
+}
+
+.vacation-timeline .ant-timeline-item-head {
+  background-color: #1890ff;
+}
+
+.vacation-timeline .ant-timeline-item-content {
+  padding: 0 0 0 24px;
+}
+
+.vacation-card {
+  background-color: #e6f7ff;
+  border: 1px solid #91d5ff;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .employees-container .ant-statistic {
+    margin-bottom: 16px;
+  }
+}

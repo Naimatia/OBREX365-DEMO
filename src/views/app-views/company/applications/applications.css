@@ -1,0 +1,27 @@
+/* Applications page styles */
+.ant-table-row-recent {
+  background-color: #f6ffed !important;
+}
+
+.ant-table-tbody > tr.ant-table-row-recent:hover > td {
+  background-color: #f6ffed !important;
+}
+
+.applications-page .ant-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.applications-page .gradient-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+.applications-header {
+  margin-bottom: 24px;
+}
+
+.applications-page .statistic-card {
+  text-align: center;
+  border-radius: 12px;
+}

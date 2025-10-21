@@ -1,0 +1,82 @@
+/* AttendanceDetail.css */
+
+/* Base style for select */
+.status-select {
+  width: 150px;
+  transition: all 0.3s ease;
+}
+
+.status-select .ant-select-selector {
+  border-radius: 8px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.status-select:hover .ant-select-selector {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Colors for each status */
+.status-select.status-Y .ant-select-selector {
+  background-color: #e8f9f0 !important; /* Fresh green tint */
+  border-color: #52c41a !important;
+}
+
+.status-select.status-P .ant-select-selector {
+  background-color: #fff3e6 !important; /* Soft orange tint */
+  border-color: #fa8c16 !important;
+}
+
+.status-select.status-U .ant-select-selector {
+  background-color: #fdecec !important; /* Softer red */
+  border-color: #f5222d !important;
+}
+
+.status-select.status-N .ant-select-selector {
+  background-color: #fff0e6 !important; /* Warm coral tint */
+  border-color: #ff4d4f !important;
+}
+
+.status-select.status-H .ant-select-selector {
+  background-color: #e6f5ff !important; /* Soft blue tint */
+  border-color: #1890ff !important;
+}
+
+.status-select.status- .ant-select-selector {
+  background-color: #fafafa !important; /* Neutral gray */
+  border-color: #d9d9d9 !important;
+}
+
+/* Dropdown option colors */
+.status-option {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.status-option:hover {
+  filter: brightness(0.95);
+}
+
+/* Individual option background colors */
+.status-option.status-Y {
+  background-color: #e8f9f0 !important;
+}
+
+.status-option.status-P {
+  background-color: #fff3e6 !important;
+}
+
+.status-option.status-U {
+  background-color: #fdecec !important;
+}
+
+.status-option.status-N {
+  background-color: #fff0e6 !important;
+}
+
+.status-option.status-H {
+  background-color: #e6f5ff !important;
+}
+
+.status-option.status- {
+  background-color: #fafafa !important;
+}

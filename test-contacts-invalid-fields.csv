@@ -1,0 +1,11 @@
+name,email,phoneNumber,country,description,Notes
+,invalid-email,+971501234567,UAE,Real estate investor,Missing name field
+Valid Name,missing-at-symbol.com,not-a-phone,UK,Business owner,Invalid email and phone
+Another Name,valid@email.com,,Egypt,Property manager,Missing phone number
+,another-bad-email,+971505555555,USA,Investment consultant,Missing name and invalid email
+Good Name,good@email.com,+971506789012,UAE,Financial advisor,Valid contact entry
+Name Here,name@domain.com,12345,China,Interior designer,Phone without country code
+Test User,test@example.com,+971507890123,Australia,Real estate agent,Valid entry with all fields
+Final Name,final@email.com,+971-50-4567890,Spain,Property developer,Phone with dashes (should be invalid)
+User Name,user.email@domain,+971504567890,Sudan,Consultant,Missing TLD in email
+Last Entry,,+971501122334,UAE,Business consultant,Empty name field

@@ -1,0 +1,31 @@
+.todo-page {
+  min-height: 100vh;
+  padding: 24px;
+  background: #f5f5f5;
+}
+
+.todo-page .ant-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.todo-page .ant-statistic-title {
+  color: #666;
+  font-weight: 500;
+}
+
+.todo-page .ant-statistic-content {
+  color: #262626;
+}
+
+.todo-page .ant-btn {
+  border-radius: 8px;
+}
+
+.todo-page .ant-modal {
+  border-radius: 12px;
+}
+
+.todo-page .ant-modal-content {
+  border-radius: 12px;
+}

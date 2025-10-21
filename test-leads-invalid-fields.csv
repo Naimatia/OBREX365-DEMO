@@ -1,0 +1,11 @@
+name,email,phoneNumber,Budget,InterestLevel,region,status,Notes
+,invalid-email,+971501234567,500000,High,Dubai,Pending,Missing name field
+Valid Name,missing-at-symbol.com,not-a-phone,750000,InvalidLevel,Abu Dhabi,InvalidStatus,Invalid email and phone
+Another Name,valid@email.com,,1200000,Medium,Sharjah,Qualified,Missing phone number
+,another-bad-email,+971505555555,not-a-number,High,Ajman,Pending,Missing name and invalid budget
+Good Name,good@email.com,+971506789012,-500,VeryHigh,Dubai,WrongStatus,Negative budget value
+Name Here,name@domain.com,+971507890123,750000,,Abu Dhabi,Contacted,Empty interest level
+Test User,test@example.com,+971502345678,600000,Low,Sharjah,,Empty status field
+Final Name,final@email.com,1234567890,800000,Medium,Dubai,Lost,Phone without country code
+User Name,user.email@domain,+971504567890,1000000,high,Ajman,pending,Lowercase values should work
+Last Entry,,+971501122334,550000,High,Dubai,Qualified,Empty name field

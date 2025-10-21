@@ -1,0 +1,251 @@
+/* Attendees page styles */
+.attendees-page {
+  min-height: 100vh;
+  background: #f0f2f5;
+  padding: 24px;
+}
+
+.attendees-page .gradient-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+}
+
+.attendees-page .statistic-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.attendees-page .statistic-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.attendees-page .ant-statistic-title {
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.attendees-page .ant-statistic-content {
+  font-weight: 700;
+}
+
+/* Salary sheet table styles */
+.salary-sheet-table .ant-table-thead > tr > th {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+  border: none;
+  text-align: center;
+}
+
+.salary-sheet-table .ant-table-tbody > tr:nth-child(even) {
+  background-color: #fafafa;
+}
+
+.salary-sheet-table .ant-table-tbody > tr:hover > td {
+  background-color: #e6f7ff !important;
+}
+
+.salary-sheet-table .employee-name {
+  font-weight: 600;
+  color: #1890ff;
+  cursor: pointer;
+}
+
+.salary-sheet-table .employee-name:hover {
+  text-decoration: underline;
+}
+
+.salary-sheet-table .currency {
+  font-weight: 600;
+  color: #52c41a;
+}
+
+.salary-sheet-table .status-tag {
+  border-radius: 16px;
+  font-weight: 500;
+  font-size: 12px;
+  padding: 2px 12px;
+}
+
+.salary-sheet-table .hours-cell {
+  text-align: center;
+  font-weight: 500;
+}
+
+.salary-sheet-table .overtime-cell {
+  color: #faad14;
+  font-weight: 600;
+}
+
+/* Action buttons */
+.quick-action-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.quick-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.mark-present-btn {
+  background: #52c41a;
+  border-color: #52c41a;
+  color: white;
+}
+
+.mark-absent-btn {
+  background: #ff4d4f;
+  border-color: #ff4d4f;
+  color: white;
+}
+
+.mark-late-btn {
+  background: #faad14;
+  border-color: #faad14;
+  color: white;
+}
+
+/* Employee detail modal */
+.employee-detail-modal .ant-modal-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+}
+
+.employee-detail-modal .ant-modal-title {
+  color: white;
+  font-weight: 600;
+}
+
+.employee-detail-modal .ant-modal-close {
+  color: white;
+}
+
+.employee-detail-modal .employee-info-card {
+  background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.employee-detail-modal .summary-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.employee-detail-modal .attendance-timeline {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .attendees-page {
+    padding: 16px;
+  }
+  
+  .salary-sheet-table .ant-table {
+    font-size: 12px;
+  }
+  
+  .salary-sheet-table .employee-name {
+    font-size: 13px;
+  }
+  
+  .quick-action-btn {
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+}
+
+@media (max-width: 576px) {
+  .attendees-page {
+    padding: 12px;
+  }
+  
+  .attendees-page .ant-card {
+    margin-bottom: 16px;
+  }
+}
+
+/* Loading and empty states */
+.attendees-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+}
+
+.attendees-empty {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+}
+
+/* Filter section */
+.filter-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+}
+
+.filter-section .ant-typography {
+  margin-bottom: 8px;
+}
+
+/* Payroll summary */
+.payroll-summary {
+  background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.payroll-summary .summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.payroll-summary .summary-item:last-child {
+  border-bottom: none;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.payroll-summary .summary-label {
+  color: #666;
+}
+
+.payroll-summary .summary-value {
+  font-weight: 600;
+  color: #1890ff;
+}
+.attendance-container {
+  padding: 24px;
+}
+
+.attendance-container .ant-card {
+  border-radius: 8px;
+}
+
+.attendance-container .ant-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.attendance-container .ant-btn-primary {
+  background-color: #1890ff;
+  border-color: #1890ff;
+}
