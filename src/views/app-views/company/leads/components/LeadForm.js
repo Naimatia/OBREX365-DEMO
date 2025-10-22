@@ -1,8 +1,21 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Form, Input, Select, Button, InputNumber, Row, Col, DatePicker, Modal } from 'antd';
 import { LeadStatus, LeadInterestLevel, LeadRedirectionSource } from 'models/LeadModel';
+import { db, collection, getDocs } from 'configs/FirebaseConfig';
 import countries from 'constants/countries';
 import moment from 'moment';
+
+const { Option } = Select;
+
+// Define sales-related roles (based on EmployeeRoles from EmployeeForm)
+const SALES_ROLES = [
+  'Agent',
+  'Sales',
+  'Executive Sales',
+  'Off Plan Sales',
+  'Ready to Move Sales',
+  'Sales Manager'
+];
 
 /**
  * Component for adding or editing lead
@@ -12,34 +25,59 @@ const LeadForm = ({
   onCancel, 
   onSubmit, 
   editingLead = null, 
-  confirmLoading,
-  sellers = []
+  confirmLoading
 }) => {
   const [form] = Form.useForm();
-  
+  const [sellers, setSellers] = useState([]);
+
+  // Fetch sellers (employees with sales-related roles) from Firebase
   useEffect(() => {
     if (visible) {
+      // Reset form
       form.resetFields();
-      
+
+      // Set form values for editing or new lead
       if (editingLead) {
-        // Convert Firestore timestamp to moment for DatePicker
-        const creationDate = editingLead.CreationDate ? 
-          moment(editingLead.CreationDate.toDate?.() || editingLead.CreationDate) : 
-          moment(); // Default to current date/time if no date
-        
+        const creationDate = editingLead.CreationDate 
+          ? moment(editingLead.CreationDate.toDate?.() || editingLead.CreationDate)
+          : moment();
         form.setFieldsValue({
           ...editingLead,
           CreationDate: creationDate
         });
       } else {
-        // For new leads, set current date/time by default
         form.setFieldsValue({
           CreationDate: moment()
         });
       }
+
+      // Fetch employees with sales-related roles
+      const fetchSellers = async () => {
+        try {
+          const employeesRef = collection(db, 'employees');
+          const employeesSnapshot = await getDocs(employeesRef);
+          const sellersList = employeesSnapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }))
+            .filter(employee => SALES_ROLES.includes(employee.Role))
+            .map(employee => ({
+              id: employee.id,
+              name: employee.name
+            }));
+          setSellers(sellersList);
+        } catch (error) {
+          console.error('Error fetching sellers:', error);
+          // Optionally show a user-friendly message using antd's message component
+          // message.error('Failed to load sellers');
+        }
+      };
+
+      fetchSellers();
     }
   }, [visible, editingLead, form]);
-  
+
   const handleSubmit = () => {
     form.validateFields().then(values => {
       onSubmit(values);
@@ -100,9 +138,9 @@ const LeadForm = ({
                 optionFilterProp="children"
               >
                 {countries.map(country => (
-                  <Select.Option key={country.code} value={country.name}>
+                  <Option key={country.code} value={country.name}>
                     {country.name}
-                  </Select.Option>
+                  </Option>
                 ))}
               </Select>
             </Form.Item>
@@ -142,9 +180,9 @@ const LeadForm = ({
             >
               <Select placeholder="Select status">
                 {Object.values(LeadStatus).map(status => (
-                  <Select.Option key={status} value={status}>
+                  <Option key={status} value={status}>
                     {status}
-                  </Select.Option>
+                  </Option>
                 ))}
               </Select>
             </Form.Item>
@@ -157,9 +195,9 @@ const LeadForm = ({
             >
               <Select placeholder="Select interest level">
                 {Object.values(LeadInterestLevel).map(level => (
-                  <Select.Option key={level} value={level}>
+                  <Option key={level} value={level}>
                     {level}
-                  </Select.Option>
+                  </Option>
                 ))}
               </Select>
             </Form.Item>
@@ -171,12 +209,12 @@ const LeadForm = ({
               rules={[{ required: false }]}
             >
               <InputNumber
-                              style={{ width: '100%' }}
-                              addonBefore="AED"
-                              placeholder="0.00"
-                              min={0}
-                              precision={2}
-                            />
+                style={{ width: '100%' }}
+                addonBefore="AED"
+                placeholder="0.00"
+                min={0}
+                precision={2}
+              />
             </Form.Item>
           </Col>
         </Row>
@@ -190,24 +228,18 @@ const LeadForm = ({
             >
               <Select placeholder="Select lead source">
                 {Object.values(LeadRedirectionSource).map(source => (
-                  <Select.Option key={source} value={source}>
+                  <Option key={source} value={source}>
                     {source}
-                  </Select.Option>
+                  </Option>
                 ))}
               </Select>
             </Form.Item>
           </Col>
           <Col span={12}>
-            {/* Hidden field for creation date, automatically set to current date */}
-            <Form.Item
-              name="CreationDate"
-              hidden
-            >
-              <DatePicker />
-            </Form.Item>
             <Form.Item
               name="seller_id"
-              label="Assigned To"
+              label="Assigned Seller"
+              rules={[{ required: false }]}
             >
               <Select
                 placeholder="Select seller"
@@ -216,36 +248,21 @@ const LeadForm = ({
                 optionFilterProp="children"
               >
                 {sellers.map(seller => (
-                  <Select.Option key={seller.id} value={seller.id}>
-                    {seller.firstname} {seller.lastname}
-                  </Select.Option>
+                  <Option key={seller.id} value={seller.id}>
+                    {seller.name}
+                  </Option>
                 ))}
               </Select>
             </Form.Item>
           </Col>
         </Row>
 
-        <Row gutter={16}>
-          <Col span={24}>
-            <Form.Item
-              name="seller_id"
-              label="Assigned Seller"
-            >
-              <Select
-                placeholder="Select seller"
-                allowClear
-                showSearch
-                optionFilterProp="children"
-              >
-                {sellers.map(seller => (
-                  <Select.Option key={seller.id} value={seller.id}>
-                    {seller.firstname} {seller.lastname}
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </Col>
-        </Row>
+        <Form.Item
+          name="CreationDate"
+          hidden
+        >
+          <DatePicker />
+        </Form.Item>
       </Form>
     </Modal>
   );
