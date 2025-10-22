@@ -63,7 +63,7 @@ const AccessDenied = () => {
                   </Title>
                   
                   <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: '18px', display: 'block', marginBottom: 32 }}>
-                    You're starting your journey with OBREX365! 
+                    You're starting your journey with OBREX365-Demo! 
                     <br />
                     Redirecting you to your seller dashboard...
                   </Text>

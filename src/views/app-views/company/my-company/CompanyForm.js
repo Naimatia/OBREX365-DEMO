@@ -132,7 +132,7 @@ const CompanyForm = ({ onSuccess, initialValues = null, isEditing = false }) => 
       <div className="text-center mb-4">
         <Title level={3}>Create Your Company Profile</Title>
         <Text type="secondary">
-          Complete the form below to set up your company profile in OBREX365
+          Complete the form below to set up your company profile in OBREX365-Demo
         </Text>
       </div>
       

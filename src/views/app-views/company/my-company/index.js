@@ -150,10 +150,10 @@ const MyCompanyPage = () => {
         <div className="text-center mb-4">
           <Space direction="vertical">
             <BuildOutlined style={{ fontSize: 48, color: '#1890ff' }} />
-            <Title level={3}>Welcome to OBREX365</Title>
+            <Title level={3}>Welcome to OBREX365-Demo</Title>
             <p>
               Let's set up your company profile. This information will be visible to all members 
-              of your organization and is required to fully utilize OBREX365.
+              of your organization and is required to fully utilize OBREX365-Demo.
             </p>
           </Space>
         </div>

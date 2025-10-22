@@ -133,7 +133,7 @@ const PropertyScannerPage = () => {
           </div>
           <div>
             <Title level={2} style={{ margin: 0, color: '#fff', fontWeight: 'bold' }}>
-              🏠 OBREX365 Property Scanner
+              🏠 OBREX365-Demo Property Scanner
             </Title>
             <Paragraph style={{ margin: '8px 0 0 0', color: 'rgba(255,255,255,0.9)', fontSize: '16px' }}>
               Find and analyze property listings from multiple sources using OBREX's advanced scanning technology.
