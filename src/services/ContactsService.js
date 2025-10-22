@@ -41,18 +41,34 @@ const ContactsService = {
       
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        contacts.push({
-          id: doc.id,
-          ...data,
-          // Convert Firestore timestamps to JavaScript Date objects for easier handling in UI
-          CreationDate: data.CreationDate ? data.CreationDate.toDate() : null,
-          AffectingDate: data.AffectingDate ? data.AffectingDate.toDate() : null,
-          LastUpdateDate: data.LastUpdateDate ? data.LastUpdateDate.toDate() : null,
-          Notes: data.Notes ? data.Notes.map(note => ({
-            ...note,
-            CreationDate: note.CreationDate ? note.CreationDate.toDate() : null
-          })) : []
-        });
+         // Helper function to safely convert a value to a JavaScript Date
+      const safeToDate = (value) => {
+        if (value && typeof value.toDate === 'function') {
+          return value.toDate(); // Firebase Timestamp
+        }
+        if (value instanceof Date) {
+          return value; // Already a Date object
+        }
+        if (typeof value === 'string' || typeof value === 'number') {
+          const parsedDate = new Date(value);
+          return isNaN(parsedDate.getTime()) ? null : parsedDate; // Valid date string or timestamp
+        }
+        return null; // Fallback for invalid or missing values
+      };
+    contacts.push({
+        id: doc.id,
+        ...data,
+        // Convert Firestore timestamps to JavaScript Date objects
+        CreationDate: safeToDate(data.CreationDate),
+        AffectingDate: safeToDate(data.AffectingDate),
+        LastUpdateDate: safeToDate(data.LastUpdateDate),
+        Notes: Array.isArray(data.Notes)
+          ? data.Notes.map(note => ({
+              ...note,
+              CreationDate: safeToDate(note.CreationDate)
+            }))
+          : []
+      });
       });
       
       return contacts;

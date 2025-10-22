@@ -291,18 +291,73 @@ const ContactsPage = () => {
         )}
 
         <div className="contacts-content">
-          <Tabs defaultActiveKey="all">
-            <TabPane 
-              tab={
-                <span>
-                  <UsergroupAddOutlined /> All Contacts
-                </span>
-              }
-              key="all"
-            >
-              <Spin spinning={loading}>
+        <Tabs
+  defaultActiveKey="all"
+  items={[
+    {
+      key: 'all',
+      label: (
+        <span>
+          <UsergroupAddOutlined /> All Contacts
+        </span>
+      ),
+      children: (
+        <Spin spinning={loading}>
+          <ContactList
+            contacts={contacts}
+            loading={loading}
+            sellers={sellers}
+            onViewContact={handleViewContact}
+            onEditContact={handleEditContact}
+            onDeleteContact={handleDeleteContact}
+            onSelectChange={setSelectedContactIds}
+            onAssignSeller={handleBulkAssignSellers}
+            onUpdateStatus={handleBulkUpdateStatus}
+            onAddNote={handleAddNote}
+          />
+        </Spin>
+      ),
+    },
+    {
+      key: 'unassigned',
+      label: (
+        <span>
+          <PhoneOutlined /> Unassigned
+        </span>
+      ),
+      children: (
+        <Spin spinning={loading}>
+          <ContactList
+            contacts={contacts.filter(c => !c.seller_id)}
+            loading={loading}
+            sellers={sellers}
+            onViewContact={handleViewContact}
+            onEditContact={handleEditContact}
+            onDeleteContact={handleDeleteContact}
+            onSelectChange={setSelectedContactIds}
+            onAssignSeller={handleBulkAssignSellers}
+            onUpdateStatus={handleBulkUpdateStatus}
+            onAddNote={handleAddNote}
+          />
+        </Spin>
+      ),
+    },
+    {
+      key: 'byStatus',
+      label: (
+        <span>
+          <FileSearchOutlined /> By Status
+        </span>
+      ),
+      children: (
+        <Tabs
+          items={[
+            {
+              key: 'pending',
+              label: 'Pending',
+              children: (
                 <ContactList
-                  contacts={contacts}
+                  contacts={contacts.filter(c => c.status === ContactStatus.PENDING)}
                   loading={loading}
                   sellers={sellers}
                   onViewContact={handleViewContact}
@@ -313,19 +368,14 @@ const ContactsPage = () => {
                   onUpdateStatus={handleBulkUpdateStatus}
                   onAddNote={handleAddNote}
                 />
-              </Spin>
-            </TabPane>
-            <TabPane 
-              tab={
-                <span>
-                  <PhoneOutlined /> Unassigned
-                </span>
-              } 
-              key="unassigned"
-            >
-              <Spin spinning={loading}>
+              ),
+            },
+            {
+              key: 'contacted',
+              label: 'Contacted',
+              children: (
                 <ContactList
-                  contacts={contacts.filter(c => !c.seller_id)}
+                  contacts={contacts.filter(c => c.status === ContactStatus.CONTACTED)}
                   loading={loading}
                   sellers={sellers}
                   onViewContact={handleViewContact}
@@ -336,96 +386,70 @@ const ContactsPage = () => {
                   onUpdateStatus={handleBulkUpdateStatus}
                   onAddNote={handleAddNote}
                 />
-              </Spin>
-            </TabPane>
-            <TabPane 
-              tab={
-                <span>
-                  <FileSearchOutlined /> By Status
-                </span>
-              } 
-              key="byStatus"
-            >
-              <Tabs>
-                <TabPane tab="Pending" key="pending">
-                  <ContactList
-                    contacts={contacts.filter(c => c.status === ContactStatus.PENDING)}
-                    loading={loading}
-                    sellers={sellers}
-                    onViewContact={handleViewContact}
-                    onEditContact={handleEditContact}
-                    onDeleteContact={handleDeleteContact}
-                    onSelectChange={setSelectedContactIds}
-                    onAssignSeller={handleBulkAssignSellers}
-                    onUpdateStatus={handleBulkUpdateStatus}
-                    onAddNote={handleAddNote}
-                  />
-                </TabPane>
-                <TabPane tab="Contacted" key="contacted">
-                  <ContactList
-                    contacts={contacts.filter(c => c.status === ContactStatus.CONTACTED)}
-                    loading={loading}
-                    sellers={sellers}
-                    onViewContact={handleViewContact}
-                    onEditContact={handleEditContact}
-                    onDeleteContact={handleDeleteContact}
-                    onSelectChange={setSelectedContactIds}
-                    onAssignSeller={handleBulkAssignSellers}
-                    onUpdateStatus={handleBulkUpdateStatus}
-                    onAddNote={handleAddNote}
-                  />
-                </TabPane>
-                <TabPane tab="Deal" key="deal">
-                  <ContactList
-                    contacts={contacts.filter(c => c.status === ContactStatus.DEAL)}
-                    loading={loading}
-                    sellers={sellers}
-                    onViewContact={handleViewContact}
-                    onEditContact={handleEditContact}
-                    onDeleteContact={handleDeleteContact}
-                    onSelectChange={setSelectedContactIds}
-                    onAssignSeller={handleBulkAssignSellers}
-                    onUpdateStatus={handleBulkUpdateStatus}
-                    onAddNote={handleAddNote}
-                  />
-                </TabPane>
-                <TabPane tab="Loss" key="loss">
-                  <ContactList
-                    contacts={contacts.filter(c => c.status === ContactStatus.LOSS)}
-                    loading={loading}
-                    sellers={sellers}
-                    onViewContact={handleViewContact}
-                    onEditContact={handleEditContact}
-                    onDeleteContact={handleDeleteContact}
-                    onSelectChange={setSelectedContactIds}
-                    onAssignSeller={handleBulkAssignSellers}
-                    onUpdateStatus={handleBulkUpdateStatus}
-                    onAddNote={handleAddNote}
-                  />
-                </TabPane>
-              </Tabs>
-            </TabPane>
-          </Tabs>
+              ),
+            },
+            {
+              key: 'deal',
+              label: 'Deal',
+              children: (
+                <ContactList
+                  contacts={contacts.filter(c => c.status === ContactStatus.DEAL)}
+                  loading={loading}
+                  sellers={sellers}
+                  onViewContact={handleViewContact}
+                  onEditContact={handleEditContact}
+                  onDeleteContact={handleDeleteContact}
+                  onSelectChange={setSelectedContactIds}
+                  onAssignSeller={handleBulkAssignSellers}
+                  onUpdateStatus={handleBulkUpdateStatus}
+                  onAddNote={handleAddNote}
+                />
+              ),
+            },
+            {
+              key: 'loss',
+              label: 'Loss',
+              children: (
+                <ContactList
+                  contacts={contacts.filter(c => c.status === ContactStatus.LOSS)}
+                  loading={loading}
+                  sellers={sellers}
+                  onViewContact={handleViewContact}
+                  onEditContact={handleEditContact}
+                  onDeleteContact={handleDeleteContact}
+                  onSelectChange={setSelectedContactIds}
+                  onAssignSeller={handleBulkAssignSellers}
+                  onUpdateStatus={handleBulkUpdateStatus}
+                  onAddNote={handleAddNote}
+                />
+              ),
+            },
+          ]}
+        />
+      ),
+    },
+  ]}
+/>
         </div>
       </Card>
 
       {/* Modal for adding/editing contacts */}
-      <Modal
-        title={currentContact ? 'Edit Contact' : 'Add New Contact'}
-        visible={formModalVisible}
-        onCancel={() => setFormModalVisible(false)}
-        footer={null}
-        width={800}
-        destroyOnClose
-      >
-        <ContactForm
-          contact={currentContact}
-          sellers={sellers}
-          onSubmit={handleSubmitContact}
-          onCancel={() => setFormModalVisible(false)}
-          loading={loading}
-        />
-      </Modal>
+   <Modal
+  title={currentContact ? 'Edit Contact' : 'Add New Contact'}
+  open={formModalVisible} // Changed from `visible`
+  onCancel={() => setFormModalVisible(false)}
+  footer={null}
+  width={800}
+  destroyOnClose
+>
+  <ContactForm
+    contact={currentContact}
+    sellers={sellers}
+    onSubmit={handleSubmitContact}
+    onCancel={() => setFormModalVisible(false)}
+    loading={loading}
+  />
+</Modal>
 
       {/* Drawer for contact details */}
       <Drawer
