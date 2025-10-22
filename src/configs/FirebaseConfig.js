@@ -6,13 +6,15 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObjec
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 // Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyAzcgOjn15M4qT4rjkFQy8tEmtyqfzMItA",
-  authDomain: "obrex365.firebaseapp.com",
-  projectId: "obrex365",
-  storageBucket: "obrex365.firebasestorage.app",
-  messagingSenderId: "741430924067",
-  appId: "1:741430924067:web:9b44237ed80b5c84d33296"
+  apiKey: "AIzaSyDA_YiXxhf427isD117IOgVYUMORPptgCU",
+  authDomain: "orbrex-demo.firebaseapp.com",
+  projectId: "orbrex-demo",
+  storageBucket: "orbrex-demo.firebasestorage.app",
+  messagingSenderId: "533694845345",
+  appId: "1:533694845345:web:f24951b7421fd2f72c3be0",
+  measurementId: "G-299NPEWH88"
 };
 
 // Initialize Firebase

@@ -10,7 +10,6 @@ import moment from 'moment';
 
 const { Option } = Select;
 
-// Employee roles
 const EmployeeRoles = {
   AGENT: 'Agent',
   SALES: 'Sales',
@@ -28,7 +27,6 @@ const EmployeeRoles = {
   OTHER: 'Other'
 };
 
-// Employee statuses
 const EmployeeStatus = {
   WORKING: 'Working',
   VACATION: 'Vacation',
@@ -41,27 +39,19 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
 
   useEffect(() => {
     if (visible) {
-      // Reset the form when the modal becomes visible
       form.resetFields();
-      
-      // If we're editing, set the form values from initialValues
       if (isEditing && initialValues) {
-        // Format dates for the DatePicker
         const formattedValues = {
           ...initialValues,
           JoiningDate: initialValues.JoiningDate ? moment(initialValues.JoiningDate.toDate()) : null,
           CreationDate: initialValues.CreationDate ? moment(initialValues.CreationDate.toDate()) : null,
         };
-        
         form.setFieldsValue(formattedValues);
       }
-      
-      // Fetch users for user_id selection
       fetchUsers();
     }
   }, [visible, isEditing, initialValues, form]);
 
-  // Fetch users from Firebase
   const fetchUsers = async () => {
     try {
       const usersSnapshot = await getDocs(collection(db, 'users'));
@@ -76,24 +66,17 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
     }
   };
 
-  // Handle form submission
   const handleSubmit = async () => {
     try {
       setLoading(true);
       const values = await form.validateFields();
-      
-      // Process dates and other values
       const formattedValues = {
         ...values,
-        // Convert moment objects to Firebase Timestamps
         JoiningDate: values.JoiningDate ? values.JoiningDate.toDate() : new Date(),
-        // Convert numbers to proper format
         Salary: Number(values.Salary || 0),
         DateSalary: Number(values.DateSalary || 1),
-        // Ensure user_id is null if undefined or empty
         user_id: values.user_id || null
       };
-      
       console.log('Submitting employee data:', formattedValues);
       await onSubmit(formattedValues);
       setLoading(false);
@@ -135,7 +118,6 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         }}
       >
         <Divider>Basic Information</Divider>
-        
         <Form.Item
           name="name"
           label="Full Name"
@@ -143,7 +125,6 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         >
           <Input prefix={<UserOutlined />} placeholder="Enter employee name" />
         </Form.Item>
-        
         <Form.Item
           name="Role"
           label="Role"
@@ -155,7 +136,6 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
             ))}
           </Select>
         </Form.Item>
-
         <Form.Item
           name="user_id"
           label="Associated User Account (Optional)"
@@ -173,9 +153,7 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
             ))}
           </Select>
         </Form.Item>
-        
         <Divider>Contact Information</Divider>
-        
         <Form.Item
           name="email"
           label="Email"
@@ -186,7 +164,6 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         >
           <Input prefix={<MailOutlined />} placeholder="Enter email address" />
         </Form.Item>
-        
         <Form.Item
           name="phoneNumber"
           label="Phone Number"
@@ -194,9 +171,7 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         >
           <Input prefix={<PhoneOutlined />} placeholder="Enter phone number" />
         </Form.Item>
-        
         <Divider>Employment Details</Divider>
-        
         <Form.Item
           name="JoiningDate"
           label="Joining Date"
@@ -204,7 +179,6 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         >
           <DatePicker style={{ width: '100%' }} />
         </Form.Item>
-        
         <Form.Item
           name="Status"
           label="Current Status"
@@ -216,9 +190,7 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
             ))}
           </Select>
         </Form.Item>
-        
         <Divider>Salary Information</Divider>
-        
         <Form.Item
           name="Salary"
           label="Monthly Salary"
@@ -233,7 +205,6 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
             placeholder="Enter monthly salary amount"
           />
         </Form.Item>
-        
         <Form.Item
           name="DateSalary"
           label="Salary Day (1-31)"
