@@ -260,7 +260,7 @@ class UserService {
       const userDocument = {
         // Email (string)
         email: email,
-        secondaryEmail: profileData.secondaryEmail,
+        secondaryEmail: profileData.secondaryEmail || '',
         
         // Personal information (strings)
         firstname: profileData.firstname || '',
