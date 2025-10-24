@@ -18,12 +18,10 @@ import {
   query,
   where,
   getDocs,
-  serverTimestamp,
-  functions 
+  serverTimestamp
 } from 'configs/FirebaseConfig';
 
 import { UserRoles } from 'models/UserModel';
-import { httpsCallable } from "firebase/functions";
 
 /**
  * Service for managing users with Firebase
@@ -809,22 +807,30 @@ class UserService {
       throw error;
     }
   }
-/**
-   * Delete a user from the system (Auth + Firestore)
+
+  /**
+   * Delete a user from the system
    * @param {string} userId User ID to delete
    * @returns {Promise<Object>} Success status
    */
   static async deleteUser(userId) {
     try {
-      // Call the Firebase Cloud Function to delete user
-      const deleteUserAccount = httpsCallable(functions, "deleteUserAccount");
-      const result = await deleteUserAccount({ userId });
-
-      console.log("✅ User deleted:", result.data);
-      return result.data; // { success: true, message: "User deleted successfully" }
-
+      // For security, this operation should typically be handled by Firebase Functions
+      // as deleting a user from Firebase Auth requires admin privileges
+      // However, we can delete the user document from Firestore directly
+      
+      // Delete user document from Firestore
+      const userRef = doc(db, 'users', userId);
+      await deleteDoc(userRef);
+      
+      // Note: In a production app, you would typically:
+      // 1. Implement a Firebase Function to delete the Auth user
+      // 2. Handle any cleanup of user data in other collections
+      // 3. Revoke sessions, etc.
+      
+      return { success: true };
     } catch (error) {
-      console.error("❌ Error deleting user:", error);
+      console.error('Error deleting user:', error);
       throw error;
     }
   }
