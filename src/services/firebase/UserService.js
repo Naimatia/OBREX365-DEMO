@@ -808,32 +808,59 @@ class UserService {
     }
   }
 
-  /**
-   * Delete a user from the system
-   * @param {string} userId User ID to delete
-   * @returns {Promise<Object>} Success status
-   */
-  static async deleteUser(userId) {
-    try {
-      // For security, this operation should typically be handled by Firebase Functions
-      // as deleting a user from Firebase Auth requires admin privileges
-      // However, we can delete the user document from Firestore directly
-      
-      // Delete user document from Firestore
-      const userRef = doc(db, 'users', userId);
-      await deleteDoc(userRef);
-      
-      // Note: In a production app, you would typically:
-      // 1. Implement a Firebase Function to delete the Auth user
-      // 2. Handle any cleanup of user data in other collections
-      // 3. Revoke sessions, etc.
-      
-      return { success: true };
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      throw error;
+/**
+ * Delete a user from the system using Vercel serverless function
+ * @param {string} userId User ID to delete
+ * @returns {Promise<Object>} Success status
+ */
+static async deleteUser(userId) {
+  try {
+    console.log('Deleting user with ID:', userId);
+
+    // Get the current authenticated user
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('No authenticated user. Please sign in as a CEO.');
     }
+
+    // Get the ID token for the current user
+    const idToken = await currentUser.getIdToken(true); // Force refresh for security
+
+    // Make request to Vercel function
+    const response = await fetch('https://obrex-delete-user.vercel.app/api/deleteAuthUser', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    // Check response
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Failed to delete user: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('User deleted successfully:', result);
+
+    return { success: true, message: result.message };
+  } catch (error) {
+    console.error('Error deleting user:', error);
+
+    // Handle specific errors from Vercel function
+    if (error.message.includes('Unauthorized')) {
+      throw new Error('Unauthorized: Please sign in as a CEO.');
+    } else if (error.message.includes('Permission denied')) {
+      throw new Error('Permission denied: Only CEOs can delete users.');
+    } else if (error.message.includes('User ID is required')) {
+      throw new Error('User ID is required.');
+    }
+
+    throw error;
   }
+}
 
   /**
    * Get current authenticated user data
