@@ -140,173 +140,151 @@ class UserService {
     }
   }
 
-  /**
-   * Create a new seller account while preserving current admin authentication
-   * This method creates a new user in Firebase Auth and Firestore without logging out the admin
-   * @param {Object} userData User data with exact document structure
-   * @param {Object} currentUser Current authenticated admin user to preserve
-   * @returns {Promise<Object>} Created user data
-   */
-  static async createSellerWithAuth(userData, currentUser) {
-    const { 
-      email, 
-      password, 
-      firstname, 
-      lastname, 
-      phoneNumber,
-      company_id,
-      country,
-      Role,
-      CreationDate,
-      LastLogin,
-      Notification,
-      forcePasswordReset,
-      isBanned,
-      isVerified,
-      ipAddress
-    } = userData;
+static async createSellerWithAuth(userData, currentUser) {
+  const { 
+    email, 
+    password, 
+    firstname, 
+    lastname, 
+    phoneNumber,
+    company_id,
+    country,
+    Role,
+    CreationDate,
+    LastLogin,
+    Notification,
+    forcePasswordReset,
+    isBanned,
+    isVerified,
+    ipAddress
+  } = userData;
+  
+  // Store current admin credentials for restoration
+  const adminEmail = currentUser?.email;
+  const adminUid = currentUser?.uid;
+  
+  // Require admin credentials to restore session
+  const adminPassword = userData.adminPassword; // Assume passed in userData
+  if (!adminEmail || !adminPassword) {
+    throw new Error('Admin credentials required to restore session');
+  }
+  
+  try {
+    console.log('Creating seller account:', email);
+    console.log('Admin to restore:', adminEmail);
     
-    // Store current admin credentials for restoration
-    const adminEmail = currentUser?.email;
-    const adminUid = currentUser?.uid;
+    // Create the new user account
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    const newUserId = result.user.uid;
+    console.log('New user created with ID:', newUserId);
     
+    // Create the user document in Firestore
+    const userDocument = {
+      CreationDate: CreationDate || serverTimestamp(),
+      LastLogin: LastLogin || serverTimestamp(),
+      Notification: Notification !== undefined ? Notification : false,
+      forcePasswordReset: forcePasswordReset !== undefined ? forcePasswordReset : true,
+      isBanned: isBanned !== undefined ? isBanned : false,
+      isVerified: isVerified !== undefined ? isVerified : false,
+      Role: Role || UserRoles.SELLER,
+      company_id: company_id || '',
+      country: country || '',
+      email: email,
+      firstname: firstname || '',
+      lastname: lastname || '',
+      phoneNumber: phoneNumber || '',
+      ipAddress: ipAddress || ''
+    };
+    
+    console.log('Creating user document with exact structure:', {
+      userId: newUserId,
+      email: userDocument.email,
+      Role: userDocument.Role,
+      company_id: userDocument.company_id
+    });
+    
+    await setDoc(doc(db, 'users', newUserId), userDocument);
+    console.log('User document created successfully');
+    
+    // Sign out the new user
+    await signOut(auth);
+    console.log('New user signed out');
+    
+    // Restore admin session
+    console.log('Restoring admin session for:', adminEmail);
+    const adminResult = await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
+    console.log('Admin session restored for UID:', adminResult.user.uid);
+    
+    if (adminResult.user.uid !== adminUid) {
+      throw new Error('Failed to restore correct admin session');
+    }
+    
+    console.log('Seller created successfully with ID:', newUserId);
+    return { uid: newUserId, ...userDocument };
+  } catch (error) {
+    console.error('Error creating seller:', error);
+    
+    // Attempt to restore admin session on error
     try {
-      console.log('Creating seller account:', email);
-      console.log('Admin to restore:', adminEmail);
-      
-      // Create the new user account
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      const newUserId = result.user.uid;
-      console.log('New user created with ID:', newUserId);
-      
-      // Create the exact user document structure as specified WHILE the new user is authenticated
-      const userDocument = {
-        // Timestamps with exact field names
-        CreationDate: CreationDate,
-        LastLogin: LastLogin,
-        
-        // Boolean fields with exact values
-        Notification: Notification,
-        forcePasswordReset: forcePasswordReset,
-        isBanned: isBanned,
-        isVerified: isVerified,
-        
-        // String fields
-        Role: Role,
-        company_id: company_id,
-        country: country,
-        email: email,
-        firstname: firstname,
-        lastname: lastname,
-        phoneNumber: phoneNumber,
-        ipAddress: ipAddress
-      };
-      
-      console.log('Creating user document with exact structure:', {
-        userId: newUserId,
-        email: userDocument.email,
-        Role: userDocument.Role,
-        company_id: userDocument.company_id
-      });
-      
-      // Create the user document in Firestore while the new user is authenticated
-      await setDoc(doc(db, 'users', newUserId), userDocument);
-      console.log('User document created successfully');
-      
-      // Now sign out the new user and restore admin session
       await signOut(auth);
-      console.log('New user signed out');
-      
-      // Wait a moment for auth state to clear
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      console.log('Seller created successfully with ID:', newUserId);
-      return { uid: newUserId, ...userDocument };
-    } catch (error) {
-      console.error('Error creating seller:', error);
-      
-      // If there was an error, try to restore admin session
-      try {
-        if (adminEmail && currentUser) {
-          console.log('Attempting to restore admin session after error...');
-          await signOut(auth); // Clear any current state
-        }
-      } catch (restoreError) {
-        console.error('Error restoring admin session:', restoreError);
+      if (adminEmail && adminPassword) {
+        console.log('Attempting to restore admin session after error...');
+        await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
+        console.log('Admin session restored after error');
       }
-      
-      throw error;
+    } catch (restoreError) {
+      console.error('Error restoring admin session:', restoreError);
     }
-  }
-
-  /**
-   * Create a seller with authentication using a simpler approach
-   * This method creates the user document directly in Firestore with proper structure
-   * @param {Object} userData - User data including email, password, personal info
-   * @returns {Promise<Object>} Created user information
-   */
-  static async createSellerDirectly(userData) {
-    const { email, password, ...profileData } = userData;
     
-    try {
-      console.log('Creating seller directly:', email);
-      
-      // Create user with Firebase Auth
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      const newUserId = result.user.uid;
-      console.log('New user registered with ID:', newUserId);
-      
-      // Create exact user document structure immediately
-      const userDocument = {
-        // Email (string)
-        email: email,
-        secondaryEmail: profileData.secondaryEmail || '',
-        
-        // Personal information (strings)
-        firstname: profileData.firstname || '',
-        lastname: profileData.lastname || '',
-        phoneNumber: profileData.phoneNumber || '',
-        phoneNumber2: profileData.phoneNumber2 || '',
-        phoneNumber3: profileData.phoneNumber3 || '',
-        
-        // Company relationship (string)
-        company_id: profileData.company_id || '',
-        
-        // Role (string) - must be "Seller"
-      Role: profileData.Role,
-      country: profileData.country,
-        
-        // Timestamps (Date objects)
-        CreationDate: profileData.CreationDate || new Date(),
-        LastLogin: profileData.LastLogin || new Date(),
-        
-        // Boolean fields
-        Notification: profileData.Notification !== undefined ? profileData.Notification : false,
-        forcePasswordReset: profileData.forcePasswordReset !== undefined ? profileData.forcePasswordReset : true,
-        isBanned: profileData.isBanned !== undefined ? profileData.isBanned : false,
-        isVerified: profileData.isVerified !== undefined ? profileData.isVerified : false,
-        
-        // Network information (string)
-        ipAddress: profileData.ipAddress || '0.0.0.0'
-      };
-      
-      console.log('Creating Firestore document with exact structure:', { ...userDocument, email: email });
-      
-      // Create Firestore document while new user is authenticated
-      await setDoc(doc(db, 'users', newUserId), userDocument);
-      console.log('Firestore document created successfully with exact field structure');
-      
-      return {
-        uid: newUserId,
-        email: email,
-        userData: userDocument
-      };
-      
-    } catch (error) {
-      console.error('Error creating seller directly:', error);
-      throw error;
-    }
+    throw error;
   }
+}
+
+/**
+ * Create a seller through the secure serverless API
+ * @param {Object} userData - User data including email, password, personal info
+ * @returns {Promise<Object>} Created user information
+ */
+static async createSellerDirectly(userData) {
+  try {
+    console.log('Creating seller via API:', userData.email);
+
+    // Get the currently authenticated CEO user
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('No authenticated CEO. Please sign in first.');
+    }
+
+    // Get a fresh ID token (to prove identity to backend)
+    const idToken = await currentUser.getIdToken(true);
+
+    // Call the backend API (your Vercel function)
+    const response = await fetch('https://delete-user-demo.vercel.app//api/createAuthUser', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`,
+      },
+      body: JSON.stringify(userData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('API error creating seller:', errorData);
+      throw new Error(errorData.error || `Failed to create seller: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('Seller created successfully via API:', result);
+
+    return result;
+
+  } catch (error) {
+    console.error('Error creating seller via API:', error);
+    throw error;
+  }
+}
+
 
   /**
    * Register a new user with email and password
@@ -808,11 +786,6 @@ class UserService {
     }
   }
 
-/**
- * Delete a user from the system using Vercel serverless function
- * @param {string} userId User ID to delete
- * @returns {Promise<Object>} Success status
- */
 static async deleteUser(userId) {
   try {
     console.log('Deleting user with ID:', userId);
@@ -823,11 +796,18 @@ static async deleteUser(userId) {
       throw new Error('No authenticated user. Please sign in as a CEO.');
     }
 
+    // Log and validate userId
+    console.log('Current user UID:', currentUser.uid);
+    if (currentUser.uid === userId) {
+      console.error('Attempted to delete own account:', userId);
+      throw new Error('You cannot delete your own account.');
+    }
+
     // Get the ID token for the current user
-    const idToken = await currentUser.getIdToken(true); // Force refresh for security
+    const idToken = await currentUser.getIdToken(true);
 
     // Make request to Vercel function
-    const response = await fetch('https://obrex-delete-user.vercel.app/api/deleteAuthUser', {
+    const response = await fetch('https://delete-user-demo.vercel.app/api/deleteAuthUser', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -848,19 +828,21 @@ static async deleteUser(userId) {
     return { success: true, message: result.message };
   } catch (error) {
     console.error('Error deleting user:', error);
-
-    // Handle specific errors from Vercel function
     if (error.message.includes('Unauthorized')) {
       throw new Error('Unauthorized: Please sign in as a CEO.');
     } else if (error.message.includes('Permission denied')) {
       throw new Error('Permission denied: Only CEOs can delete users.');
     } else if (error.message.includes('User ID is required')) {
       throw new Error('User ID is required.');
+    } else if (error.message.includes('User not found')) {
+      throw new Error('User not found in the system.');
+    } else if (error.message.includes('Cannot delete your own account')) {
+      throw new Error('You cannot delete your own account.');
     }
-
     throw error;
   }
 }
+
 
   /**
    * Get current authenticated user data
