@@ -259,7 +259,7 @@ static async createSellerDirectly(userData) {
     const idToken = await currentUser.getIdToken(true);
 
     // Call the backend API (your Vercel function)
-    const response = await fetch('https://delete-user-demo.vercel.app//api/createAuthUser', {
+    const response = await fetch('https://delete-user-demo.vercel.app/api/createAuthUser', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
