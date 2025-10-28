@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, Typography, Space, Button, message, Modal, Row, Col, Divider } from 'antd';
 import { useSelector } from 'react-redux';
 import { PlusOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { db, collection, getDocs } from 'configs/FirebaseConfig'; // Added Firestore import
 import LeadService from 'services/firebase/LeadService';
-import UserService from 'services/firebase/UserService';
-import { serverTimestamp } from 'firebase/firestore';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
+import { serverTimestamp } from 'firebase/firestore';
+import moment from 'moment';
 
 // Import components
 import LeadTable from './components/LeadTable';
@@ -18,6 +19,16 @@ import LeadStatsDrawer from './components/LeadStatsDrawer';
 
 const { Title } = Typography;
 const { confirm } = Modal;
+
+// Define sales-related roles (consistent with LeadForm)
+const SALES_ROLES = [
+  'Agent',
+  'Sales',
+  'Executive Sales',
+  'Off Plan Sales',
+  'Ready to Move Sales',
+  'Sales Manager'
+];
 
 /**
  * Leads management page
@@ -98,21 +109,31 @@ const LeadsPage = () => {
     }
   };
 
-  // Fetch sellers (users with Seller role) from Firestore
+  // Fetch sellers (employees with sales-related roles) from Firestore
   const fetchSellers = async () => {
     try {
       console.log('Fetching sellers for company:', companyId);
       
-      // Get users with Seller role from the same company using the correct method
-      const users = await UserService.getUsersByCompanyId(companyId);
-      console.log('All users fetched:', users.length);
+      // Query employees collection
+      const employeesRef = collection(db, 'employees');
+      const employeesSnapshot = await getDocs(employeesRef);
       
-      // Filter to get only sellers (support both Role formats)
-      const sellersList = users.filter(user => 
-        user.Role === 'Seller' || user.role === 'Seller'
-      );
+      // Filter employees by SALES_ROLES and company_id
+      const sellersList = employeesSnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter(employee => 
+          employee.company_id === companyId && 
+          SALES_ROLES.includes(employee.Role)
+        )
+        .map(employee => ({
+          id: employee.id,
+          name: employee.name
+        }));
+      
       console.log('Sellers filtered:', sellersList.length, sellersList);
-      
       setSellers(sellersList);
     } catch (error) {
       console.error('Error fetching sellers:', error);
@@ -129,7 +150,9 @@ const LeadsPage = () => {
         ...values,
         company_id: companyId,
         CreationDate: values.CreationDate?.toDate() || serverTimestamp(),
-        Notes: []
+        Notes: [],
+        secondaryEmail: values.secondaryEmail || '',
+        phoneNumber2: values.phoneNumber2 || ''
       };
       
       // Create lead
@@ -152,7 +175,9 @@ const LeadsPage = () => {
       // Prepare updated data
       const updateData = {
         ...values,
-        CreationDate: values.CreationDate?.toDate() || editingLead.CreationDate
+        CreationDate: values.CreationDate?.toDate() || editingLead.CreationDate,
+        secondaryEmail: values.secondaryEmail || '',
+        phoneNumber2: values.phoneNumber2 || ''
       };
       
       // Update lead
@@ -213,9 +238,7 @@ const LeadsPage = () => {
       
       // Find seller name for success message
       const assignedSeller = sellers.find(seller => seller.id === sellerId);
-      const sellerName = assignedSeller ? 
-        `${assignedSeller.firstname || assignedSeller.firstName} ${assignedSeller.lastname || assignedSeller.lastName}` : 
-        'Selected seller';
+      const sellerName = assignedSeller ? assignedSeller.name : 'Selected seller';
       
       await LeadService.update(leadId, { seller_id: sellerId });
       
@@ -237,6 +260,20 @@ const LeadsPage = () => {
     } finally {
       setConfirmLoading(false);
     }
+  };
+
+  // Show assign seller modal
+  const handleShowAssignSeller = (lead) => {
+    console.log('Assigning seller to lead:', lead);
+    console.log('Available sellers:', sellers.length, sellers);
+    
+    if (sellers.length === 0) {
+      message.warning('No sellers available in your company. Please add sellers first.');
+      return;
+    }
+    
+    setAssigningLead(lead);
+    setAssignSellerVisible(true);
   };
 
   // Add a note to a lead
@@ -276,20 +313,6 @@ const LeadsPage = () => {
   const handleEditLead = (lead) => {
     setEditingLead(lead);
     setFormVisible(true);
-  };
-
-  // Show assign seller modal
-  const handleShowAssignSeller = (lead) => {
-    console.log('Assigning seller to lead:', lead);
-    console.log('Available sellers:', sellers.length);
-    
-    if (sellers.length === 0) {
-      message.warning('No sellers available in your company. Please add sellers first.');
-      return;
-    }
-    
-    setAssigningLead(lead);
-    setAssignSellerVisible(true);
   };
 
   // Filter leads

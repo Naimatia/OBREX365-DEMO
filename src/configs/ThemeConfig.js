@@ -188,7 +188,7 @@ export const darkTheme = {
             colorTextHeading: DARK_MODE.HEADING_COLOR,
         },
         Layout: {
-            colorBgBody: '#1b2531',
+            colorBgBody: '#9da1a500',
             colorBgHeader: DARK_MODE.BG_COLOR
         },
         Menu: {

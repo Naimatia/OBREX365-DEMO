@@ -40,6 +40,7 @@ const ListOption = ({name, selector, disabled, vertical}) => (
 	</div>
 )
 
+
 export const ThemeConfigurator = () => {
 
 

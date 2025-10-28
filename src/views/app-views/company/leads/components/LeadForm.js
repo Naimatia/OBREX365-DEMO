@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Form, Input, Select, Button, InputNumber, Row, Col, DatePicker, Modal } from 'antd';
+import { UserOutlined, MailOutlined, PhoneOutlined, GlobalOutlined } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel, LeadRedirectionSource } from 'models/LeadModel';
 import { db, collection, getDocs } from 'configs/FirebaseConfig';
 import countries from 'constants/countries';
@@ -123,7 +124,7 @@ const LeadForm = ({
               label="Full Name"
               rules={[{ required: true, message: 'Please enter the lead name' }]}
             >
-              <Input placeholder="Enter full name" />
+              <Input  prefix={<UserOutlined />} placeholder="Enter full name" />
             </Form.Item>
           </Col>
           <Col span={12}>
@@ -137,6 +138,9 @@ const LeadForm = ({
                 showSearch
                 optionFilterProp="children"
               >
+                 <Option value="" disabled>
+                                  <GlobalOutlined /> Select a country
+                                </Option>
                 {countries.map(country => (
                   <Option key={country.code} value={country.name}>
                     {country.name}
@@ -167,6 +171,32 @@ const LeadForm = ({
               rules={[{ required: true, message: 'Please enter phone number' }]}
             >
               <Input placeholder="Enter phone number" />
+            </Form.Item>
+          </Col>
+        </Row>
+
+  <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+          name="secondaryEmail"
+          label="Secondary Email Address"
+          rules={[
+            { type: 'email', message: 'Please enter a valid email' },
+          ]}
+          extra="Optional secondary email for additional communications"
+        >
+          <Input prefix={<MailOutlined />} placeholder="secondary@example.com" />
+        </Form.Item>
+          </Col>
+         <Col span={12}>
+            <Form.Item
+              name="phoneNumber2"
+              label="Secondary Phone Number"
+              rules={[
+                { pattern: /^[\d\+\-\s()]+$/, message: 'Please enter a valid phone number' },
+              ]}
+            >
+              <Input prefix={<PhoneOutlined />} placeholder="+1 (234) 567-8902" />
             </Form.Item>
           </Col>
         </Row>

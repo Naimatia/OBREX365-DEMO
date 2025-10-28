@@ -214,6 +214,8 @@ class LeadService extends BaseFirebaseService {
       firstName: lead.firstName,
       lastName: lead.lastName,
       email: lead.email,
+      secondaryEmail: lead.secondaryEmail || '',
+      phoneNumber2: lead.phoneNumber2 || '',
       phone: lead.phone,
       mobile: lead.mobile,
       address: lead.address,

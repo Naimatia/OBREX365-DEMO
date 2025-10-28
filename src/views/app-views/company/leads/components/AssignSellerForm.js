@@ -31,12 +31,14 @@ const AssignSellerForm = ({
   const handleSubmit = () => {
     form.validateFields().then(values => {
       onSubmit(lead.id, values.seller_id);
+    }).catch(error => {
+      console.error('Form validation failed:', error);
     });
   };
 
   return (
     <Modal
-      title={`Assign Seller: ${lead?.name || ''}`}
+      title={`Assign Seller: ${lead?.name || 'Lead'}`}
       open={visible}
       onCancel={onCancel}
       onOk={handleSubmit}
@@ -61,10 +63,7 @@ const AssignSellerForm = ({
                 <Select.Option key={seller.id} value={seller.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>
-                      <strong>{seller.firstname || seller.firstName} {seller.lastname || seller.lastName}</strong>
-                    </span>
-                    <span style={{ color: '#666', fontSize: '12px' }}>
-                      {seller.email}
+                      <strong>{seller.name}</strong>
                     </span>
                   </div>
                 </Select.Option>

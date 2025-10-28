@@ -1,243 +1,294 @@
 import { db as firestore } from 'configs/FirebaseConfig';
-import { collection, query, where, getDocs, getDoc, doc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc, orderBy, limit, Timestamp } from 'firebase/firestore';
 import moment from 'moment';
 
 class DashboardService {
   /**
    * Fetch company statistics based on date range and user's company_id
    */
-  static async fetchCompanyStats(companyId, dateRange) {
-    console.log('DashboardService.fetchCompanyStats called with:', { companyId, dateRange });
-    
-    if (!companyId) {
-      console.error('No company ID provided for fetching stats');
-      return null;
-    }
 
-    try {
-      const startDate = dateRange?.[0]?.toDate() || moment().subtract(30, 'days').toDate();
-      const endDate = dateRange?.[1]?.toDate() || moment().toDate();
-      
-      // Convert dates to Firestore Timestamp
-      const startTimestamp = Timestamp.fromDate(startDate);
-      const endTimestamp = Timestamp.fromDate(endDate);
-      
-      // Initialize stats object
-      const stats = {
-        totalLeads: 0,
-        totalContacts: 0,
-        totalDeals: 0,
-        totalProperties: 0,
-        totalEmployees: 0,
-        totalInvoices: 0,
-        totalMeetings: 0,
-        pendingInvoiceAmount: 0,
-        paidInvoiceAmount: 0,
-        revenueData: [],
-        leadsStatusDistribution: { Pending: 0, Gain: 0, Loss: 0 },
-        dealsStatusDistribution: { Opened: 0, Gain: 0, Loss: 0 },
-        propertiesStatusDistribution: { Pending: 0, Sold: 0 },
-        topSellers: [],
-        recentActivities: [],
-        upcomingMeetings: []
-      };
-
-      // Fetch leads
-      const leadsQuery = query(
-        collection(firestore, 'leads'),
-        where('company_id', '==', companyId),
-        where('CreationDate', '>=', startTimestamp),
-        where('CreationDate', '<=', endTimestamp)
-      );
-      const leadsSnapshot = await getDocs(leadsQuery);
-      stats.totalLeads = leadsSnapshot.size;
-      
-      // Process leads for status distribution
-      leadsSnapshot.forEach(doc => {
-        const leadData = doc.data();
-        if (leadData.status && stats.leadsStatusDistribution.hasOwnProperty(leadData.status)) {
-          stats.leadsStatusDistribution[leadData.status]++;
-        }
-      });
-
-      // Fetch contacts
-      const contactsQuery = query(
-        collection(firestore, 'contacts'),
-        where('company_id', '==', companyId),
-        where('CreationDate', '>=', startTimestamp),
-        where('CreationDate', '<=', endTimestamp)
-      );
-      const contactsSnapshot = await getDocs(contactsQuery);
-      stats.totalContacts = contactsSnapshot.size;
-
-      // Fetch deals
-      const dealsQuery = query(
-        collection(firestore, 'deals'),
-        where('company_id', '==', companyId),
-        where('CreationDate', '>=', startTimestamp),
-        where('CreationDate', '<=', endTimestamp)
-      );
-      const dealsSnapshot = await getDocs(dealsQuery);
-      stats.totalDeals = dealsSnapshot.size;
-      
-      // Process deals for status distribution and revenue data
-      const sellerDeals = {};
-      dealsSnapshot.forEach(doc => {
-        const dealData = doc.data();
-        if (dealData.Status && stats.dealsStatusDistribution.hasOwnProperty(dealData.Status)) {
-          stats.dealsStatusDistribution[dealData.Status]++;
-        }
-        
-        // Process for revenue data by date
-        if (dealData.CreationDate && dealData.Amount) {
-          const date = dealData.CreationDate.toDate();
-          const dateString = moment(date).format('YYYY-MM-DD');
-          const existingEntry = stats.revenueData.find(item => item.date === dateString);
-          
-          if (existingEntry) {
-            existingEntry.value += dealData.Amount;
-          } else {
-            stats.revenueData.push({
-              date: dateString,
-              value: dealData.Amount,
-              category: 'Revenue'
-            });
-          }
-        }
-        
-        // Aggregate deals by seller
-        if (dealData.seller_id) {
-          if (!sellerDeals[dealData.seller_id]) {
-            sellerDeals[dealData.seller_id] = {
-              totalDeals: 0,
-              totalAmount: 0,
-              sellerId: dealData.seller_id
-            };
-          }
-          sellerDeals[dealData.seller_id].totalDeals++;
-          sellerDeals[dealData.seller_id].totalAmount += dealData.Amount || 0;
-        }
-      });
-
-      // Fetch properties
-      const propertiesQuery = query(
-        collection(firestore, 'properties'),
-        where('company_id', '==', companyId),
-        where('CreationDate', '>=', startTimestamp),
-        where('CreationDate', '<=', endTimestamp)
-      );
-      const propertiesSnapshot = await getDocs(propertiesQuery);
-      stats.totalProperties = propertiesSnapshot.size;
-      
-      // Process properties for status distribution
-      propertiesSnapshot.forEach(doc => {
-        const propertyData = doc.data();
-        if (propertyData.Status && stats.propertiesStatusDistribution.hasOwnProperty(propertyData.Status)) {
-          stats.propertiesStatusDistribution[propertyData.Status]++;
-        }
-      });
-
-      // Fetch employees
-      const employeesQuery = query(
-        collection(firestore, 'employees'),
-        where('company_id', '==', companyId)
-      );
-      const employeesSnapshot = await getDocs(employeesQuery);
-      stats.totalEmployees = employeesSnapshot.size;
-
-      // Fetch invoices
-      const invoicesQuery = query(
-        collection(firestore, 'invoices'),
-        where('company_id', '==', companyId),
-        where('CreationDate', '>=', startTimestamp),
-        where('CreationDate', '<=', endTimestamp)
-      );
-      const invoicesSnapshot = await getDocs(invoicesQuery);
-      stats.totalInvoices = invoicesSnapshot.size;
-      
-      // Process invoices for amounts
-      invoicesSnapshot.forEach(doc => {
-        const invoiceData = doc.data();
-        if (invoiceData.amount) {
-          if (invoiceData.Status === 'Paid') {
-            stats.paidInvoiceAmount += invoiceData.amount;
-          } else if (invoiceData.Status === 'Pending') {
-            stats.pendingInvoiceAmount += invoiceData.amount;
-          }
-        }
-      });
-
-      // Fetch meetings
-      const meetingsQuery = query(
-        collection(firestore, 'meetings'),
-        where('company_id', '==', companyId),
-        where('DateTime', '>=', startTimestamp)
-      );
-      const meetingsSnapshot = await getDocs(meetingsQuery);
-      stats.totalMeetings = meetingsSnapshot.size;
-      
-      // Get upcoming meetings (future dates only)
-      const now = new Date();
-      const upcomingMeetings = [];
-      meetingsSnapshot.forEach(doc => {
-        const meetingData = doc.data();
-        const meetingWithId = { id: doc.id, ...meetingData };
-        if (meetingData.DateTime && meetingData.DateTime.toDate() > now) {
-          upcomingMeetings.push(meetingWithId);
-        }
-      });
-      
-      // Sort meetings by date and limit to 5
-      stats.upcomingMeetings = upcomingMeetings
-        .sort((a, b) => a.DateTime.toDate() - b.DateTime.toDate())
-        .slice(0, 5);
-
-      // Fetch user details to populate seller names
-      const sellerIds = Object.keys(sellerDeals);
-      const sellerPromises = sellerIds.map(sellerId => getDoc(doc(firestore, 'users', sellerId)));
-      const sellerSnapshots = await Promise.all(sellerPromises);
-      
-      // Map seller data with user details
-      stats.topSellers = sellerIds.map((sellerId, index) => {
-        const userData = sellerSnapshots[index].exists() ? sellerSnapshots[index].data() : null;
-        return {
-          id: sellerId,
-          name: userData ? `${userData.firstname} ${userData.lastname}` : 'Unknown User',
-          pictureUrl: userData?.pictureUrl || null,
-          deals: sellerDeals[sellerId].totalDeals,
-          amount: sellerDeals[sellerId].totalAmount
-        };
-      }).sort((a, b) => b.amount - a.amount).slice(0, 5); // Sort by amount and limit to top 5
-
-      // Fetch recent history/activities
-      const historyQuery = query(
-        collection(firestore, 'history'),
-        where('company_id', '==', companyId),
-        where('DateTime', '>=', startTimestamp),
-        where('DateTime', '<=', endTimestamp)
-      );
-      const historySnapshot = await getDocs(historyQuery);
-      
-      const activities = [];
-      historySnapshot.forEach(doc => {
-        activities.push({
-          id: doc.id,
-          ...doc.data(),
-          type: 'activity'
-        });
-      });
-      
-      // Sort activities by datetime and limit to 10
-      stats.recentActivities = activities
-        .sort((a, b) => b.DateTime.toDate() - a.DateTime.toDate())
-        .slice(0, 10);
-
-      return stats;
-    } catch (error) {
-      console.error('Error fetching company stats:', error);
-      return null;
-    }
+/**
+ * Fetch company statistics based on date range and user's company_id
+ */
+static async fetchCompanyStats(companyId, dateRange) {
+  console.log('DashboardService.fetchCompanyStats called with:', { companyId, dateRange });
+  if (!companyId) {
+    console.error('No company ID provided for fetching stats');
+    return null;
   }
+
+  try {
+    // Validate and set date range
+    const startDate = dateRange?.[0] instanceof Date 
+  ? dateRange[0] 
+  : dateRange?.[0]?.toDate?.() || moment().subtract(30, 'days').toDate();
+
+const endDate = dateRange?.[1] instanceof Date 
+  ? dateRange[1] 
+  : dateRange?.[1]?.toDate?.() || moment().toDate();
+    if (moment(endDate).isBefore(startDate)) {
+      console.error('Invalid date range: endDate is before startDate');
+      return null;
+    }
+    const startTimestamp = Timestamp.fromDate(startDate);
+    const endTimestamp = Timestamp.fromDate(endDate);
+
+    // -----------------------------------------------------------------
+    // 1. Initialise the stats object – **all collections are listed**
+    // -----------------------------------------------------------------
+    const stats = {
+      totalLeads: 0,
+      totalContacts: 0,
+      totalDeals: 0,
+      totalProperties: 0,
+      totalEmployees: 0,
+      totalInvoices: 0,
+      totalMeetings: 0,
+      totalAttendances: 0,
+      totalAuditLogs: 0,
+      totalPayroll: 0,
+      totalTodolist: 0,
+      monthlyRevenue: 0,
+      paidInvoiceAmount: 0,
+      pendingInvoiceAmount: 0,
+      leadsStatusDistribution: { Pending: 0, Gain: 0, Loss: 0 },
+      dealsStatusDistribution: { Opened: 0, Gain: 0, Loss: 0 },
+      topSellers: [],
+      recentActivities: [],
+      upcomingMeetings: [],
+      revenueData: []
+    };
+
+    // -----------------------------------------------------------------
+    // 2. Helper – generic query + count for any collection
+    // -----------------------------------------------------------------
+    const countCollection = async (colName, extraWhere = []) => {
+      const q = query(
+        collection(firestore, colName),
+        where('company_id', '==', companyId),
+        where('CreationDate', '>=', startTimestamp),
+        where('CreationDate', '<=', endTimestamp),
+        ...extraWhere,
+        limit(1000)
+      );
+      const snap = await getDocs(q).catch(() => ({ size: 0, forEach: () => {} }));
+      return snap;
+    };
+
+    // -----------------------------------------------------------------
+    // 3. Run **all** queries in parallel (including the new ones)
+    // -----------------------------------------------------------------
+    const [
+      leadsSnap,
+      contactsSnap,
+      dealsSnap,
+      propertiesSnap,
+      employeesSnap,
+      invoicesSnap,
+      meetingsSnap,
+      attendancesSnap,
+      auditLogsSnap,
+      payrollSnap,
+      todolistSnap,
+      activitiesSnap,
+      futureMeetingsSnap
+    ] = await Promise.all([
+      countCollection('leads'),
+      countCollection('contacts'),
+      countCollection('deals'),
+      countCollection('properties'),
+      countCollection('employees'),                 // NEW
+      countCollection('invoices'),
+      countCollection('meetings'),
+      countCollection('attendances'),                // NEW
+      countCollection('audit_logs'),                 // NEW
+      countCollection('payroll'),                    // NEW
+      countCollection('todolist'),                   // NEW
+      // recent activities (same as before)
+      getDocs(
+        query(
+          collection(firestore, 'activities'),
+          where('company_id', '==', companyId),
+          where('CreationDate', '>=', startTimestamp),
+          where('CreationDate', '<=', endTimestamp),
+          orderBy('CreationDate', 'desc'),
+          limit(10)
+        )
+      ).catch(() => ({ size: 0, forEach: () => {}, docs: [] })),
+      // upcoming meetings (future only)
+      getDocs(
+        query(
+          collection(firestore, 'meetings'),
+          where('company_id', '==', companyId),
+          where('date', '>=', Timestamp.fromDate(moment().toDate())),
+          orderBy('date', 'asc'),
+          limit(10)
+        )
+      ).catch(() => ({ size: 0, forEach: () => {}, docs: [] }))
+    ]);
+
+    // -----------------------------------------------------------------
+    // 4. Assign **all** counts
+    // -----------------------------------------------------------------
+    stats.totalLeads        = leadsSnap.size;
+    stats.totalContacts     = contactsSnap.size;
+    stats.totalDeals        = dealsSnap.size;
+    stats.totalProperties    = propertiesSnap.size;
+    stats.totalEmployees    = employeesSnap.size;          // NEW
+    stats.totalInvoices     = invoicesSnap.size;
+    stats.totalMeetings     = meetingsSnap.size;
+    stats.totalAttendances  = attendancesSnap.size;        // NEW
+    stats.totalAuditLogs    = auditLogsSnap.size;          // NEW
+    stats.totalPayroll      = payrollSnap.size;            // NEW
+    stats.totalTodolist     = todolistSnap.size;           // NEW
+
+    // -----------------------------------------------------------------
+    // 5. Status distributions (unchanged)
+    // -----------------------------------------------------------------
+    leadsSnap.forEach(doc => {
+      const leadData = doc.data();
+      if (leadData.status) {
+        if (!stats.leadsStatusDistribution[leadData.status]) {
+          stats.leadsStatusDistribution[leadData.status] = 0;
+        }
+        stats.leadsStatusDistribution[leadData.status]++;
+      }
+    });
+
+    dealsSnap.forEach(doc => {
+      const dealData = doc.data();
+      if (dealData.status) {
+        if (!stats.dealsStatusDistribution[dealData.status]) {
+          stats.dealsStatusDistribution[dealData.status] = 0;
+        }
+        stats.dealsStatusDistribution[dealData.status]++;
+      }
+    });
+
+    // -----------------------------------------------------------------
+    // 6. Invoices – revenue (unchanged)
+    // -----------------------------------------------------------------
+    invoicesSnap.forEach(doc => {
+      const invoiceData = doc.data();
+      if (invoiceData.amount && typeof invoiceData.amount === 'number') {
+        if (invoiceData.status === 'Paid') {
+          stats.paidInvoiceAmount += invoiceData.amount;
+          stats.monthlyRevenue   += invoiceData.amount;
+        } else if (invoiceData.status === 'Pending') {
+          stats.pendingInvoiceAmount += invoiceData.amount;
+        }
+      }
+    });
+
+    // -----------------------------------------------------------------
+    // 7. Recent activities (unchanged)
+    // -----------------------------------------------------------------
+    stats.recentActivities = activitiesSnap.docs.map(doc => {
+      const activityData = doc.data();
+      return {
+        id: doc.id,
+        title: activityData.title || 'Untitled Activity',
+        description: activityData.description || '',
+        date: activityData.CreationDate?.toDate()?.toISOString() || new Date().toISOString(),
+        type: activityData.type || 'general'
+      };
+    });
+
+    // -----------------------------------------------------------------
+    // 8. Upcoming meetings (unchanged)
+    // -----------------------------------------------------------------
+    stats.upcomingMeetings = futureMeetingsSnap.docs.map(doc => {
+      const meetingData = doc.data();
+      return {
+        id: doc.id,
+        title: meetingData.title || 'Untitled Meeting',
+        date: meetingData.date?.toDate()?.toISOString() || new Date().toISOString(),
+        location: meetingData.location || 'Not specified',
+        attendees: meetingData.attendees || []
+      };
+    });
+
+    // -----------------------------------------------------------------
+    // 9. Top sellers – unchanged (still uses employees & deals)
+    // -----------------------------------------------------------------
+    try {
+      const sellersQuery = query(
+        collection(firestore, 'employees'),
+        where('company_id', '==', companyId),
+        where('Role', 'in', ['Sales', 'Seller','Sales Agent']),
+        limit(5)
+      );
+      const sellersSnapshot = await getDocs(sellersQuery);
+      const sellerDealsPromises = sellersSnapshot.docs.map(async (doc) => {
+        const sellerData = doc.data();
+        const sellerDealsQuery = query(
+          collection(firestore, 'deals'),
+          where('company_id', '==', companyId),
+          where('assigned_to', '==', doc.id),
+          where('CreationDate', '>=', startTimestamp),
+          where('CreationDate', '<=', endTimestamp),
+          where('status', '==', 'Gain')
+        );
+        const sellerDealsSnapshot = await getDocs(sellerDealsQuery);
+        let totalAmount = 0;
+        sellerDealsSnapshot.forEach(dealDoc => {
+          const dealData = dealDoc.data();
+          if (dealData.Amount && typeof dealData.Amount === 'number') {
+            totalAmount += dealData.Amount;
+          }
+        });
+        return {
+          name: `${sellerData.name || ''}`.trim() || 'Unknown',
+          profilePic: sellerData.profilePic || null,
+          deals: sellerDealsSnapshot.size,
+          amount: totalAmount,
+          status: sellerData.status || 'Active',
+          growth: 0
+        };
+      });
+      stats.topSellers = await Promise.all(sellerDealsPromises);
+      stats.topSellers.sort((a, b) => b.amount - a.amount);
+    } catch (error) {
+      console.error('Error fetching top sellers:', error);
+      stats.topSellers = [];
+    }
+
+    // -----------------------------------------------------------------
+    // 10. Revenue chart data (unchanged)
+    // -----------------------------------------------------------------
+    try {
+      const durationDays = moment(endDate).diff(moment(startDate), 'days');
+      const groupBy = durationDays > 90 ? 'month' : 'day';
+      const revenueMap = new Map();
+
+      invoicesSnap.forEach(doc => {
+        const invoiceData = doc.data();
+        if (invoiceData.status === 'Paid' && invoiceData.amount && typeof invoiceData.amount === 'number') {
+          const date = invoiceData.CreationDate?.toDate();
+          if (date) {
+            const key = groupBy === 'month'
+              ? moment(date).format('MMM YYYY')
+              : moment(date).format('YYYY-MM-DD');
+            revenueMap.set(key, (revenueMap.get(key) || 0) + invoiceData.amount);
+          }
+        }
+      });
+
+      stats.revenueData = Array.from(revenueMap.entries())
+        .map(([date, value]) => ({ date, value }))
+        .sort((a, b) => moment(a.date, groupBy === 'month' ? 'MMM YYYY' : 'YYYY-MM-DD')
+          .valueOf() - moment(b.date, groupBy === 'month' ? 'MMM YYYY' : 'YYYY-MM-DD').valueOf());
+    } catch (error) {
+      console.error('Error processing revenue data:', error);
+      stats.revenueData = [];
+    }
+
+    return stats;
+  } catch (error) {
+    console.error('Error fetching company stats:', error);
+    return null;
+  }
+}
   
   /**
    * Fetch performance data for comparison (previous period)
@@ -247,9 +298,13 @@ class DashboardService {
       return null;
     }
     
-    const currentStart = currentDateRange[0].toDate();
-    const currentEnd = currentDateRange[1].toDate();
-    
+   const currentStart = currentDateRange[0] instanceof Date 
+  ? currentDateRange[0] 
+  : currentDateRange[0]?.toDate();
+
+const currentEnd = currentDateRange[1] instanceof Date 
+  ? currentDateRange[1] 
+  : currentDateRange[1]?.toDate();
     // Calculate the previous period with the same duration
     const duration = moment(currentEnd).diff(moment(currentStart), 'days');
     const previousStart = moment(currentStart).subtract(duration, 'days').toDate();

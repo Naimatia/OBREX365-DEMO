@@ -55,6 +55,8 @@ const LeadDetails = ({
   const [noteForm] = Form.useForm();
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [copiedPhone, setCopiedPhone] = useState(false);
+  const [copiedSecondaryEmail, setCopiedSecondaryEmail] = useState(false);
+  const [copiedSecondaryPhone, setCopiedSecondaryPhone] = useState(false);
   const currentUser = useSelector(state => state.auth.user);
   
   // Status color mapping
@@ -73,6 +75,10 @@ const LeadDetails = ({
   
   // Function to copy text to clipboard
   const copyToClipboard = (text, type) => {
+    if (!text) {
+      message.error(`No ${type} to copy`);
+      return;
+    }
     navigator.clipboard.writeText(text).then(
       () => {
         if (type === 'email') {
@@ -81,12 +87,18 @@ const LeadDetails = ({
         } else if (type === 'phone') {
           setCopiedPhone(true);
           setTimeout(() => setCopiedPhone(false), 2000);
+        } else if (type === 'secondaryEmail') {
+          setCopiedSecondaryEmail(true);
+          setTimeout(() => setCopiedSecondaryEmail(false), 2000);
+        } else if (type === 'secondaryPhone') {
+          setCopiedSecondaryPhone(true);
+          setTimeout(() => setCopiedSecondaryPhone(false), 2000);
         }
-        message.success(`${type === 'email' ? 'Email' : 'Phone number'} copied to clipboard`);
+        message.success(`${type === 'email' ? 'Email' : type === 'phone' ? 'Phone number' : type === 'secondaryEmail' ? 'Secondary email' : 'Secondary phone number'} copied to clipboard`);
       },
       () => {
         message.error('Failed to copy');
-      },
+      }
     );
   };
   
@@ -174,13 +186,13 @@ const LeadDetails = ({
               style={{ backgroundColor: '#f5f7fa' }}
             >
               <Row gutter={[16, 16]}>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={12}>
                   <div className="lead-detail-item">
                     <Text type="secondary"><GlobalOutlined /> Region</Text>
                     <div className="detail-value">{lead.region || 'Not specified'}</div>
                   </div>
                 </Col>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={12}>
                   <div className="lead-detail-item">
                     <Text type="secondary"><MailOutlined /> Email</Text>
                     <div className="detail-value with-copy">
@@ -196,7 +208,7 @@ const LeadDetails = ({
                     </div>
                   </div>
                 </Col>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={12}>
                   <div className="lead-detail-item">
                     <Text type="secondary"><PhoneOutlined /> Phone</Text>
                     <div className="detail-value with-copy">
@@ -209,6 +221,50 @@ const LeadDetails = ({
                           onClick={() => copyToClipboard(lead.phoneNumber, 'phone')}
                         />
                       </Tooltip>
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={24} md={12}>
+                  <div className="lead-detail-item">
+                    <Text type="secondary"><MailOutlined /> Secondary Email</Text>
+                    <div className="detail-value with-copy">
+                      {lead.secondaryEmail ? (
+                        <>
+                          <a href={`mailto:${lead.secondaryEmail}`}>{lead.secondaryEmail}</a>
+                          <Tooltip title={copiedSecondaryEmail ? 'Copied!' : 'Copy Secondary Email'}>
+                            <Button 
+                              type="text" 
+                              size="small" 
+                              icon={copiedSecondaryEmail ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />} 
+                              onClick={() => copyToClipboard(lead.secondaryEmail, 'secondaryEmail')}
+                            />
+                          </Tooltip>
+                        </>
+                      ) : (
+                        <span>Not specified</span>
+                      )}
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={24} md={12}>
+                  <div className="lead-detail-item">
+                    <Text type="secondary"><PhoneOutlined /> Secondary Phone</Text>
+                    <div className="detail-value with-copy">
+                      {lead.phoneNumber2 ? (
+                        <>
+                          <a href={`tel:${lead.phoneNumber2}`}>{lead.phoneNumber2}</a>
+                          <Tooltip title={copiedSecondaryPhone ? 'Copied!' : 'Copy Secondary Phone'}>
+                            <Button 
+                              type="text" 
+                              size="small" 
+                              icon={copiedSecondaryPhone ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />} 
+                              onClick={() => copyToClipboard(lead.phoneNumber2, 'secondaryPhone')}
+                            />
+                          </Tooltip>
+                        </>
+                      ) : (
+                        <span>Not specified</span>
+                      )}
                     </div>
                   </div>
                 </Col>

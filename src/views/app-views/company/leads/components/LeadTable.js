@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Button, Tooltip, Space, Badge } from 'antd';
+import { Table, Tag, Button, Tooltip, Space } from 'antd';
 import { 
   EditOutlined, 
   DeleteOutlined, 
@@ -59,7 +59,7 @@ const LeadTable = ({
       render: region => (
         <span>
           <GlobalOutlined style={{ marginRight: 5 }} />
-          {region}
+          {region || '-'}
         </span>
       ),
     },
@@ -74,6 +74,7 @@ const LeadTable = ({
                 type="text" 
                 icon={<MailOutlined />} 
                 href={`mailto:${record.email}`}
+                onClick={(e) => e.stopPropagation()} // Prevent row click
               />
             </Tooltip>
           )}
@@ -83,6 +84,7 @@ const LeadTable = ({
                 type="text" 
                 icon={<PhoneOutlined />} 
                 href={`tel:${record.phoneNumber}`}
+                onClick={(e) => e.stopPropagation()} // Prevent row click
               />
             </Tooltip>
           )}
@@ -95,7 +97,7 @@ const LeadTable = ({
       key: 'status',
       render: status => (
         <Tag color={statusColors[status] || 'default'}>
-          {status}
+          {status || '-'}
         </Tag>
       ),
       filters: Object.values(LeadStatus).map(status => ({ text: status, value: status })),
@@ -107,7 +109,7 @@ const LeadTable = ({
       key: 'InterestLevel',
       render: level => (
         <Tag color={interestLevelColors[level] || 'default'}>
-          {level}
+          {level || '-'}
         </Tag>
       ),
       filters: Object.values(LeadInterestLevel).map(level => ({ text: level, value: level })),
@@ -124,11 +126,11 @@ const LeadTable = ({
       title: 'Created',
       dataIndex: 'CreationDate',
       key: 'CreationDate',
-      render: date => date ? moment(date.toDate()).format('MMM DD, YYYY') : '-',
+      render: date => date ? moment(date.toDate?.() || date).format('MMM DD, YYYY') : '-',
       sorter: (a, b) => {
         if (!a.CreationDate) return -1;
         if (!b.CreationDate) return 1;
-        return a.CreationDate - b.CreationDate;
+        return a.CreationDate.toDate?.().getTime() - b.CreationDate.toDate?.().getTime();
       }
     },
     {
@@ -140,14 +142,20 @@ const LeadTable = ({
             <Button 
               type="text" 
               icon={<EditOutlined />} 
-              onClick={() => onEdit(record)} 
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent row click
+                onEdit(record);
+              }} 
             />
           </Tooltip>
           <Tooltip title="Assign Seller">
             <Button 
               type="text" 
               icon={<UserAddOutlined />}
-              onClick={() => onAssignSeller(record)}
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent row click
+                onAssignSeller(record);
+              }}
             />
           </Tooltip>
           <Tooltip title="Delete Lead">
@@ -155,7 +163,10 @@ const LeadTable = ({
               type="text" 
               danger
               icon={<DeleteOutlined />}
-              onClick={() => onDelete(record)}
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent row click
+                onDelete(record);
+              }}
             />
           </Tooltip>
         </Space>

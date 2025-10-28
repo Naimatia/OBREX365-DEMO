@@ -15,9 +15,9 @@ export const THEME_CONFIG = {
 	locale: 'en',
 	navType: NAV_TYPE_SIDE,
 	topNavColor: '#3e82f7',
-	headerNavColor: '',
+	headerNavColor: '#EFEFEF',
 	mobileNav: false,
-	currentTheme: 'light',
+	currentTheme: 'dark',
 	direction: DIR_LTR,
 	blankLayout: false
 };

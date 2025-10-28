@@ -12,6 +12,8 @@ export const LeadModel = {
   status: '', // Pending, Gain, Loss
   phoneNumber: '',
   email: '',
+  secondaryEmail: '',
+  phoneNumber2: '',
   InterestLevel: '', // Low, Medium, High
   Budget: 0,
   Notes: [] // Array of {note, CreationDate} objects
@@ -55,9 +57,9 @@ export const LeadRedirectionSource = {
  */
 export const convertToLeadModel = (doc) => {
   if (!doc) return null;
-  
+
   const data = doc.data ? doc.data() : doc;
-  
+
   return {
     id: doc.id || '',
     company_id: data.company_id || '',
@@ -69,6 +71,8 @@ export const convertToLeadModel = (doc) => {
     status: data.status || LeadStatus.PENDING,
     phoneNumber: data.phoneNumber || '',
     email: data.email || '',
+    secondaryEmail: data.secondaryEmail || '',
+    phoneNumber2: data.phoneNumber2 || '',
     InterestLevel: data.InterestLevel || LeadInterestLevel.MEDIUM,
     Budget: data.Budget || 0,
     Notes: data.Notes || []
