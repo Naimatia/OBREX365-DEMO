@@ -20,12 +20,13 @@ static async fetchCompanyStats(companyId, dateRange) {
   try {
     // Validate and set date range
     const startDate = dateRange?.[0] instanceof Date 
-  ? dateRange[0] 
-  : dateRange?.[0]?.toDate?.() || moment().subtract(30, 'days').toDate();
+      ? dateRange[0] 
+      : dateRange?.[0]?.toDate?.() || moment().subtract(30, 'days').toDate();
 
-const endDate = dateRange?.[1] instanceof Date 
-  ? dateRange[1] 
-  : dateRange?.[1]?.toDate?.() || moment().toDate();
+    const endDate = dateRange?.[1] instanceof Date 
+      ? dateRange[1] 
+      : dateRange?.[1]?.toDate?.() || moment().toDate();
+
     if (moment(endDate).isBefore(startDate)) {
       console.error('Invalid date range: endDate is before startDate');
       return null;
@@ -34,13 +35,13 @@ const endDate = dateRange?.[1] instanceof Date
     const endTimestamp = Timestamp.fromDate(endDate);
 
     // -----------------------------------------------------------------
-    // 1. Initialise the stats object – **all collections are listed**
+    // 1. Initialise the stats object
     // -----------------------------------------------------------------
     const stats = {
       totalLeads: 0,
       totalContacts: 0,
       totalDeals: 0,
-      totalProperties: 0,
+      totalProperties: 0,        // ← Only Available properties
       totalEmployees: 0,
       totalInvoices: 0,
       totalMeetings: 0,
@@ -60,7 +61,7 @@ const endDate = dateRange?.[1] instanceof Date
     };
 
     // -----------------------------------------------------------------
-    // 2. Helper – generic query + count for any collection
+    // 2. Helper – generic query + count (with date filter)
     // -----------------------------------------------------------------
     const countCollection = async (colName, extraWhere = []) => {
       const q = query(
@@ -76,13 +77,31 @@ const endDate = dateRange?.[1] instanceof Date
     };
 
     // -----------------------------------------------------------------
-    // 3. Run **all** queries in parallel (including the new ones)
+    // 3. SPECIAL: Count Available Properties (NO DATE FILTER)
+    // -----------------------------------------------------------------
+    const availablePropertiesSnap = await (async () => {
+      try {
+        const q = query(
+          collection(firestore, 'properties'),
+          where('company_id', '==', companyId),
+          where('Status', '==', 'Available')
+        );
+        const snap = await getDocs(q);
+        console.log(`[INFO] Found ${snap.size} Available properties (status filter only)`);
+        return snap;
+      } catch (err) {
+        console.error('Error fetching available properties:', err);
+        return { size: 0, forEach: () => {} };
+      }
+    })();
+
+    // -----------------------------------------------------------------
+    // 4. Run all other queries in parallel (date-filtered)
     // -----------------------------------------------------------------
     const [
       leadsSnap,
       contactsSnap,
       dealsSnap,
-      propertiesSnap,
       employeesSnap,
       invoicesSnap,
       meetingsSnap,
@@ -96,15 +115,14 @@ const endDate = dateRange?.[1] instanceof Date
       countCollection('leads'),
       countCollection('contacts'),
       countCollection('deals'),
-      countCollection('properties'),
-      countCollection('employees'),                 // NEW
+      countCollection('employees'),
       countCollection('invoices'),
       countCollection('meetings'),
-      countCollection('attendances'),                // NEW
-      countCollection('audit_logs'),                 // NEW
-      countCollection('payroll'),                    // NEW
-      countCollection('todolist'),                   // NEW
-      // recent activities (same as before)
+      countCollection('attendances'),
+      countCollection('audit_logs'),
+      countCollection('payroll'),
+      countCollection('todolist'),
+      // Recent activities
       getDocs(
         query(
           collection(firestore, 'activities'),
@@ -115,7 +133,7 @@ const endDate = dateRange?.[1] instanceof Date
           limit(10)
         )
       ).catch(() => ({ size: 0, forEach: () => {}, docs: [] })),
-      // upcoming meetings (future only)
+      // Upcoming meetings
       getDocs(
         query(
           collection(firestore, 'meetings'),
@@ -128,52 +146,48 @@ const endDate = dateRange?.[1] instanceof Date
     ]);
 
     // -----------------------------------------------------------------
-    // 4. Assign **all** counts
+    // 5. Assign counts
     // -----------------------------------------------------------------
     stats.totalLeads        = leadsSnap.size;
     stats.totalContacts     = contactsSnap.size;
     stats.totalDeals        = dealsSnap.size;
-    stats.totalProperties    = propertiesSnap.size;
-    stats.totalEmployees    = employeesSnap.size;          // NEW
+    stats.totalProperties   = availablePropertiesSnap.size;  // ← Available only
+    stats.totalEmployees    = employeesSnap.size;
     stats.totalInvoices     = invoicesSnap.size;
     stats.totalMeetings     = meetingsSnap.size;
-    stats.totalAttendances  = attendancesSnap.size;        // NEW
-    stats.totalAuditLogs    = auditLogsSnap.size;          // NEW
-    stats.totalPayroll      = payrollSnap.size;            // NEW
-    stats.totalTodolist     = todolistSnap.size;           // NEW
+    stats.totalAttendances  = attendancesSnap.size;
+    stats.totalAuditLogs    = auditLogsSnap.size;
+    stats.totalPayroll      = payrollSnap.size;
+    stats.totalTodolist     = todolistSnap.size;
 
     // -----------------------------------------------------------------
-    // 5. Status distributions (unchanged)
+    // 6. Status distributions
     // -----------------------------------------------------------------
     leadsSnap.forEach(doc => {
       const leadData = doc.data();
       if (leadData.status) {
-        if (!stats.leadsStatusDistribution[leadData.status]) {
-          stats.leadsStatusDistribution[leadData.status] = 0;
-        }
-        stats.leadsStatusDistribution[leadData.status]++;
+        stats.leadsStatusDistribution[leadData.status] = 
+          (stats.leadsStatusDistribution[leadData.status] || 0) + 1;
       }
     });
 
     dealsSnap.forEach(doc => {
       const dealData = doc.data();
       if (dealData.status) {
-        if (!stats.dealsStatusDistribution[dealData.status]) {
-          stats.dealsStatusDistribution[dealData.status] = 0;
-        }
-        stats.dealsStatusDistribution[dealData.status]++;
+        stats.dealsStatusDistribution[dealData.status] = 
+          (stats.dealsStatusDistribution[dealData.status] || 0) + 1;
       }
     });
 
     // -----------------------------------------------------------------
-    // 6. Invoices – revenue (unchanged)
+    // 7. Invoices – revenue
     // -----------------------------------------------------------------
     invoicesSnap.forEach(doc => {
       const invoiceData = doc.data();
       if (invoiceData.amount && typeof invoiceData.amount === 'number') {
         if (invoiceData.status === 'Paid') {
           stats.paidInvoiceAmount += invoiceData.amount;
-          stats.monthlyRevenue   += invoiceData.amount;
+          stats.monthlyRevenue += invoiceData.amount;
         } else if (invoiceData.status === 'Pending') {
           stats.pendingInvoiceAmount += invoiceData.amount;
         }
@@ -181,44 +195,45 @@ const endDate = dateRange?.[1] instanceof Date
     });
 
     // -----------------------------------------------------------------
-    // 7. Recent activities (unchanged)
+    // 8. Recent activities
     // -----------------------------------------------------------------
     stats.recentActivities = activitiesSnap.docs.map(doc => {
-      const activityData = doc.data();
+      const data = doc.data();
       return {
         id: doc.id,
-        title: activityData.title || 'Untitled Activity',
-        description: activityData.description || '',
-        date: activityData.CreationDate?.toDate()?.toISOString() || new Date().toISOString(),
-        type: activityData.type || 'general'
+        title: data.title || 'Untitled Activity',
+        description: data.description || '',
+        date: data.CreationDate?.toDate()?.toISOString() || new Date().toISOString(),
+        type: data.type || 'general'
       };
     });
 
     // -----------------------------------------------------------------
-    // 8. Upcoming meetings (unchanged)
+    // 9. Upcoming meetings
     // -----------------------------------------------------------------
     stats.upcomingMeetings = futureMeetingsSnap.docs.map(doc => {
-      const meetingData = doc.data();
+      const data = doc.data();
       return {
         id: doc.id,
-        title: meetingData.title || 'Untitled Meeting',
-        date: meetingData.date?.toDate()?.toISOString() || new Date().toISOString(),
-        location: meetingData.location || 'Not specified',
-        attendees: meetingData.attendees || []
+        title: data.title || 'Untitled Meeting',
+        date: data.date?.toDate()?.toISOString() || new Date().toISOString(),
+        location: data.location || 'Not specified',
+        attendees: data.attendees || []
       };
     });
 
     // -----------------------------------------------------------------
-    // 9. Top sellers – unchanged (still uses employees & deals)
+    // 10. Top Sellers – Fixed field name: 'role' (lowercase)
     // -----------------------------------------------------------------
     try {
       const sellersQuery = query(
         collection(firestore, 'employees'),
         where('company_id', '==', companyId),
-        where('Role', 'in', ['Sales', 'Seller','Sales Agent']),
+        where('Role', 'in', ['Sales', 'Seller', 'Sales Agent']), // ← Fixed
         limit(5)
       );
       const sellersSnapshot = await getDocs(sellersQuery);
+
       const sellerDealsPromises = sellersSnapshot.docs.map(async (doc) => {
         const sellerData = doc.data();
         const sellerDealsQuery = query(
@@ -238,7 +253,7 @@ const endDate = dateRange?.[1] instanceof Date
           }
         });
         return {
-          name: `${sellerData.name || ''}`.trim() || 'Unknown',
+          name: `${sellerData.firstName || ''} ${sellerData.lastName || ''}`.trim() || sellerData.name || 'Unknown',
           profilePic: sellerData.profilePic || null,
           deals: sellerDealsSnapshot.size,
           amount: totalAmount,
@@ -246,6 +261,7 @@ const endDate = dateRange?.[1] instanceof Date
           growth: 0
         };
       });
+
       stats.topSellers = await Promise.all(sellerDealsPromises);
       stats.topSellers.sort((a, b) => b.amount - a.amount);
     } catch (error) {
@@ -254,7 +270,7 @@ const endDate = dateRange?.[1] instanceof Date
     }
 
     // -----------------------------------------------------------------
-    // 10. Revenue chart data (unchanged)
+    // 11. Revenue chart data
     // -----------------------------------------------------------------
     try {
       const durationDays = moment(endDate).diff(moment(startDate), 'days');
@@ -284,6 +300,7 @@ const endDate = dateRange?.[1] instanceof Date
     }
 
     return stats;
+
   } catch (error) {
     console.error('Error fetching company stats:', error);
     return null;

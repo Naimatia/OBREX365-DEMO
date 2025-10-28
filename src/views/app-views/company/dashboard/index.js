@@ -84,7 +84,7 @@ const CompanyDashboard = () => {
   const fetchDashboardData = useCallback(
     async (startDate, endDate, currentUserId = null) => {
       const effectiveUserId = currentUserId || userId;
-      if (!effectiveUserId) {
+     /* if (!effectiveUserId) {
         console.warn('fetchDashboardData: No userId available');
         message.error('Please sign in to view dashboard data');
         setLoading(false);
@@ -101,7 +101,7 @@ const CompanyDashboard = () => {
         message.error('Invalid date range selected. Please choose a valid range.');
         setLoading(false);
         return;
-      }
+      }*/
 
       console.log('fetchDashboardData started with:', {
         startDate: startDate.toISOString(),
