@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Typography, Space, Button, message, Modal, Row, Col, Divider } from 'antd';
 import { useSelector } from 'react-redux';
-import { PlusOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, ExclamationCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import { db, collection, getDocs } from 'configs/FirebaseConfig'; // Added Firestore import
 import LeadService from 'services/firebase/LeadService';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import { serverTimestamp } from 'firebase/firestore';
 import moment from 'moment';
+import * as XLSX from 'xlsx';
 
 // Import components
 import LeadTable from './components/LeadTable';
@@ -327,6 +328,74 @@ const LeadsPage = () => {
     fetchLeads();
   };
 
+  const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  setConfirmLoading(true);
+  try {
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const bstr = evt.target.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      // Validate & map data
+      const validLeads = data
+        .map((row, index) => {
+          const name = row['Full Name'] || row['Name'] || row['name'];
+          const email = row['Email'] || row['email'];
+          const phone = row['Phone'] || row['phoneNumber'] || row['Phone Number'];
+
+          if (!name || !email || !phone) {
+            message.warning(`Row ${index + 2}: Missing required fields (Name, Email, Phone)`);
+            return null;
+          }
+
+          return {
+            name: name.trim(),
+            email: email.trim(),
+            phoneNumber: phone.toString().trim(),
+            region: row['Region'] || row['Country'] || 'UAE',
+            status: row['Status'],
+            InterestLevel: row['Interest Level'] ,
+            Budget: Number(row['Budget']) || 0,
+            secondaryEmail: row['Secondary Email'] || '',
+            RedirectedFrom: row['Lead Source'],
+            phoneNumber2: row['Secondary Phone'] || '',
+            CreationDate: new Date(),
+            company_id: companyId,
+            Notes: [],
+          };
+        })
+        .filter(Boolean);
+
+      if (validLeads.length === 0) {
+        message.error('No valid leads to import');
+        return;
+      }
+
+      // Batch create
+      for (const lead of validLeads) {
+        await LeadService.create(lead);
+      }
+
+      message.success(`${validLeads.length} leads imported successfully`);
+      fetchLeads();
+    };
+
+    reader.readAsBinaryString(file);
+  } catch (error) {
+    console.error('Import error:', error);
+    message.error('Failed to import file');
+  } finally {
+    setConfirmLoading(false);
+    e.target.value = ''; // Reset input
+  }
+};
+
   // Search leads
   const handleSearch = (value) => {
     setFilters({
@@ -350,19 +419,35 @@ const LeadsPage = () => {
       <Row gutter={[16, 16]}>
         <Col span={24}>
           <Card className="leads-header">
-            <div className="d-flex justify-content-between align-items-center">
-              <Title level={2}>Leads Management</Title>
-              <Button 
-                type="primary" 
-                icon={<PlusOutlined />} 
-                onClick={() => {
-                  setEditingLead(null);
-                  setFormVisible(true);
-                }}
-              >
-                Add Lead
-              </Button>
-            </div>
+       <div className="d-flex justify-content-between align-items-center">
+  <Title level={2}>Leads Management</Title>
+  <Space>
+    <Button 
+      type="default" 
+      icon={<UploadOutlined />}
+      onClick={() => document.getElementById('csv-upload').click()}
+    >
+      Import CSV/Excel
+    </Button>
+    <input
+      id="csv-upload"
+      type="file"
+      accept=".csv, .xlsx, .xls"
+      style={{ display: 'none' }}
+      onChange={handleFileUpload}
+    />
+    <Button 
+      type="primary" 
+      icon={<PlusOutlined />} 
+      onClick={() => {
+        setEditingLead(null);
+        setFormVisible(true);
+      }}
+    >
+      Add Lead
+    </Button>
+  </Space>
+</div>
             
             <LeadFilters 
               onSearch={handleSearch}
