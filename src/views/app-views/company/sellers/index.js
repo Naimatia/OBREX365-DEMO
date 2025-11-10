@@ -85,6 +85,17 @@ const SellersPage = () => {
   const [selectedMonth, setSelectedMonth] = useState(dayjs());
   const [dateRange, setDateRange] = useState([dayjs().startOf('month'), dayjs().endOf('month')]);
 
+  const salesRoles = [
+  UserRoles.SELLER,
+  UserRoles.SALES_EXECUTIVE,
+  UserRoles.AGENT,
+  UserRoles.TEAM_LEADER,
+  UserRoles.SALES_MANAGER,
+  UserRoles.OFF_PLAN_SALES,
+  UserRoles.READY_TO_MOVE_SALES
+];
+
+
   // Check if current user has permission to manage users
   const canManageUsers = [UserRoles.CEO, UserRoles.HR].includes(userRole);
 
@@ -170,7 +181,7 @@ const SellersPage = () => {
   const fetchAllSellersProgress = async (usersList) => {
     try {
       const progressData = {};
-      const sellers = usersList.filter(u => u.Role === 'Seller' || u.role === 'Seller');
+      const sellers = usersList.filter(u => salesRoles.includes(u.Role) || salesRoles.includes(u.role));
 
       for (const seller of sellers) {
         const progress = await calculateSellerProgress(seller.id);
@@ -620,17 +631,18 @@ const SellersPage = () => {
       render: (_, record) => (
         <Space size="small">
           {/* Analytics button for sellers */}
-          {(record.Role === 'Seller' || record.role === 'Seller') && (
-            <Tooltip title="View Analytics">
-              <Button
-                type="default"
-                icon={<EyeOutlined />}
-                size="small"
-                onClick={() => handleSellerClick(record)}
-                style={{ color: '#722ed1', borderColor: '#722ed1' }}
-              />
-            </Tooltip>
-          )}
+       {(salesRoles.includes(record.Role) || salesRoles.includes(record.role)) && (
+  <Tooltip title="View Analytics">
+    <Button
+      type="default"
+      icon={<EyeOutlined />}
+      size="small"
+      onClick={() => handleSellerClick(record)}
+      style={{ color: '#722ed1', borderColor: '#722ed1' }}
+    />
+  </Tooltip>
+)}
+
           <Tooltip title="Edit">
             <Button
               type="primary"
@@ -692,24 +704,14 @@ const SellersPage = () => {
             onChange={setRoleFilter}
             allowClear
           >
-            <Option value={UserRoles.SUPER_ADMIN}>Super Admin</Option>
-            <Option value={UserRoles.CEO}>CEO</Option>
-            <Option value={UserRoles.HR}>Human Resources (HR)</Option>
             <Option value={UserRoles.SELLER}>Sales Representative</Option>
-            <Option value={UserRoles.COORDINATOR}>Coordinator</Option>
             <Option value={UserRoles.SALES_EXECUTIVE}>Sales Executive</Option>
             <Option value={UserRoles.AGENT}>Agent</Option>
             <Option value={UserRoles.TEAM_LEADER}>Team Leader</Option>
             <Option value={UserRoles.SALES_MANAGER}>Sales Manager</Option>
-            <Option value={UserRoles.MARKETING_MANAGER}>Marketing Manager</Option>
             <Option value={UserRoles.OFF_PLAN_SALES}>Off-plan Sales</Option>
             <Option value={UserRoles.READY_TO_MOVE_SALES}>Ready to Move Sales</Option>
-            <Option value={UserRoles.SECRETARY}>Secretary</Option>
-            <Option value={UserRoles.FRONT_DESK_OFFICER}>Front Desk Officer</Option>
-            <Option value={UserRoles.OFFICE_BOY}>Office Boy</Option>
-            <Option value={UserRoles.ACCOUNTANT}>Accountant</Option>
-            <Option value={UserRoles.HUMAN_RESOURCES}>Human Resources</Option>
-            <Option value={UserRoles.PUBLIC_RELATIONS_OFFICER}>Public Relations Officer</Option>
+
           </Select>
         </div>
 

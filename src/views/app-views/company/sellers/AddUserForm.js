@@ -149,24 +149,13 @@ const AddUserForm = ({ onFinish, onCancel }) => {
             onChange={(value) => console.log('AddUserForm - Selected role:', value)}
             placeholder="Select a role"
           >
-            <Option value={UserRoles.SUPER_ADMIN}>Super Admin</Option>
-            <Option value={UserRoles.CEO}>CEO</Option>
-            <Option value={UserRoles.HR}>Human Resources (HR)</Option>
             <Option value={UserRoles.SELLER}>Sales Representative</Option>
-            <Option value={UserRoles.COORDINATOR}>Coordinator</Option>
             <Option value={UserRoles.SALES_EXECUTIVE}>Sales Executive</Option>
             <Option value={UserRoles.AGENT}>Agent</Option>
             <Option value={UserRoles.TEAM_LEADER}>Team Leader</Option>
             <Option value={UserRoles.SALES_MANAGER}>Sales Manager</Option>
-            <Option value={UserRoles.MARKETING_MANAGER}>Marketing Manager</Option>
             <Option value={UserRoles.OFF_PLAN_SALES}>Off-plan Sales</Option>
             <Option value={UserRoles.READY_TO_MOVE_SALES}>Ready to Move Sales</Option>
-            <Option value={UserRoles.SECRETARY}>Secretary</Option>
-            <Option value={UserRoles.FRONT_DESK_OFFICER}>Front Desk Officer</Option>
-            <Option value={UserRoles.OFFICE_BOY}>Office Boy</Option>
-            <Option value={UserRoles.ACCOUNTANT}>Accountant</Option>
-            <Option value={UserRoles.HUMAN_RESOURCES}>Human Resources</Option>
-            <Option value={UserRoles.PUBLIC_RELATIONS_OFFICER}>Public Relations Officer</Option>
           </Select>
         </Form.Item>
 

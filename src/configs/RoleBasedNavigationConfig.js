@@ -52,7 +52,7 @@ const ceoHrNavigation = [
       {
         key: 'sellers',
         path: `${APP_PREFIX_PATH}/sellers`,
-        title: 'Team Members',
+        title: 'Sales Team Members',
         icon: ShopOutlined,
         breadcrumb: true,
         submenu: []

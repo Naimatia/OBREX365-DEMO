@@ -16,8 +16,8 @@ export const THEME_CONFIG = {
 	navType: NAV_TYPE_SIDE,
 	topNavColor: '#3e82f7',
 	headerNavColor: '#EFEFEF',
-	mobileNav: false,
-	currentTheme: 'dark',
+	mobileNav: true,
+	currentTheme: 'light',
 	direction: DIR_LTR,
 	blankLayout: false
 };
