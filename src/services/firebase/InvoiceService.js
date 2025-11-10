@@ -24,7 +24,7 @@ class InvoiceService extends BaseFirebaseService {
     return this.getAllByCompany(companyId, options);
   }
 
-  
+
 
   /**
    * Get invoices by status
@@ -36,7 +36,7 @@ class InvoiceService extends BaseFirebaseService {
   async getInvoicesByStatus(companyId, status, options = {}) {
     const statusFilter = ['status', '==', status];
     const filters = options.filters ? [...options.filters, statusFilter] : [statusFilter];
-    
+
     return this.getAllByCompany(companyId, {
       ...options,
       filters
@@ -53,7 +53,7 @@ class InvoiceService extends BaseFirebaseService {
   async getInvoicesByContact(companyId, contactId, options = {}) {
     const contactFilter = ['contactId', '==', contactId];
     const filters = options.filters ? [...options.filters, contactFilter] : [contactFilter];
-    
+
     return this.getAllByCompany(companyId, {
       ...options,
       filters
@@ -70,7 +70,7 @@ class InvoiceService extends BaseFirebaseService {
   async getInvoicesByDeal(companyId, dealId, options = {}) {
     const dealFilter = ['dealId', '==', dealId];
     const filters = options.filters ? [...options.filters, dealFilter] : [dealFilter];
-    
+
     return this.getAllByCompany(companyId, {
       ...options,
       filters
@@ -86,7 +86,7 @@ class InvoiceService extends BaseFirebaseService {
     const today = new Date();
     const statusFilter = ['status', '==', InvoiceStatus.PENDING];
     const dueDateFilter = ['dueDate', '<', today];
-    
+
     return this.getAllByCompany(companyId, {
       filters: [statusFilter, dueDateFilter],
       orderByFields: [['dueDate', 'asc']]
@@ -99,39 +99,39 @@ class InvoiceService extends BaseFirebaseService {
    * @param {Array} items - Invoice items
    * @returns {Promise<Object>} - Created invoice
    */
-async createInvoice(invoiceData, items = []) {
-  try {
-    const { total, subtotal, taxAmount } = this._calculateInvoiceTotals(invoiceData, items);
-    
-    const invoiceNumber = await this._generateInvoiceNumber(invoiceData.company_id);
-    
-    const newInvoice = {
-      ...invoiceData,
-      invoiceNumber,
-      items,
-      subtotal,
-      taxAmount,
-      total,
-      Status: invoiceData.Status || InvoiceStatus.PENDING,
-      CreationDate: serverTimestamp(),
-      LastUpdate: serverTimestamp(),
-      company_id: invoiceData.company_id,
-      creator_id: invoiceData.creator_id,
-      Notes: invoiceData.Notes || '',
-      Title: invoiceData.Title || '',
-      description: invoiceData.description || '',
-      amount: Number(invoiceData.amount || 0),
-      paymentUrl: invoiceData.paymentUrl || '',
-      isDeleted: false
-    };
-    
-    const createdDoc = await this.create(newInvoice);
-    return convertToInvoiceModel({ id: createdDoc.id, ...newInvoice });
-  } catch (error) {
-    console.error('Error creating invoice:', error);
-    throw error;
+  async createInvoice(invoiceData, items = []) {
+    try {
+      const { total, subtotal, taxAmount } = this._calculateInvoiceTotals(invoiceData, items);
+
+      const invoiceNumber = await this._generateInvoiceNumber(invoiceData.company_id);
+
+      const newInvoice = {
+        ...invoiceData,
+        invoiceNumber,
+        items,
+        subtotal,
+        taxAmount,
+        total,
+        Status: invoiceData.Status || InvoiceStatus.PENDING,
+        CreationDate: serverTimestamp(),
+        LastUpdate: serverTimestamp(),
+        company_id: invoiceData.company_id,
+        creator_id: invoiceData.creator_id,
+        Notes: invoiceData.Notes || '',
+        Title: invoiceData.Title || '',
+        description: invoiceData.description || '',
+        amount: Number(invoiceData.amount || 0),
+        paymentUrl: invoiceData.paymentUrl || '',
+        isDeleted: false
+      };
+
+      const createdDoc = await this.create(newInvoice);
+      return convertToInvoiceModel({ id: createdDoc.id, ...newInvoice });
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      throw error;
+    }
   }
-}
 
   /**
    * Generate a unique invoice number
@@ -145,18 +145,18 @@ async createInvoice(invoiceData, items = []) {
       const date = new Date();
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
-      
+
       // Get company invoices for the current year/month
       const invoicesQuery = query(
         collection(db, 'invoices'),
-        where('companyId', '==', companyId),
+        where('company_id', '==', companyId),
         where('invoiceNumber', '>=', `INV-${year}${month}-`),
         where('invoiceNumber', '<', `INV-${year}${month}-Z`)
       );
-      
+
       const querySnapshot = await getDocs(invoicesQuery);
       const count = querySnapshot.size + 1;
-      
+
       // Format: INV-YYYYMM-XXXX (e.g. INV-202307-0001)
       return `INV-${year}${month}-${String(count).padStart(4, '0')}`;
     } catch (error) {
@@ -181,10 +181,10 @@ async createInvoice(invoiceData, items = []) {
       const price = item.price || 0;
       return sum + (quantity * price);
     }, 0);
-    
+
     // Calculate discount amount
     let discountAmount = 0;
-    
+
     if (invoiceData.discount) {
       if (invoiceData.discountType === InvoiceDiscountType.PERCENTAGE) {
         discountAmount = subtotal * (invoiceData.discount / 100);
@@ -192,15 +192,15 @@ async createInvoice(invoiceData, items = []) {
         discountAmount = invoiceData.discount;
       }
     }
-    
+
     // Calculate tax
     const taxableAmount = subtotal - discountAmount;
-    const taxAmount = invoiceData.taxRate ? 
+    const taxAmount = invoiceData.taxRate ?
       taxableAmount * (invoiceData.taxRate / 100) : 0;
-    
+
     // Calculate total
     const total = taxableAmount + taxAmount;
-    
+
     return {
       subtotal,
       discountAmount,
@@ -220,7 +220,7 @@ async createInvoice(invoiceData, items = []) {
     if (!Object.values(InvoiceStatus).includes(status)) {
       throw new Error(`Invalid invoice status: ${status}`);
     }
-    
+
     return this.update(invoiceId, {
       status,
       statusUpdatedAt: serverTimestamp()
@@ -236,11 +236,11 @@ async createInvoice(invoiceData, items = []) {
   async addPayment(invoiceId, payment) {
     try {
       const invoice = await this.getById(invoiceId);
-      
+
       if (!invoice) {
         throw new Error('Invoice not found');
       }
-      
+
       // Add payment to history
       const paymentHistory = invoice.paymentHistory || [];
       const newPayment = {
@@ -248,21 +248,21 @@ async createInvoice(invoiceData, items = []) {
         paymentDate: payment.paymentDate || new Date(),
         createdAt: serverTimestamp()
       };
-      
+
       paymentHistory.push(newPayment);
-      
+
       // Calculate total paid amount
       const totalPaid = paymentHistory.reduce((sum, p) => sum + (p.amount || 0), 0);
-      
+
       // Update invoice
       let status = invoice.status;
-      
+
       if (totalPaid >= invoice.total) {
         status = InvoiceStatus.PAID;
       } else if (totalPaid > 0) {
         status = InvoiceStatus.PARTIALLY_PAID;
       }
-      
+
       return this.update(invoiceId, {
         paymentHistory,
         totalPaid,
@@ -285,13 +285,13 @@ async createInvoice(invoiceData, items = []) {
     try {
       // This would normally use Firebase Functions to send emails
       // For now, we'll just record the send attempt
-      
+
       const invoice = await this.getById(invoiceId);
-      
+
       if (!invoice) {
         throw new Error('Invoice not found');
       }
-      
+
       // Create send history entry
       const sendHistory = invoice.sendHistory || [];
       sendHistory.push({
@@ -299,14 +299,14 @@ async createInvoice(invoiceData, items = []) {
         sentAt: new Date(),
         status: 'sent'
       });
-      
+
       // Update invoice
-      await this.update(invoiceId, { 
+      await this.update(invoiceId, {
         sendHistory,
         lastSentAt: serverTimestamp(),
         status: InvoiceStatus.SENT
       });
-      
+
       return true;
     } catch (error) {
       console.error('Error sending invoice by email:', error);
@@ -322,11 +322,11 @@ async createInvoice(invoiceData, items = []) {
    */
   async markAsPaid(invoiceId, paymentDetails = {}) {
     const invoice = await this.getById(invoiceId);
-    
+
     if (!invoice) {
       throw new Error('Invoice not found');
     }
-    
+
     // Create payment record
     const payment = {
       amount: invoice.total,
@@ -336,11 +336,11 @@ async createInvoice(invoiceData, items = []) {
       paymentDate: new Date(),
       createdAt: serverTimestamp()
     };
-    
+
     // Add payment to history
     const paymentHistory = invoice.paymentHistory || [];
     paymentHistory.push(payment);
-    
+
     // Update invoice
     return this.update(invoiceId, {
       paymentHistory,
@@ -358,18 +358,18 @@ async createInvoice(invoiceData, items = []) {
    */
   async addInvoiceItems(invoiceId, items) {
     const invoice = await this.getById(invoiceId);
-    
+
     if (!invoice) {
       throw new Error('Invoice not found');
     }
-    
+
     // Add items to invoice
     const currentItems = invoice.items || [];
     const updatedItems = [...currentItems, ...items];
-    
+
     // Recalculate totals
     const { subtotal, taxAmount, total } = this._calculateInvoiceTotals(invoice, updatedItems);
-    
+
     // Update invoice
     return this.update(invoiceId, {
       items: updatedItems,
@@ -392,46 +392,46 @@ async createInvoice(invoiceData, items = []) {
       // Get invoices for the date range
       const createdAtStartFilter = ['createdAt', '>=', startDate];
       const createdAtEndFilter = ['createdAt', '<=', endDate];
-      
+
       const invoices = await this.getAllByCompany(companyId, {
         filters: [createdAtStartFilter, createdAtEndFilter]
       });
-      
+
       // Calculate totals by status
       const totalsByStatus = {};
       Object.values(InvoiceStatus).forEach(status => {
         totalsByStatus[status] = 0;
       });
-      
+
       let totalAmount = 0;
       let totalPaidAmount = 0;
       let totalOverdueAmount = 0;
-      
+
       const today = new Date();
-      
+
       invoices.forEach(invoice => {
         if (invoice.status) {
-          totalsByStatus[invoice.status] = 
+          totalsByStatus[invoice.status] =
             (totalsByStatus[invoice.status] || 0) + (invoice.total || 0);
         }
-        
+
         totalAmount += invoice.total || 0;
         totalPaidAmount += invoice.totalPaid || 0;
-        
+
         // Check for overdue
         if (
-          invoice.status === InvoiceStatus.PENDING && 
-          invoice.dueDate && 
+          invoice.status === InvoiceStatus.PENDING &&
+          invoice.dueDate &&
           new Date(invoice.dueDate) < today
         ) {
           totalOverdueAmount += invoice.total || 0;
         }
       });
-      
+
       // Calculate collection rate
-      const collectionRate = totalAmount > 0 ? 
+      const collectionRate = totalAmount > 0 ?
         (totalPaidAmount / totalAmount) * 100 : 0;
-      
+
       return {
         invoiceCount: invoices.length,
         totalAmount,

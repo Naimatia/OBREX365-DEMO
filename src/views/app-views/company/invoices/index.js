@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Typography, Space, Button, Row, Col, Modal, Spin, 
+import {
+  Typography, Space, Button, Row, Col, Modal, Spin,
   message, Empty, Alert
 } from 'antd';
 import { useSelector } from 'react-redux';
-import { 
-  FileProtectOutlined, PlusOutlined, ReloadOutlined, 
+import {
+  FileProtectOutlined, PlusOutlined, ReloadOutlined,
   WarningOutlined, DollarOutlined, ExclamationCircleOutlined
 } from '@ant-design/icons';
 import InvoiceService from 'services/firebase/InvoiceService';
@@ -43,23 +43,23 @@ const InvoicesPage = () => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
-  
+
   // Get user from Redux store
   const user = useSelector(state => state.auth.user);
   const userRole = user?.Role || user?.role;
   const companyId = user?.company_id || user?.companyId;
-  
+
   // Check if user has permission to access this page
   const hasAccess = [
-    UserRoles.CEO, 
-    UserRoles.ADMIN, 
+    UserRoles.CEO,
+    UserRoles.ADMIN,
     UserRoles.HR
   ].includes(userRole);
-  
+
   // Fetch invoices
   const fetchInvoices = async () => {
     if (!companyId) return;
-    
+
     try {
       setLoading(true);
       const data = await InvoiceService.getInvoicesByCompany(companyId);
@@ -72,11 +72,11 @@ const InvoicesPage = () => {
       setLoading(false);
     }
   };
-  
+
   // Fetch users
   const fetchUsers = async () => {
     if (!companyId) return;
-    
+
     try {
       const data = await UserService.getUsersByCompany(companyId);
       setUsers(data);
@@ -84,7 +84,7 @@ const InvoicesPage = () => {
       console.error('Error fetching users:', error);
     }
   };
-  
+
   // Initial data loading
   useEffect(() => {
     if (hasAccess && companyId) {
@@ -92,129 +92,126 @@ const InvoicesPage = () => {
       fetchUsers();
     }
   }, [companyId, hasAccess]);
-  
+
   // Apply filters to invoices
-const applyFilters = (invoiceList, filterValues) => {
-  if (!invoiceList) return;
-  
-  let result = [...invoiceList];
-  
-  // Apply search filter
-  if (filterValues.search) {
-    const searchTerm = filterValues.search.toLowerCase();
-    result = result.filter(invoice => 
-      invoice.Title?.toLowerCase()?.includes(searchTerm) ||
-      invoice.id?.toLowerCase()?.includes(searchTerm) ||
-      invoice.description?.toLowerCase()?.includes(searchTerm)
-    );
-  }
-  
-  // Apply status filter
-  if (filterValues.status && filterValues.status !== 'all') {
-    result = result.filter(invoice => invoice.Status === filterValues.status);
-  }
-  
-  // Apply creator filter
-  if (filterValues.creatorId && filterValues.creatorId !== 'all') {
-    result = result.filter(invoice => invoice.creator_id === filterValues.creatorId);
-  }
-  
-  // Apply year filter
-  if (filterValues.year) {
-    result = result.filter(invoice => {
-      if (!invoice.CreationDate) return false;
-      const creationDate = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
-      return creationDate.getFullYear() === filterValues.year;
-    });
-    setChartYear(filterValues.year);
-  }
-  
-  // Apply month filter
-  if (filterValues.month !== undefined && filterValues.month !== '') {
-    result = result.filter(invoice => {
-      if (!invoice.CreationDate) return false;
-      const creationDate = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
-      return creationDate.getMonth() === filterValues.month;
-    });
-  }
-  
-  // Apply date range filter
-  if (filterValues.dateRange && filterValues.dateRange.length === 2) {
-    const startDate = filterValues.dateRange[0].startOf('day');
-    const endDate = filterValues.dateRange[1].endOf('day');
-    
-    result = result.filter(invoice => {
-      if (!invoice.CreationDate) return false;
-      const creationDate = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
-      return creationDate >= startDate.toDate() && creationDate <= endDate.toDate();
-    });
-  }
-  
-  // Apply sorting
-  if (filterValues.sortBy) {
-    switch (filterValues.sortBy) {
-      case 'dateDesc':
-        result.sort((a, b) => {
-          const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
-          const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-          return dateB - dateA;
-        });
-        break;
-      case 'dateAsc':
-        result.sort((a, b) => {
-          const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
-          const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-          return dateA - dateB;
-        });
-        break;
-      case 'amountDesc':
-        result.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
-        break;
-      case 'amountAsc':
-        result.sort((a, b) => Number(a.amount || 0) - Number(a.amount || 0));
-        break;
-      case 'dueDateAsc':
-        result.sort((a, b) => {
-          const dateA = a.DateLimit?.toDate?.() || new Date(a.DateLimit) || new Date(0);
-          const dateB = b.DateLimit?.toDate?.() || new Date(b.DateLimit) || new Date(0);
-          return dateA - dateB;
-        });
-        break;
-      default:
-        result.sort((a, b) => {
-          const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
-          const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-          return dateB - dateA;
-        });
+  const applyFilters = (invoiceList, filterValues) => {
+    if (!invoiceList) return;
+
+    let result = [...invoiceList];
+
+    // Apply search filter
+    if (filterValues.search) {
+      const searchTerm = filterValues.search.toLowerCase();
+      result = result.filter(invoice =>
+        invoice.Title?.toLowerCase()?.includes(searchTerm) ||
+        invoice.id?.toLowerCase()?.includes(searchTerm) ||
+        invoice.description?.toLowerCase()?.includes(searchTerm)
+      );
     }
-  }
-  
-  setFilteredInvoices(result);
-};
-  
+
+    // Apply status filter
+    if (filterValues.status && filterValues.status !== 'all') {
+      result = result.filter(invoice => invoice.Status === filterValues.status);
+    }
+
+    // Apply creator filter
+    if (filterValues.creatorId && filterValues.creatorId !== 'all') {
+      result = result.filter(invoice => invoice.creator_id === filterValues.creatorId);
+    }
+
+    // Apply year filter
+    if (filterValues.year) {
+      result = result.filter(invoice => {
+        if (!invoice.CreationDate) return false;
+        const creationDate = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
+        return creationDate.getFullYear() === filterValues.year;
+      });
+      setChartYear(filterValues.year);
+    }
+
+    // Apply month filter
+    if (filterValues.month !== undefined && filterValues.month !== '') {
+      result = result.filter(invoice => {
+        if (!invoice.CreationDate) return false;
+        const creationDate = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
+        return creationDate.getMonth() === filterValues.month;
+      });
+    }
+
+    // Apply date range filter
+    if (filterValues.dateRange && filterValues.dateRange.length === 2) {
+      const startDate = filterValues.dateRange[0].startOf('day');
+      const endDate = filterValues.dateRange[1].endOf('day');
+
+      result = result.filter(invoice => {
+        if (!invoice.CreationDate) return false;
+        const creationDate = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
+        return creationDate >= startDate.toDate() && creationDate <= endDate.toDate();
+      });
+    }
+
+    // Apply sorting
+    if (filterValues.sortBy) {
+      switch (filterValues.sortBy) {
+        case 'dateDesc':
+          result.sort((a, b) => {
+            const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+            const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+            return dateB - dateA;
+          });
+          break;
+        case 'dateAsc':
+          result.sort((a, b) => {
+            const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+            const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+            return dateA - dateB;
+          });
+          break;
+        case 'amountDesc':
+          result.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+          break;
+        case 'amountAsc':
+          result.sort((a, b) => Number(a.amount || 0) - Number(a.amount || 0));
+          break;
+        case 'dueDateAsc':
+          result.sort((a, b) => {
+            const dateA = a.DateLimit?.toDate?.() || new Date(a.DateLimit) || new Date(0);
+            const dateB = b.DateLimit?.toDate?.() || new Date(b.DateLimit) || new Date(0);
+            return dateA - dateB;
+          });
+          break;
+        default:
+          result.sort((a, b) => {
+            const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+            const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+            return dateB - dateA;
+          });
+      }
+    }
+
+    setFilteredInvoices(result);
+  };
+
   // Handle filter change
   const handleFilterChange = (values) => {
     setFilters(values);
     applyFilters(invoices, values);
   };
-  
+
   // Handle create invoice
 const handleCreateInvoice = async (values) => {
   if (!companyId || !user?.id) {
     message.error('Missing user or company information');
     return;
   }
-  
+
   try {
     setSubmitting(true);
-    
+
     const invoiceData = {
       ...values,
-      company_id: companyId, // Match InvoiceModel
-      creator_id: user.id,   // Match InvoiceModel
-      CreationDate: serverTimestamp(), // Match InvoiceModel
-      LastUpdate: serverTimestamp(),   // Match InvoiceModel
-      invoiceNumber: `INV-${Date.now()}`, // Temporary; ideally use InvoiceService._generateInvoiceNumber
+      company_id: companyId,
+      creator_id: user.id,
       Status: InvoiceStatus.PENDING,
       Notes: values.Notes || '',
       Title: values.Title || '',
@@ -222,9 +219,11 @@ const handleCreateInvoice = async (values) => {
       amount: Number(values.amount || 0),
       paymentUrl: values.paymentUrl || ''
     };
-    
-    await InvoiceService.create(invoiceData);
-    message.success('Invoice created successfully');
+
+    // Use createInvoice() → generates invoiceNumber
+    const createdInvoice = await InvoiceService.createInvoice(invoiceData, []);
+
+    message.success(`Invoice ${createdInvoice.invoiceNumber} created successfully`);
     setIsModalVisible(false);
     await fetchInvoices();
   } catch (error) {
@@ -234,46 +233,45 @@ const handleCreateInvoice = async (values) => {
     setSubmitting(false);
   }
 };
-  
   // Handle updating existing invoice
-const handleUpdateInvoice = async (values) => {
-  setSubmitting(true);
-  try {
-    const updateData = {
-      ...values,
-      LastUpdate: serverTimestamp(),
-      Notes: values.Notes || '',
-      Title: values.Title || '',
-      description: values.description || '',
-      amount: Number(values.amount || 0),
-      paymentUrl: values.paymentUrl || ''
-    };
-    
-    await InvoiceService.update(editingInvoice.id, updateData);
-    message.success('Invoice updated successfully');
-    setIsModalVisible(false);
-    setEditingInvoice(null);
-    await fetchInvoices();
-  } catch (error) {
-    console.error('Error updating invoice:', error);
-    message.error('Failed to update invoice');
-  } finally {
-    setSubmitting(false);
-  }
-};
-  
+  const handleUpdateInvoice = async (values) => {
+    setSubmitting(true);
+    try {
+      const updateData = {
+        ...values,
+        LastUpdate: serverTimestamp(),
+        Notes: values.Notes || '',
+        Title: values.Title || '',
+        description: values.description || '',
+        amount: Number(values.amount || 0),
+        paymentUrl: values.paymentUrl || ''
+      };
+
+      await InvoiceService.update(editingInvoice.id, updateData);
+      message.success('Invoice updated successfully');
+      setIsModalVisible(false);
+      setEditingInvoice(null);
+      await fetchInvoices();
+    } catch (error) {
+      console.error('Error updating invoice:', error);
+      message.error('Failed to update invoice');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Handle viewing invoice details
   const handleViewDetails = (invoice) => {
     setSelectedInvoice(invoice);
     setIsDetailModalVisible(true);
   };
-  
+
   // Handle closing invoice detail modal
   const handleCloseDetail = () => {
     setIsDetailModalVisible(false);
     setSelectedInvoice(null);
   };
-  
+
   // Handle marking invoice as paid from detail modal
   const handleMarkAsPaidFromDetail = async (invoice) => {
     try {
@@ -289,7 +287,7 @@ const handleUpdateInvoice = async (values) => {
       message.error('Failed to mark invoice as paid');
     }
   };
-  
+
   // Handle opening payment URL
   const handleOpenPaymentUrl = (url) => {
     if (!url) {
@@ -298,62 +296,62 @@ const handleUpdateInvoice = async (values) => {
     }
     window.open(url, '_blank');
   };
-  
+
   // Handle editing invoice
   const handleEditInvoice = (invoice) => {
     setSelectedInvoice(invoice);
     setEditingInvoice(invoice);
     setIsModalVisible(true);
   };
-  
+
   // Handle deleting invoice
-  const handleDeleteInvoice = (invoice) => {
-    Modal.confirm({
-      title: 'Delete Invoice',
-      content: `Are you sure you want to delete invoice #${invoice.invoiceNumber}? This action cannot be undone.`,
-      icon: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
-      okText: 'Delete',
-      okType: 'danger',
-      cancelText: 'Cancel',
-      onOk: async () => {
-        try {
-          await InvoiceService.delete(invoice.id);
-          message.success('Invoice deleted successfully');
-          fetchInvoices();
-        } catch (error) {
-          console.error('Error deleting invoice:', error);
-          message.error('Failed to delete invoice');
-        }
+const handleDeleteInvoice = (invoice) => {
+  Modal.confirm({
+    title: 'Delete Invoice',
+    content: `Are you sure you want to delete invoice ${invoice.invoiceNumber || 'N/A'} ? This action cannot be undone.`,
+    icon: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
+    okText: 'Delete',
+    okType: 'danger',
+    cancelText: 'Cancel',
+    onOk: async () => {
+      try {
+        await InvoiceService.delete(invoice.id);
+        message.success('Invoice deleted successfully');
+        fetchInvoices();
+      } catch (error) {
+        console.error('Error deleting invoice:', error);
+        message.error('Failed to delete invoice');
       }
-    });
-  };
-  
+    }
+  });
+};
+
   // Invoice analytics data
   const overduePendingInvoices = useMemo(() => {
     if (!filteredInvoices.length) return 0;
-    
+
     return filteredInvoices.filter(invoice => {
       if (invoice.Status !== InvoiceStatus.PENDING) return false;
       if (!invoice.DateLimit) return false;
-      
+
       const dueDate = invoice.DateLimit.toDate ? invoice.DateLimit.toDate() : new Date(invoice.DateLimit);
       const today = new Date();
       return dueDate < today;
     }).length;
   }, [filteredInvoices]);
-  
+
   const dueSoonInvoices = useMemo(() => {
     if (!filteredInvoices.length) return 0;
-    
+
     return filteredInvoices.filter(invoice => {
       if (invoice.Status !== InvoiceStatus.PENDING) return false;
       if (!invoice.DateLimit) return false;
-      
+
       const dueDate = invoice.DateLimit.toDate ? invoice.DateLimit.toDate() : new Date(invoice.DateLimit);
       const today = new Date();
       const diffTime = dueDate.getTime() - today.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
+
       return diffDays >= 0 && diffDays <= 10;
     }).length;
   }, [filteredInvoices]);
@@ -375,7 +373,7 @@ const handleUpdateInvoice = async (values) => {
   return (
     <div className="container mx-auto">
       {/* Enhanced Header */}
-      <div style={{ 
+      <div style={{
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         borderRadius: '16px',
         padding: '32px',
@@ -449,7 +447,7 @@ const handleUpdateInvoice = async (values) => {
           </Col>
           <Col>
             <Space size={12}>
-              <Button 
+              <Button
                 size="large"
                 style={{
                   background: 'rgba(255,255,255,0.2)',
@@ -458,12 +456,12 @@ const handleUpdateInvoice = async (values) => {
                   backdropFilter: 'blur(10px)',
                   borderRadius: '8px'
                 }}
-                icon={<DollarOutlined />} 
+                icon={<DollarOutlined />}
                 onClick={() => setIsStatsDrawerVisible(true)}
               >
                 Analytics
               </Button>
-              <Button 
+              <Button
                 size="large"
                 style={{
                   background: 'rgba(255,255,255,0.2)',
@@ -472,13 +470,13 @@ const handleUpdateInvoice = async (values) => {
                   backdropFilter: 'blur(10px)',
                   borderRadius: '8px'
                 }}
-                icon={<ReloadOutlined />} 
+                icon={<ReloadOutlined />}
                 onClick={fetchInvoices}
                 loading={loading}
               >
                 Refresh
               </Button>
-              <Button 
+              <Button
                 size="large"
                 style={{
                   background: '#fff',
@@ -497,7 +495,7 @@ const handleUpdateInvoice = async (values) => {
           </Col>
         </Row>
       </div>
-      
+
       <div className="my-4">
         {/* Alerts */}
         {overduePendingInvoices > 0 && (
@@ -514,7 +512,7 @@ const handleUpdateInvoice = async (values) => {
             style={{ marginBottom: 16 }}
           />
         )}
-        
+
         {dueSoonInvoices > 0 && (
           <Alert
             message={
@@ -531,27 +529,27 @@ const handleUpdateInvoice = async (values) => {
         )}
 
         {/* Statistics */}
-        <InvoiceStats 
-          invoices={filteredInvoices} 
-          loading={loading} 
+        <InvoiceStats
+          invoices={filteredInvoices}
+          loading={loading}
         />
-        
+
         {/* Chart removed from main page as requested - now only in sidebar stats */}
-        
+
         {/* Filters */}
         <div className="my-4">
-          <InvoiceFilters 
+          <InvoiceFilters
             onFilter={handleFilterChange}
             companyId={companyId}
             loading={loading}
           />
         </div>
-        
+
         {/* Invoices Table */}
         {filteredInvoices.length > 0 ? (
-          <InvoiceTable 
-            invoices={filteredInvoices} 
-            loading={loading} 
+          <InvoiceTable
+            invoices={filteredInvoices}
+            loading={loading}
             fetchInvoices={fetchInvoices}
             users={users}
             onViewDetails={handleViewDetails}
@@ -563,7 +561,7 @@ const handleUpdateInvoice = async (values) => {
             {loading ? (
               <Spin size="large" />
             ) : (
-              <Empty 
+              <Empty
                 description="No invoices found"
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               />
@@ -571,39 +569,49 @@ const handleUpdateInvoice = async (values) => {
           </div>
         )}
       </div>
-      
-      {/* Create/Edit Invoice Modal */}
-      <Modal
-        title={editingInvoice ? 'Edit Invoice' : 'Create New Invoice'}
-        open={isModalVisible}
-        onCancel={() => {
-          setIsModalVisible(false);
-          setEditingInvoice(null);
-        }}
-        footer={null}
-        width={800}
-        maskClosable={false}
-      >
-        <InvoiceForm 
-          initialValues={editingInvoice}
-          onSubmit={editingInvoice ? handleUpdateInvoice : handleCreateInvoice}
-          onCancel={() => {
-            setIsModalVisible(false);
-            setEditingInvoice(null);
-          }}
-          loading={submitting}
-        />
-      </Modal>
+
+{/* Create/Edit Invoice Modal */}
+<Modal
+  title={editingInvoice ? 'Edit Invoice' : 'Create New Invoice'}
+  open={isModalVisible}
+  onCancel={() => {
+    setIsModalVisible(false);
+    setEditingInvoice(null);
+    // Force reset form when modal closes
+    setTimeout(() => {
+      document.querySelectorAll('form')[0]?.__proto__?.resetFields?.();
+    }, 0);
+  }}
+  afterClose={() => {
+    // Fully reset form after modal is closed
+    setEditingInvoice(null);
+  }}
+  footer={null}
+  width={800}
+  maskClosable={false}
+  destroyOnClose // This is KEY: destroys form instance on close
+>
+  <InvoiceForm 
+    key={editingInvoice?.id || 'new'} // Force re-render on new/edit
+    initialValues={editingInvoice}
+    onSubmit={editingInvoice ? handleUpdateInvoice : handleCreateInvoice}
+    onCancel={() => {
+      setIsModalVisible(false);
+      setEditingInvoice(null);
+    }}
+    loading={submitting}
+  />
+</Modal>
 
       {/* Invoice Stats Drawer */}
-      <InvoiceStatsDrawer 
+      <InvoiceStatsDrawer
         visible={isStatsDrawerVisible}
         onClose={() => setIsStatsDrawerVisible(false)}
         invoices={invoices}
       />
-      
+
       {/* Invoice Detail Modal */}
-      <InvoiceDetail 
+      <InvoiceDetail
         visible={isDetailModalVisible}
         onClose={handleCloseDetail}
         invoice={selectedInvoice}

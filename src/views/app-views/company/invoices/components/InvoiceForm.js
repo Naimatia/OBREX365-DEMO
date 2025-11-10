@@ -47,30 +47,30 @@ const { Title: TitleText } = Typography;
  */
 const InvoiceForm = ({ onSubmit, onCancel, loading, initialValues = {} }) => {
   const [form] = Form.useForm();
-  const isEditMode = !!initialValues?.id; // Vérifie si c’est une modification
+  const isEditMode = !!initialValues?.id;
 
-  useEffect(() => {
-    if (initialValues && Object.keys(initialValues).length > 0) {
-      // 🧾 Si on édite une facture existante
-      form.setFieldsValue({
-        ...initialValues,
-        CreationDate: initialValues?.CreationDate
-          ? moment(
-              initialValues.CreationDate.toDate?.() ||
-                initialValues.CreationDate
-            )
-          : moment(),
-        DateLimit: initialValues?.DateLimit
-          ? moment(
-              initialValues.DateLimit.toDate?.() || initialValues.DateLimit
-            )
-          : moment().add(30, 'days')
-      });
-    } else {
-      // 🧹 Réinitialiser le formulaire pour une nouvelle facture
-      form.resetFields();
-    }
-  }, [initialValues, form]);
+useEffect(() => {
+  if (initialValues?.id) {
+    // Edit mode
+    form.setFieldsValue({
+      Title: initialValues.Title || '',
+      amount: initialValues.amount || 0,
+      DateLimit: initialValues.DateLimit
+        ? moment(initialValues.DateLimit.toDate?.() || initialValues.DateLimit)
+        : moment().add(30, 'days'),
+      paymentUrl: initialValues.paymentUrl || '',
+      description: initialValues.description || '',
+      Notes: initialValues.Notes || '',
+    });
+  } else {
+    // Create mode - fully reset
+    form.resetFields();
+    form.setFieldsValue({
+      DateLimit: moment().add(30, 'days'),
+    });
+  }
+}, [initialValues, form]);
+
 
   const handleSubmit = async (values) => {
     try {
@@ -105,20 +105,6 @@ const InvoiceForm = ({ onSubmit, onCancel, loading, initialValues = {} }) => {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
-        initialValues={{
-          ...initialValues,
-          CreationDate: initialValues?.CreationDate
-            ? moment(
-                initialValues.CreationDate.toDate?.() ||
-                  initialValues.CreationDate
-              )
-            : today,
-          DateLimit: initialValues?.DateLimit
-            ? moment(
-                initialValues.DateLimit.toDate?.() || initialValues.DateLimit
-              )
-            : defaultDueDate
-        }}
       >
         <TitleText level={4}>
           {isEditMode ? 'Edit Invoice' : 'Create New Invoice'}

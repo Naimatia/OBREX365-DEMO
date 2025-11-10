@@ -58,17 +58,23 @@ export const convertToInvoiceModel = (doc) => {
   
   return {
     id: doc.id || '',
-    company_id: data.companyId || data.company_id || '',
-    creator_id: data.creatorId || data.creator_id || '',
-    CreationDate: data.createdAt || data.creationDate || data.CreationDate || null,
-    LastUpdate: data.updatedAt || data.lastUpdate || data.LastUpdate || null,
-    DateLimit: data.dateLimit || data.DateLimit || null,
-    Status: data.status || data.Status || InvoiceStatus.PENDING,
-    Notes: data.Notes || data.notes || '',
-    Title: data.title || data.Title || '',
-    description: data.description || '',
-    amount: Number(data.amount || 0),
-    paymentUrl: data.paymentUrl || data.payment_url || ''
+    Title: data.Title || '',
+  amount: data.amount || 0,
+  total: data.total || 0,
+  subtotal: data.subtotal || 0,
+  taxAmount: data.taxAmount || 0,
+  invoiceNumber: data.invoiceNumber || `INV-${data.id?.slice(-6)}`, // fallback
+  Status: data.Status || InvoiceStatus.PENDING,
+  CreationDate: data.CreationDate,
+  DateLimit: data.DateLimit,
+  LastUpdate: data.LastUpdate,
+  Notes: data.Notes || '',
+  description: data.description || '',
+  paymentUrl: data.paymentUrl || '',
+  company_id: data.company_id,
+  creator_id: data.creator_id,
+  items: data.items || [],
+  isDeleted: data.isDeleted || false,
   };
 };
 
