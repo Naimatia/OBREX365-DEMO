@@ -190,15 +190,15 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
   const sendEmail = async (values) => {
     const seller = sellerInfo || currentUser;
     const sellerName = `${seller.firstname} ${seller.lastname}`;
-    const sellerEmail = seller.email || 'info@company.com';
-    const sellerPhone = seller.phone || 'your phone';
-    const companyName = companyInfo?.name || '[Your Company]';
+    const sellerEmail = seller.email || '';
+    const sellerPhone = seller.phoneNumber || '';
+    const companyName = companyInfo?.name || '';
 
     const body = EMAIL_TEMPLATES[values.template]
       .replace(/{{name}}/g, lead.name)
       .replace(/{{seller}}/g, sellerName)
-      .replace(/{{budget}}/g, lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : 'your budget')
-      .replace(/{{region}}/g, lead.region || 'your preferred area')
+      .replace(/{{budget}}/g, lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : '')
+      .replace(/{{region}}/g, lead.region || '')
       .replace(/{{sellerEmail}}/g, sellerEmail)
       .replace(/{{sellerPhone}}/g, sellerPhone)
       .replace(/{{company}}/g, companyName);
