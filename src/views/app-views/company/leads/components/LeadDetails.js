@@ -1,425 +1,488 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Drawer, 
-  Descriptions, 
-  Button, 
-  Typography, 
-  Tag, 
-  Space, 
-  Divider, 
-  List,
-  Form,
-  Input,
-  Avatar,
-  Card,
-  Tooltip,
-  message,
-  Row,
-  Col
+import {
+  Drawer, Button, Typography, Tag, Space, Divider, Form, Input, Avatar, Card, Tooltip, message, Row, Col, Timeline, Modal,
+  Select, InputNumber
 } from 'antd';
-import './LeadDetails.css';
-import { 
-  EditOutlined, 
-  PhoneOutlined, 
-  MailOutlined, 
-  GlobalOutlined,
-  CalendarOutlined,
-  UserOutlined,
-  DollarOutlined,
-  TagOutlined,
-  MessageOutlined,
-  CopyOutlined,
-  CheckOutlined,
-  InfoCircleOutlined
+import {
+  EditOutlined, PhoneOutlined, MailOutlined, GlobalOutlined,
+  CalendarOutlined, UserOutlined, DollarOutlined, TagOutlined,
+  MessageOutlined, CopyOutlined, CheckOutlined, InfoCircleOutlined,
+  WhatsAppOutlined, PhoneFilled, HistoryOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import UserService from 'services/firebase/UserService';
+import LeadHistoryService from 'services/firebase/LeadHistoryService';
 import moment from 'moment';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+const { Option } = Select;
 
-/**
- * Component for displaying lead details in a sidebar
- */
-const LeadDetails = ({ 
-  visible, 
-  onClose, 
-  lead, 
-  onEdit, 
-  onAddNote 
-}) => {
+// Professional Templates
+const WHATSAPP_TEMPLATES = {
+  intro: `Hi {{name}},
+
+I'm {{seller}} from {{company}} – your dedicated property advisor.
+
+You recently showed interest in a {{budget}} AED property in {{region}}.
+
+Are you free for a quick 5-min call to discuss your needs?
+
+Looking forward!
+{{seller}}`,
+
+  follow_up: `Hi {{name}},
+
+Just checking in – still looking for a {{budget}} AED property in {{region}}?
+
+We have new listings matching your criteria.
+
+Best,
+{{seller}}`,
+
+  offer: `Hi {{name}}! Great news!
+
+We found a **perfect match** for you:
+
+AED {{budget}} | {{region}}
+
+View details: [Insert Property Link]
+
+{{seller}} | {{company}}`
+};
+
+const EMAIL_TEMPLATES = {
+  intro: `Dear {{name}},
+
+Thank you for your interest in properties with us.
+
+I'm {{seller}}, your dedicated real estate advisor at {{company}}.
+
+I noticed you're looking for a property around **AED {{budget}}** in **{{region}}**.
+
+I'd love to understand your needs better. Could we schedule a quick call?
+
+You can reach me directly at:
+Phone: {{sellerPhone}}
+Email: {{sellerEmail}}
+
+Looking forward to helping you find your dream home.
+
+Best regards,
+{{seller}}
+Real Estate Advisor
+{{company}}
+{{sellerPhone}} | {{sellerEmail}}`,
+
+  offer: `Hi {{name}},
+
+We have an **exclusive property match** for you:
+
+**Price:** AED {{budget}}
+**Location:** {{region}}
+**Type:** [Villa/Apartment/Penthouse]
+
+[View Full Details]
+
+This unit won’t last long. Reply to this email or call me at {{sellerPhone}} to book a viewing.
+
+Best,
+{{seller}}
+{{sellerPhone}} | {{sellerEmail}}`
+};
+
+const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
   const [sellerInfo, setSellerInfo] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [companyInfo, setCompanyInfo] = useState(null);
+  const [history, setHistory] = useState([]);
   const [noteForm] = Form.useForm();
-  const [copiedEmail, setCopiedEmail] = useState(false);
-  const [copiedPhone, setCopiedPhone] = useState(false);
-  const [copiedSecondaryEmail, setCopiedSecondaryEmail] = useState(false);
-  const [copiedSecondaryPhone, setCopiedSecondaryPhone] = useState(false);
-  const currentUser = useSelector(state => state.auth.user);
-  
-  // Status color mapping
-  const statusColors = {
-    [LeadStatus.PENDING]: 'blue',
-    [LeadStatus.GAIN]: 'green',
-    [LeadStatus.LOSS]: 'red'
-  };
+  const [whatsappForm] = Form.useForm();
+  const [emailForm] = Form.useForm();
+  const [callForm] = Form.useForm();
 
-  // Interest level color mapping
-  const interestLevelColors = {
-    [LeadInterestLevel.LOW]: 'orange',
-    [LeadInterestLevel.MEDIUM]: 'blue',
-    [LeadInterestLevel.HIGH]: 'green'
-  };
-  
-  // Function to copy text to clipboard
-  const copyToClipboard = (text, type) => {
-    if (!text) {
-      message.error(`No ${type} to copy`);
-      return;
-    }
-    navigator.clipboard.writeText(text).then(
-      () => {
-        if (type === 'email') {
-          setCopiedEmail(true);
-          setTimeout(() => setCopiedEmail(false), 2000);
-        } else if (type === 'phone') {
-          setCopiedPhone(true);
-          setTimeout(() => setCopiedPhone(false), 2000);
-        } else if (type === 'secondaryEmail') {
-          setCopiedSecondaryEmail(true);
-          setTimeout(() => setCopiedSecondaryEmail(false), 2000);
-        } else if (type === 'secondaryPhone') {
-          setCopiedSecondaryPhone(true);
-          setTimeout(() => setCopiedSecondaryPhone(false), 2000);
-        }
-        message.success(`${type === 'email' ? 'Email' : type === 'phone' ? 'Phone number' : type === 'secondaryEmail' ? 'Secondary email' : 'Secondary phone number'} copied to clipboard`);
-      },
-      () => {
-        message.error('Failed to copy');
-      }
-    );
-  };
-  
+  const [copied, setCopied] = useState({});
+  const [whatsappVisible, setWhatsappVisible] = useState(false);
+  const [emailVisible, setEmailVisible] = useState(false);
+  const [callVisible, setCallVisible] = useState(false);
+
+  const currentUser = useSelector(state => state.auth.user);
+
+  // Load seller + company
   useEffect(() => {
-    const fetchSellerInfo = async () => {
-      if (lead?.seller_id) {
-        setLoading(true);
-        try {
-          const sellerData = await UserService.getUserById(lead.seller_id);
-          setSellerInfo(sellerData);
-        } catch (error) {
-          console.error('Error fetching seller info:', error);
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        setSellerInfo(null);
-      }
-    };
-    
     if (visible && lead) {
-      fetchSellerInfo();
+      // Load assigned seller
+      if (lead.seller_id) {
+        UserService.getUserById(lead.seller_id).then(setSellerInfo);
+      }
+
+      // Load company from lead.company_id
+      if (lead.company_id) {
+        LeadHistoryService.getCompanyData(lead.company_id).then(setCompanyInfo);
+      }
     }
   }, [visible, lead]);
-  
+
+  // Load history
+  useEffect(() => {
+    if (visible && lead?.id) {
+      const unsubscribe = LeadHistoryService.listenToHistory(lead.id, setHistory);
+      return () => unsubscribe();
+    }
+  }, [visible, lead?.id]);
+
+  // Copy to clipboard
+  const copyToClipboard = (text, key) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopied({ ...copied, [key]: true });
+    setTimeout(() => setCopied({ ...copied, [key]: false }), 2000);
+    message.success('Copied!');
+  };
+
+  // Add note
   const handleAddNote = () => {
-    noteForm.validateFields().then(values => {
-      const note = {
-        text: values.note,
-        createdBy: {
-          id: currentUser.id,
-          name: `${currentUser.firstname} ${currentUser.lastname}`
-        },
-        createdAt: new Date()
-      };
-      
-      onAddNote(lead.id, note);
+    noteForm.validateFields().then(async ({ note }) => {
+      await LeadHistoryService.addHistory(lead.id, {
+        type: 'note',
+        message: note,
+        createdBy: { id: currentUser.id, name: `${currentUser.firstname} ${currentUser.lastname}` }
+      });
       noteForm.resetFields();
+      message.success('Note added');
     });
   };
-  
-  if (!lead) {
-    return null;
-  }
+
+  // Send WhatsApp
+  const sendWhatsApp = async (values) => {
+    const seller = sellerInfo || currentUser;
+    const sellerName = `${seller.firstname} ${seller.lastname}`;
+    const sellerPhone = (seller.phone || '').replace(/[^\d]/g, '') || '1234567890';
+    const companyName = companyInfo?.name || '[Your Company]';
+
+    const message = WHATSAPP_TEMPLATES[values.template]
+      .replace(/{{name}}/g, lead.name)
+      .replace(/{{seller}}/g, sellerName)
+      .replace(/{{budget}}/g, lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : 'your budget')
+      .replace(/{{region}}/g, lead.region || 'your area')
+      .replace(/{{company}}/g, companyName);
+
+    const url = `https://wa.me/${lead.phoneNumber.replace(/[^\d]/g, '')}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+
+    // Use assigned seller name in history
+    const historyName = sellerInfo
+      ? await LeadHistoryService.getSellerName(lead.seller_id)
+      : `${currentUser.firstname} ${currentUser.lastname}`;
+
+    await LeadHistoryService.addHistory(lead.id, {
+      type: 'whatsapp',
+      message,
+      templateId: values.template,
+      createdBy: { id: currentUser.id, name: historyName }
+    });
+
+    setWhatsappVisible(false);
+    message.success('WhatsApp opened & logged');
+  };
+
+  // Send Email
+  const sendEmail = async (values) => {
+    const seller = sellerInfo || currentUser;
+    const sellerName = `${seller.firstname} ${seller.lastname}`;
+    const sellerEmail = seller.email || 'info@company.com';
+    const sellerPhone = seller.phone || 'your phone';
+    const companyName = companyInfo?.name || '[Your Company]';
+
+    const body = EMAIL_TEMPLATES[values.template]
+      .replace(/{{name}}/g, lead.name)
+      .replace(/{{seller}}/g, sellerName)
+      .replace(/{{budget}}/g, lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : 'your budget')
+      .replace(/{{region}}/g, lead.region || 'your preferred area')
+      .replace(/{{sellerEmail}}/g, sellerEmail)
+      .replace(/{{sellerPhone}}/g, sellerPhone)
+      .replace(/{{company}}/g, companyName);
+
+    const subject = values.template === 'intro'
+      ? 'Your Property Inquiry – Let’s Find Your Dream Home'
+      : 'Exclusive Property Match Just for You';
+
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(lead.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const newWindow = window.open(gmailUrl, '_blank');
+
+    // Use assigned seller name in history
+    const historyName = sellerInfo
+      ? await LeadHistoryService.getSellerName(lead.seller_id)
+      : `${currentUser.firstname} ${currentUser.lastname}`;
+
+    await LeadHistoryService.addHistory(lead.id, {
+      type: 'email',
+      message: body,
+      templateId: values.template,
+      createdBy: { id: currentUser.id, name: historyName }
+    });
+
+    setEmailVisible(false);
+    if (newWindow) {
+      message.success('Gmail opened – click Send to deliver!');
+    } else {
+      message.warning('Please allow pop-ups for Gmail');
+    }
+  };
+
+  // Log Call
+  const logCall = async (values) => {
+    const historyName = sellerInfo
+      ? await LeadHistoryService.getSellerName(lead.seller_id)
+      : `${currentUser.firstname} ${currentUser.lastname}`;
+
+    await LeadHistoryService.addHistory(lead.id, {
+      type: 'call',
+      duration: values.duration,
+      outcome: values.outcome,
+      createdBy: { id: currentUser.id, name: historyName }
+    });
+    callForm.resetFields();
+    setCallVisible(false);
+    message.success('Call logged');
+  };
+
+  // Status Change
+  const handleStatusChange = async (newStatus) => {
+    await onStatusChange(lead.id, newStatus);
+    const historyName = sellerInfo
+      ? await LeadHistoryService.getSellerName(lead.seller_id)
+      : `${currentUser.firstname} ${currentUser.lastname}`;
+
+    await LeadHistoryService.addHistory(lead.id, {
+      type: 'status',
+      message: `Status changed to ${newStatus}`,
+      createdBy: { id: currentUser.id, name: historyName }
+    });
+  };
+
+  if (!lead) return null;
+
+  const statusColors = { [LeadStatus.PENDING]: 'blue', [LeadStatus.GAIN]: 'green', [LeadStatus.LOSS]: 'red' };
+  const interestColors = { [LeadInterestLevel.LOW]: 'orange', [LeadInterestLevel.MEDIUM]: 'blue', [LeadInterestLevel.HIGH]: 'green' };
 
   return (
     <Drawer
-      title={
-        <div className="lead-details-header">
-          <Row gutter={16} align="middle">
-            <Col flex="auto">
-              <Space align="center">
-                <Title level={4} style={{ margin: 0 }}>{lead.name}</Title>
-                <Tag color={statusColors[lead.status]} style={{ fontSize: '14px', padding: '3px 8px' }}>
-                  {lead.status}
-                </Tag>
-              </Space>
-            </Col>
-            <Col>
-              <Button 
-                type="primary" 
-                icon={<EditOutlined />}
-                onClick={() => onEdit(lead)}
-              >
-                Edit
-              </Button>
-            </Col>
-          </Row>
-        </div>
-      }
-      width={600}
+  title={
+  <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+    <Title level={4} style={{ margin: 0 }}>
+      {lead.name}
+    </Title>
+    <Button type="primary" icon={<EditOutlined />} onClick={() => onEdit(lead)}>
+      Edit
+    </Button>
+  </Space>
+}
+      width={720}
       placement="right"
       onClose={onClose}
-      visible={visible}
-      className="lead-details-drawer"
+      open={visible}
     >
-      <div className="lead-details-content">
-        <Row gutter={[16, 24]}>
-          {/* Contact Information Card */}
-          <Col span={24}>
-            <Card 
-              title={<Title level={5}><InfoCircleOutlined /> Contact Information</Title>} 
-              className="lead-info-card"
-              bordered={false}
-              style={{ backgroundColor: '#f5f7fa' }}
-            >
-              <Row gutter={[16, 16]}>
-                <Col xs={24} md={12}>
-                  <div className="lead-detail-item">
-                    <Text type="secondary"><GlobalOutlined /> Region</Text>
-                    <div className="detail-value">{lead.region || 'Not specified'}</div>
-                  </div>
-                </Col>
-                <Col xs={24} md={12}>
-                  <div className="lead-detail-item">
-                    <Text type="secondary"><MailOutlined /> Email</Text>
-                    <div className="detail-value with-copy">
-                      <a href={`mailto:${lead.email}`}>{lead.email}</a>
-                      <Tooltip title={copiedEmail ? 'Copied!' : 'Copy Email'}>
-                        <Button 
-                          type="text" 
-                          size="small" 
-                          icon={copiedEmail ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />} 
-                          onClick={() => copyToClipboard(lead.email, 'email')}
-                        />
-                      </Tooltip>
-                    </div>
-                  </div>
-                </Col>
-                <Col xs={24} md={12}>
-                  <div className="lead-detail-item">
-                    <Text type="secondary"><PhoneOutlined /> Phone</Text>
-                    <div className="detail-value with-copy">
-                      <a href={`tel:${lead.phoneNumber}`}>{lead.phoneNumber}</a>
-                      <Tooltip title={copiedPhone ? 'Copied!' : 'Copy Phone'}>
-                        <Button 
-                          type="text" 
-                          size="small" 
-                          icon={copiedPhone ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />} 
-                          onClick={() => copyToClipboard(lead.phoneNumber, 'phone')}
-                        />
-                      </Tooltip>
-                    </div>
-                  </div>
-                </Col>
-                <Col xs={24} md={12}>
-                  <div className="lead-detail-item">
-                    <Text type="secondary"><MailOutlined /> Secondary Email</Text>
-                    <div className="detail-value with-copy">
-                      {lead.secondaryEmail ? (
-                        <>
-                          <a href={`mailto:${lead.secondaryEmail}`}>{lead.secondaryEmail}</a>
-                          <Tooltip title={copiedSecondaryEmail ? 'Copied!' : 'Copy Secondary Email'}>
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              icon={copiedSecondaryEmail ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />} 
-                              onClick={() => copyToClipboard(lead.secondaryEmail, 'secondaryEmail')}
-                            />
-                          </Tooltip>
-                        </>
-                      ) : (
-                        <span>Not specified</span>
-                      )}
-                    </div>
-                  </div>
-                </Col>
-                <Col xs={24} md={12}>
-                  <div className="lead-detail-item">
-                    <Text type="secondary"><PhoneOutlined /> Secondary Phone</Text>
-                    <div className="detail-value with-copy">
-                      {lead.phoneNumber2 ? (
-                        <>
-                          <a href={`tel:${lead.phoneNumber2}`}>{lead.phoneNumber2}</a>
-                          <Tooltip title={copiedSecondaryPhone ? 'Copied!' : 'Copy Secondary Phone'}>
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              icon={copiedSecondaryPhone ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />} 
-                              onClick={() => copyToClipboard(lead.phoneNumber2, 'secondaryPhone')}
-                            />
-                          </Tooltip>
-                        </>
-                      ) : (
-                        <span>Not specified</span>
-                      )}
-                    </div>
-                  </div>
-                </Col>
-              </Row>
+      <div style={{ padding: '0 8px' }}>
+        {/* Contact Card */}
+        <Card title={<><InfoCircleOutlined /> Contact</>} style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Text type="secondary"><GlobalOutlined /> Region</Text><br />
+              <Text strong>{lead.region || '—'}</Text>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary"><MailOutlined /> Email</Text><br />
+              <Space>
+                <a href={`mailto:${lead.email}`}>{lead.email}</a>
+                <Button size="small" icon={copied.email ? <CheckOutlined style={{ color: 'green' }} /> : <CopyOutlined />}
+                  onClick={() => copyToClipboard(lead.email, 'email')} />
+              </Space>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary"><PhoneOutlined /> Phone</Text><br />
+              <Space>
+                <a href={`tel:${lead.phoneNumber}`}>{lead.phoneNumber}</a>
+                <Button size="small" icon={copied.phone ? <CheckOutlined style={{ color: 'green' }} /> : <CopyOutlined />}
+                  onClick={() => copyToClipboard(lead.phoneNumber, 'phone')} />
+                <Button type="primary" size="small" icon={<WhatsAppOutlined />} onClick={() => setWhatsappVisible(true)} />
+                <Button icon={<PhoneFilled />} size="small" onClick={() => setCallVisible(true)} />
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* Lead Info */}
+        <Row gutter={16}>
+          <Col span={12}>
+            <Card title="Budget">
+              <Text strong style={{ fontSize: 18, color: '#1890ff' }}>
+                {lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : '—'}
+              </Text>
             </Card>
           </Col>
-          
-          {/* Lead Details Card */}
-          <Col span={24}>
-            <Card 
-              title={<Title level={5}><DollarOutlined /> Lead Details</Title>} 
-              className="lead-info-card"
-              bordered={false}
-              style={{ backgroundColor: '#f0f7ff' }}
-            >
-              <Row gutter={[16, 16]}>
-                <Col xs={24} md={8}>
-                  <div className="lead-detail-item">
-                    <Text type="secondary"><CalendarOutlined /> Created</Text>
-                    <div className="detail-value">
-                      {lead.CreationDate ? moment(lead.CreationDate.toDate?.() || lead.CreationDate).format('MMM DD, YYYY') : 'Not available'}
-                    </div>
-                  </div>
-                </Col>
-                <Col xs={24} md={8}>
-                  <div className="lead-detail-item">
-                    <Text type="secondary"><TagOutlined /> Interest Level</Text>
-                    <div className="detail-value">
-                      <Tag color={interestLevelColors[lead.InterestLevel]} style={{ padding: '2px 10px' }}>
-                        {lead.InterestLevel}
-                      </Tag>
-                    </div>
-                  </div>
-                </Col>
-                <Col xs={24} md={8}>
-                  <div className="lead-detail-item">
-                    <Text type="secondary"><DollarOutlined /> Budget</Text>
-                    <div className="detail-value">
-                      <Text strong style={{ fontSize: '16px', color: '#1890ff' }}>
-                        {lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : 'Not specified'}
-                      </Text>
-                    </div>
-                  </div>
-                </Col>
-              </Row>
-            </Card>
-          </Col>
-          
-          {/* Seller Information Card */}
-          <Col span={24}>
-            <Card 
-              title={<Title level={5}><UserOutlined /> Seller Assignment</Title>} 
-              className="lead-info-card"
-              bordered={false}
-              style={{ backgroundColor: '#f6ffed' }}
-            >
-              <div className="seller-info">
-                {loading ? (
-                  <div>Loading seller information...</div>
-                ) : sellerInfo ? (
-                  <div className="assigned-seller">
-                    <Avatar 
-                      size={48} 
-                      icon={<UserOutlined />}
-                      style={{ backgroundColor: '#1890ff' }} 
-                    />
-                    <div className="seller-details">
-                      <Text strong style={{ fontSize: '16px' }}>
-                        {sellerInfo.firstname} {sellerInfo.lastname}
-                      </Text>
-                      <Text type="secondary">
-                        {sellerInfo.email}
-                      </Text>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="no-seller">
-                    <Text type="secondary">No seller assigned yet</Text>
-                  </div>
-                )}
-              </div>
+          <Col span={12}>
+            <Card title="Interest">
+              <Tag color={interestColors[lead.InterestLevel]}>{lead.InterestLevel}</Tag>
             </Card>
           </Col>
         </Row>
+
+        {/* Assigned Seller */}
+        <Card title={<><UserOutlined /> Assigned Seller</>} style={{ margin: '16px 0' }}>
+          {sellerInfo ? (
+            <Space>
+              <Avatar style={{ backgroundColor: '#1890ff' }}>{sellerInfo.firstname[0]}</Avatar>
+              <div>
+                <Text strong>{sellerInfo.firstname} {sellerInfo.lastname}</Text><br />
+                <Text type="secondary">{sellerInfo.email}</Text>
+              </div>
+            </Space>
+          ) : (
+            <Text type="secondary">Not assigned</Text>
+          )}
+        </Card>
+
+        {/* Quick Actions */}
+        <Space style={{ width: '100%', marginBottom: 16 }} wrap>
+          <Button icon={<WhatsAppOutlined />} onClick={() => setWhatsappVisible(true)}>WhatsApp</Button>
+          <Button icon={<MailOutlined />} onClick={() => setEmailVisible(true)}>Email</Button>
+          <Button icon={<PhoneFilled />} onClick={() => setCallVisible(true)}>Log Call</Button>
+        </Space>
+
+        {/* History Timeline */}
+        <Card title={<><HistoryOutlined /> Activity History</>} style={{ marginTop: 16 }}>
+          {history.length > 0 ? (
+            <Timeline>
+              {history.map((h, i) => (
+                <Timeline.Item
+                  key={i}
+                  color={
+                    h.type === 'whatsapp' ? '#25D366' :
+                    h.type === 'email' ? '#1890ff' :
+                    h.type === 'call' ? '#722ed1' :
+                    h.type === 'status' ? '#1890ff' :
+                    h.type === 'note' ? '#8c8c8c' : 'gray'
+                  }
+                  dot={
+                    h.type === 'whatsapp' ? <WhatsAppOutlined style={{ fontSize: 16 }} /> :
+                    h.type === 'email' ? <MailOutlined style={{ fontSize: 16 }} /> :
+                    h.type === 'call' ? <PhoneFilled style={{ fontSize: 16 }} /> :
+                    h.type === 'status' ? <TagOutlined style={{ fontSize: 16 }} /> :
+                    h.type === 'note' ? <MessageOutlined style={{ fontSize: 16 }} /> : null
+                  }
+                >
+                  <div>
+                    <Text strong>{h.createdBy?.name || 'Unknown'}</Text>
+                    <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                      {moment(h.createdAt).format('MMM DD, HH:mm')}
+                    </Text>
+                  </div>
+
+                  <div style={{ marginTop: 8, padding: '8px 12px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0', whiteSpace: 'pre-wrap' }}>
+                    {h.type === 'status' && (
+                      <Tag color="blue">Status → {h.message.split('to ')[1]}</Tag>
+                    )}
+                    {h.type === 'note' && <Text>{h.message}</Text>}
+                    {h.type === 'call' && (
+                      <Text>
+                        <PhoneFilled /> Call ({h.duration}s) – <Tag color={h.outcome === 'answered' ? 'green' : 'red'}>{h.outcome}</Tag>
+                      </Text>
+                    )}
+                    {h.type === 'whatsapp' && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>WhatsApp Message:</Text><br />
+                        <Text style={{ fontSize: 14, color: '#25D366', fontWeight: 500, whiteSpace: 'pre-line' }}>{h.message}</Text>
+                      </div>
+                    )}
+                    {h.type === 'email' && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>Email Sent:</Text><br />
+                        <Text style={{ fontSize: 14, color: '#1890ff', fontWeight: 500, whiteSpace: 'pre-line' }}>{h.message}</Text>
+                      </div>
+                    )}
+                  </div>
+                </Timeline.Item>
+              ))}
+            </Timeline>
+          ) : (
+            <Text type="secondary" style={{ display: 'block', textAlign: 'center', padding: '20px 0' }}>
+              No activity yet
+            </Text>
+          )}
+        </Card>
+
+        {/* Add Note */}
+        <Card title="Add Note" style={{ marginTop: 16 }}>
+          <Form form={noteForm} layout="vertical">
+            <Form.Item name="note" rules={[{ required: true }]}>
+              <TextArea rows={3} placeholder="Type your note..." />
+            </Form.Item>
+            <Button type="primary" onClick={handleAddNote}>Add Note</Button>
+          </Form>
+        </Card>
       </div>
 
-      <Card 
-        title={<Title level={5}><MessageOutlined /> Lead Notes</Title>}
-        bordered={false}
-        className="lead-info-card notes-card"
-        style={{ marginTop: 24, backgroundColor: '#f9f0ff' }}
+      {/* WhatsApp Modal */}
+      <Modal
+        title="Send WhatsApp"
+        open={whatsappVisible}
+        onCancel={() => { setWhatsappVisible(false); whatsappForm.resetFields(); }}
+        onOk={() => whatsappForm.submit()}
+        destroyOnClose
       >
-        {Array.isArray(lead.Notes) && lead.Notes.length > 0 ? (
-          <List
-            itemLayout="horizontal"
-            dataSource={lead.Notes}
-            renderItem={note => (
-              <List.Item
-                key={note.createdAt?.toString()}
-                style={{ padding: '12px 0' }}
-              >
-                <List.Item.Meta
-                  avatar={<Avatar icon={<UserOutlined />} style={{ backgroundColor: '#722ed1' }} />}
-                  title={
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Text strong>{note.createdBy?.name || 'Unknown'}</Text>
-                      <Text type="secondary" style={{ fontSize: '12px' }}>
-                        {note.createdAt ? 
-                        moment(note.createdAt.toDate?.() || note.createdAt).format('MMM DD, YYYY HH:mm') :
-                        'Unknown time'}
-                      </Text>
-                    </div>
-                  }
-                  description={
-                    <div style={{ marginTop: '8px', backgroundColor: '#fff', padding: '8px 12px', borderRadius: '4px', border: '1px solid #f0f0f0' }}>
-                      {note.text}
-                    </div>
-                  }
-                />
-              </List.Item>
-            )}
-          />
-        ) : (
-          <div style={{ padding: '20px 0', textAlign: 'center' }}>
-            <Text type="secondary">No notes yet</Text>
-          </div>
-        )}
-        
-        <Divider style={{ margin: '16px 0' }} />
-        
-        <Form form={noteForm} layout="vertical">
-          <Form.Item
-            name="note"
-            rules={[{ required: true, message: 'Please write a note' }]}
-          >
-            <TextArea 
-              rows={4} 
-              placeholder="Add a note..." 
-              style={{ borderRadius: '4px', resize: 'none' }} 
-            />
-          </Form.Item>
-          <Form.Item>
-            <Button 
-              type="primary" 
-              onClick={handleAddNote}
-              icon={<MessageOutlined />}
-              style={{ borderRadius: '4px', background: '#722ed1', borderColor: '#722ed1' }}
-            >
-              Add Note
-            </Button>
+        <Form form={whatsappForm} onFinish={sendWhatsApp} layout="vertical">
+          <Form.Item name="template" label="Template" initialValue="intro">
+            <Select>
+              <Option value="intro">Introduction</Option>
+              <Option value="follow_up">Follow Up</Option>
+              <Option value="offer">Property Offer</Option>
+            </Select>
           </Form.Item>
         </Form>
-      </Card>
+      </Modal>
+
+      {/* Email Modal */}
+      <Modal
+        title="Send Email"
+        open={emailVisible}
+        onCancel={() => { setEmailVisible(false); emailForm.resetFields(); }}
+        onOk={() => emailForm.submit()}
+        destroyOnClose
+      >
+        <Form form={emailForm} onFinish={sendEmail} layout="vertical">
+          <Form.Item name="template" label="Template" initialValue="intro">
+            <Select>
+              <Option value="intro">Introduction</Option>
+              <Option value="offer">Property Match</Option>
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Call Modal */}
+      <Modal
+        title="Log Call"
+        open={callVisible}
+        onCancel={() => { setCallVisible(false); callForm.resetFields(); }}
+        onOk={() => callForm.submit()}
+        destroyOnClose
+      >
+        <Form form={callForm} onFinish={logCall} layout="vertical">
+          <Form.Item name="duration" label="Duration (seconds)" initialValue={60}>
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="outcome" label="Outcome" initialValue="answered">
+            <Select>
+              <Option value="answered">Answered</Option>
+              <Option value="no-answer">No Answer</Option>
+              <Option value="voicemail">Voicemail</Option>
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
     </Drawer>
   );
 };
 
-export default LeadDetails;
+export default LeadDetailsPro;

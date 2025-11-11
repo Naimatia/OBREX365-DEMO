@@ -1126,7 +1126,7 @@ const SellersPage = () => {
                           <List.Item.Meta
                             avatar={<Avatar style={{ backgroundColor: lead.interestLevel === 'Hot' ? '#ff4d4f' : lead.interestLevel === 'Warm' ? '#faad14' : '#13c2c2' }}>{lead.name?.charAt(0) || 'L'}</Avatar>}
                             title={lead.name || 'Unnamed Lead'}
-                            description={`${lead.email || 'No email'} | Interest: ${lead.interestLevel || 'Unknown'} | Budget: AED ${Number(lead.budget || 0).toLocaleString('en-AE')}`}
+                            description={`${lead.email || 'No email'} | Interest: ${lead.InterestLevel || 'Unknown'} | Budget: AED ${Number(lead.Budget || 0).toLocaleString('en-AE')}`}
                           />
                           <Text type="secondary">{moment(lead.CreationDate).format('MMM DD, YYYY')}</Text>
                         </List.Item>

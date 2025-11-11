@@ -17,18 +17,20 @@ import LeadFilters from './components/LeadFilters';
 import AssignSellerForm from './components/AssignSellerForm';
 import LeadStats from './components/LeadStats';
 import LeadStatsDrawer from './components/LeadStatsDrawer';
+import { UserRoles } from 'models/UserModel';
+
 
 const { Title } = Typography;
 const { confirm } = Modal;
 
-// Define sales-related roles (consistent with LeadForm)
-const SALES_ROLES = [
-  'Agent',
-  'Sales',
-  'Executive Sales',
-  'Off Plan Sales',
-  'Ready to Move Sales',
-  'Sales Manager'
+const salesRoles = [
+  UserRoles.SELLER,
+  UserRoles.SALES_EXECUTIVE,
+  UserRoles.AGENT,
+  UserRoles.TEAM_LEADER,
+  UserRoles.SALES_MANAGER,
+  UserRoles.OFF_PLAN_SALES,
+  UserRoles.READY_TO_MOVE_SALES,
 ];
 
 /**
@@ -110,37 +112,37 @@ const LeadsPage = () => {
     }
   };
 
-  // Fetch sellers (employees with sales-related roles) from Firestore
-  const fetchSellers = async () => {
-    try {
-      console.log('Fetching sellers for company:', companyId);
-      
-      // Query employees collection
-      const employeesRef = collection(db, 'employees');
-      const employeesSnapshot = await getDocs(employeesRef);
-      
-      // Filter employees by SALES_ROLES and company_id
-      const sellersList = employeesSnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }))
-        .filter(employee => 
-          employee.company_id === companyId && 
-          SALES_ROLES.includes(employee.Role)
-        )
-        .map(employee => ({
-          id: employee.id,
-          name: employee.name
-        }));
-      
-      console.log('Sellers filtered:', sellersList.length, sellersList);
-      setSellers(sellersList);
-    } catch (error) {
-      console.error('Error fetching sellers:', error);
-      message.error('Failed to fetch sellers');
-    }
-  };
+// Fetch sellers (users with sales-related roles) from Firestore
+const fetchSellers = async () => {
+  try {
+    console.log("Fetching sellers for company:", companyId);
+
+    const usersRef = collection(db, "users");
+    const usersSnapshot = await getDocs(usersRef);
+
+    const sellersList = usersSnapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      .filter(user =>
+        user.company_id === companyId &&
+        salesRoles.includes(user.Role)
+      )
+      .map(user => ({
+        id: user.id,
+        name: `${user.firstname ?? ""} ${user.lastname ?? ""}${user.country ? ` (${user.country})` : ""}`.trim(),
+      }));
+
+    console.log("Sellers filtered:", sellersList.length, sellersList);
+    setSellers(sellersList);
+
+  } catch (error) {
+    console.error("Error fetching sellers:", error);
+    message.error("Failed to fetch sellers");
+  }
+};
+
 
   // Add a new lead
   const handleAddLead = async (values) => {

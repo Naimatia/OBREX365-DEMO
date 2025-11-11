@@ -5,27 +5,29 @@ import { LeadStatus, LeadInterestLevel, LeadRedirectionSource } from 'models/Lea
 import { db, collection, getDocs } from 'configs/FirebaseConfig';
 import countries from 'constants/countries';
 import moment from 'moment';
+import { UserRoles } from 'models/UserModel';
+
 
 const { Option } = Select;
 
-// Define sales-related roles (based on EmployeeRoles from EmployeeForm)
-const SALES_ROLES = [
-  'Agent',
-  'Sales',
-  'Executive Sales',
-  'Off Plan Sales',
-  'Ready to Move Sales',
-  'Sales Manager'
+const salesRoles = [
+  UserRoles.SELLER,
+  UserRoles.SALES_EXECUTIVE,
+  UserRoles.AGENT,
+  UserRoles.TEAM_LEADER,
+  UserRoles.SALES_MANAGER,
+  UserRoles.OFF_PLAN_SALES,
+  UserRoles.READY_TO_MOVE_SALES,
 ];
 
 /**
  * Component for adding or editing lead
  */
-const LeadForm = ({ 
-  visible, 
-  onCancel, 
-  onSubmit, 
-  editingLead = null, 
+const LeadForm = ({
+  visible,
+  onCancel,
+  onSubmit,
+  editingLead = null,
   confirmLoading
 }) => {
   const [form] = Form.useForm();
@@ -34,14 +36,13 @@ const LeadForm = ({
   // Fetch sellers (employees with sales-related roles) from Firebase
   useEffect(() => {
     if (visible) {
-      // Reset form
       form.resetFields();
 
-      // Set form values for editing or new lead
       if (editingLead) {
-        const creationDate = editingLead.CreationDate 
+        const creationDate = editingLead.CreationDate
           ? moment(editingLead.CreationDate.toDate?.() || editingLead.CreationDate)
           : moment();
+
         form.setFieldsValue({
           ...editingLead,
           CreationDate: creationDate
@@ -52,32 +53,32 @@ const LeadForm = ({
         });
       }
 
-      // Fetch employees with sales-related roles
       const fetchSellers = async () => {
         try {
-          const employeesRef = collection(db, 'employees');
-          const employeesSnapshot = await getDocs(employeesRef);
-          const sellersList = employeesSnapshot.docs
+          const sellersRef = collection(db, 'users');
+          const sellersSnapshot = await getDocs(sellersRef);
+
+          const sellersList = sellersSnapshot.docs
             .map(doc => ({
               id: doc.id,
               ...doc.data()
             }))
-            .filter(employee => SALES_ROLES.includes(employee.Role))
-            .map(employee => ({
-              id: employee.id,
-              name: employee.name
+            .filter(seller => salesRoles.includes(seller.Role))   // changed here
+            .map(seller => ({
+              id: seller.id,
+              name: `${seller.firstname ?? ""} ${seller.lastname ?? ""}${seller.country ? ` (${seller.country})` : ""}`.trim()
             }));
+
           setSellers(sellersList);
         } catch (error) {
           console.error('Error fetching sellers:', error);
-          // Optionally show a user-friendly message using antd's message component
-          // message.error('Failed to load sellers');
         }
       };
 
       fetchSellers();
     }
   }, [visible, editingLead, form]);
+
 
   const handleSubmit = () => {
     form.validateFields().then(values => {
@@ -97,10 +98,10 @@ const LeadForm = ({
         <Button key="cancel" onClick={onCancel}>
           Cancel
         </Button>,
-        <Button 
-          key="submit" 
-          type="primary" 
-          loading={confirmLoading} 
+        <Button
+          key="submit"
+          type="primary"
+          loading={confirmLoading}
           onClick={handleSubmit}
         >
           {editingLead ? 'Update' : 'Create'}
@@ -124,7 +125,7 @@ const LeadForm = ({
               label="Full Name"
               rules={[{ required: true, message: 'Please enter the lead name' }]}
             >
-              <Input  prefix={<UserOutlined />} placeholder="Enter full name" />
+              <Input prefix={<UserOutlined />} placeholder="Enter full name" />
             </Form.Item>
           </Col>
           <Col span={12}>
@@ -138,9 +139,9 @@ const LeadForm = ({
                 showSearch
                 optionFilterProp="children"
               >
-                 <Option value="" disabled>
-                                  <GlobalOutlined /> Select a country
-                                </Option>
+                <Option value="" disabled>
+                  <GlobalOutlined /> Select a country
+                </Option>
                 {countries.map(country => (
                   <Option key={country.code} value={country.name}>
                     {country.name}
@@ -175,20 +176,20 @@ const LeadForm = ({
           </Col>
         </Row>
 
-  <Row gutter={16}>
+        <Row gutter={16}>
           <Col span={12}>
             <Form.Item
-          name="secondaryEmail"
-          label="Secondary Email Address"
-          rules={[
-            { type: 'email', message: 'Please enter a valid email' },
-          ]}
-          extra="Optional secondary email for additional communications"
-        >
-          <Input prefix={<MailOutlined />} placeholder="secondary@example.com" />
-        </Form.Item>
+              name="secondaryEmail"
+              label="Secondary Email Address"
+              rules={[
+                { type: 'email', message: 'Please enter a valid email' },
+              ]}
+              extra="Optional secondary email for additional communications"
+            >
+              <Input prefix={<MailOutlined />} placeholder="secondary@example.com" />
+            </Form.Item>
           </Col>
-         <Col span={12}>
+          <Col span={12}>
             <Form.Item
               name="phoneNumber2"
               label="Secondary Phone Number"
