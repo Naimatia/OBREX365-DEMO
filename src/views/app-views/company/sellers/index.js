@@ -47,7 +47,6 @@ import { auth } from 'configs/FirebaseConfig';
 import moment from 'moment';
 import dayjs from 'dayjs';
 
-// Import the form components
 import AddUserForm from './AddUserForm';
 import EditUserForm from './EditUserForm';
 
@@ -56,17 +55,11 @@ const { Option } = Select;
 const { TabPane } = Tabs;
 const { RangePicker } = DatePicker;
 
-/**
- * Sellers and HR management page
- * Allows CEO and HR users to manage team members
- */
 const SellersPage = () => {
-  // Get current user data from Redux store
   const user = useSelector(state => state.auth.user);
   const companyId = user?.company_id || '';
   const userRole = user?.Role || '';
 
-  // State management
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
@@ -76,7 +69,6 @@ const SellersPage = () => {
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Seller analytics state
   const [sellerProgress, setSellerProgress] = useState({});
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [analyticsVisible, setAnalyticsVisible] = useState(false);
@@ -86,46 +78,42 @@ const SellersPage = () => {
   const [dateRange, setDateRange] = useState([dayjs().startOf('month'), dayjs().endOf('month')]);
 
   const salesRoles = [
-  UserRoles.SELLER,
-  UserRoles.SALES_EXECUTIVE,
-  UserRoles.AGENT,
-  UserRoles.TEAM_LEADER,
-  UserRoles.SALES_MANAGER,
-  UserRoles.OFF_PLAN_SALES,
-  UserRoles.READY_TO_MOVE_SALES
-];
+    UserRoles.SELLER,
+    UserRoles.SALES_EXECUTIVE,
+    UserRoles.AGENT,
+    UserRoles.TEAM_LEADER,
+    UserRoles.SALES_MANAGER,
+    UserRoles.OFF_PLAN_SALES,
+    UserRoles.READY_TO_MOVE_SALES
+  ];
 
-
-  // Check if current user has permission to manage users
   const canManageUsers = [UserRoles.CEO, UserRoles.HR].includes(userRole);
 
-  // Fetch users data - get all users with same company_id
   const fetchUsers = async () => {
     setLoading(true);
     try {
       let fetchedUsers = [];
       if (companyId) {
-        console.log('Fetching users for company ID:', companyId);
-
-        // Fetch ALL users with the same company_id (not just HR and SELLER)
-        // This ensures we get everyone in the company
         fetchedUsers = await UserService.getUsersByCompanyId(companyId);
-
-        // Exclude current user from the list
         fetchedUsers = fetchedUsers.filter(u => u.id !== user.id);
-
-        // Log detailed information about fetched users
-        console.log(`Successfully fetched ${fetchedUsers.length} users for company ${companyId}`);
-        console.log('User roles found:', Array.from(new Set(fetchedUsers.map(u => u.Role || u.role))));
-      } else {
-        console.warn('No company ID found for current user');
       }
 
-      setUsers(fetchedUsers);
-      setFilteredUsers(fetchedUsers);
+      // Fetch leads count per seller
+      const usersWithLeads = await Promise.all(
+        fetchedUsers.map(async (u) => {
+          const allLeads = await LeadsService.getSellerLeadsByDateRange(companyId, u.id, new Date('1970-01-01'), new Date());
+          const contacted = allLeads.filter(l => l.contacted === true).length;
+          return {
+            ...u,
+            totalLeads: allLeads.length,
+            contactedLeads: contacted
+          };
+        })
+      );
 
-      // Fetch progress for all sellers
-      await fetchAllSellersProgress(fetchedUsers);
+      setUsers(usersWithLeads);
+      setFilteredUsers(usersWithLeads);
+      await fetchAllSellersProgress(usersWithLeads);
     } catch (error) {
       console.error('Failed to fetch users:', error);
       message.error('Failed to load team members');
@@ -134,71 +122,43 @@ const SellersPage = () => {
     }
   };
 
-  // Calculate seller progress for current month
   const calculateSellerProgress = async (sellerId) => {
     try {
       const startOfMonth = moment().startOf('month').toDate();
       const endOfMonth = moment().endOf('month').toDate();
-
-      // Fetch all contacts for the seller in current month
       const contacts = await ContactsService.getSellerContactsByDateRange(sellerId, startOfMonth, endOfMonth);
-
-      // Calculate contact status counts
       const pending = contacts.filter(c => c.status === 'Pending').length;
       const contacted = contacts.filter(c => c.status === 'Contacted').length;
       const deal = contacts.filter(c => c.status === 'Deal').length;
       const loss = contacts.filter(c => c.status === 'Loss').length;
       const total = contacts.length;
-
-      // Calculate progress percentage (contacted + deal as progress)
       const progressCount = contacted + deal;
       const progressPercentage = total > 0 ? Math.round((progressCount / total) * 100) : 0;
 
-      return {
-        total,
-        pending,
-        contacted,
-        deal,
-        loss,
-        progressCount,
-        progressPercentage
-      };
+      return { total, pending, contacted, deal, loss, progressCount, progressPercentage };
     } catch (error) {
       console.error('Error calculating seller progress:', error);
-      return {
-        total: 0,
-        pending: 0,
-        contacted: 0,
-        deal: 0,
-        loss: 0,
-        progressCount: 0,
-        progressPercentage: 0
-      };
+      return { total: 0, pending: 0, contacted: 0, deal: 0, loss: 0, progressCount: 0, progressPercentage: 0 };
     }
   };
 
-  // Fetch progress for all sellers
   const fetchAllSellersProgress = async (usersList) => {
     try {
       const progressData = {};
       const sellers = usersList.filter(u => salesRoles.includes(u.Role) || salesRoles.includes(u.role));
-
       for (const seller of sellers) {
         const progress = await calculateSellerProgress(seller.id);
         progressData[seller.id] = progress;
       }
-
       setSellerProgress(progressData);
     } catch (error) {
       console.error('Error fetching sellers progress:', error);
     }
   };
 
-  // Fetch comprehensive seller analytics
   const fetchSellerAnalytics = async (sellerId, startDate, endDate) => {
     try {
       setAnalyticsLoading(true);
-
       const [contacts, deals, leads, invoices] = await Promise.all([
         ContactsService.getSellerContactsByDateRange(sellerId, startDate, endDate),
         DealsService.getSellerDealsByDateRange(sellerId, startDate, endDate),
@@ -206,7 +166,6 @@ const SellersPage = () => {
         InvoicesService.getSellerInvoicesByDateRange(sellerId, startDate, endDate)
       ]);
 
-      // Calculate contacts analytics
       const contactStats = {
         total: contacts.length,
         pending: contacts.filter(c => c.status === 'Pending').length,
@@ -215,7 +174,6 @@ const SellersPage = () => {
         loss: contacts.filter(c => c.status === 'Loss').length
       };
 
-      // Calculate deals analytics
       const dealStats = {
         total: deals.length,
         pending: deals.filter(d => d.status === 'Pending').length,
@@ -225,7 +183,6 @@ const SellersPage = () => {
         gainValue: deals.filter(d => d.status === 'Gain').reduce((sum, deal) => sum + (parseFloat(deal.amount) || 0), 0)
       };
 
-      // Calculate leads analytics
       const leadStats = {
         total: leads.length,
         hot: leads.filter(l => l.interestLevel === 'Hot').length,
@@ -233,7 +190,6 @@ const SellersPage = () => {
         cold: leads.filter(l => l.interestLevel === 'Cold').length
       };
 
-      // Calculate invoices analytics
       const invoiceStats = {
         total: invoices.length,
         paid: invoices.filter(i => i.status === 'Paid').length,
@@ -243,7 +199,6 @@ const SellersPage = () => {
         paidValue: invoices.filter(i => i.status === 'Paid').reduce((sum, invoice) => sum + (parseFloat(invoice.amount) || 0), 0)
       };
 
-      // Calculate overall progress
       const totalTasks = contactStats.total + dealStats.total + leadStats.total;
       const completedTasks = contactStats.contacted + contactStats.deal + dealStats.gain + leadStats.hot;
       const overallProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -269,18 +224,14 @@ const SellersPage = () => {
     }
   };
 
-  // Handle seller click to show analytics
   const handleSellerClick = async (seller) => {
     setSelectedSeller(seller);
     setAnalyticsVisible(true);
-
-    // Fetch analytics for current month by default
     const startDate = dateRange[0].toDate();
     const endDate = dateRange[1].toDate();
     await fetchSellerAnalytics(seller.id, startDate, endDate);
   };
 
-  // Handle date range change in analytics
   const handleDateRangeChange = async (dates) => {
     if (dates && dates.length === 2 && selectedSeller) {
       setDateRange(dates);
@@ -290,7 +241,6 @@ const SellersPage = () => {
     }
   };
 
-  // Handle month change in analytics
   const handleMonthChange = async (month) => {
     if (month && selectedSeller) {
       setSelectedMonth(month);
@@ -301,26 +251,21 @@ const SellersPage = () => {
     }
   };
 
-  // Get progress color based on percentage
   const getProgressColor = (percentage) => {
-    if (percentage >= 80) return '#52c41a'; // Green
-    if (percentage >= 60) return '#faad14'; // Orange
-    if (percentage >= 40) return '#13c2c2'; // Cyan
-    return '#ff4d4f'; // Red
+    if (percentage >= 80) return '#52c41a';
+    if (percentage >= 60) return '#faad14';
+    if (percentage >= 40) return '#13c2c2';
+    return '#ff4d4f';
   };
 
-  // Initial data load
   useEffect(() => {
     if (companyId) {
       fetchUsers();
     }
   }, [companyId]);
 
-  // Handle search and filtering
   useEffect(() => {
     let result = [...users];
-
-    // Apply search filter
     if (searchText) {
       const searchLower = searchText.toLowerCase();
       result = result.filter(user =>
@@ -329,90 +274,49 @@ const SellersPage = () => {
         user.email?.toLowerCase().includes(searchLower)
       );
     }
-
-    // Apply role filter
     if (roleFilter) {
       result = result.filter(user => user.Role === roleFilter);
     }
-
     setFilteredUsers(result);
   }, [searchText, roleFilter, users]);
 
-  // Handle adding a new user
   const handleAddUser = async (values) => {
     try {
       setLoading(true);
-
-      // Get current user's IP address (simplified for demo)
       const getCurrentIP = async () => {
         try {
           const response = await fetch('https://api.ipify.org?format=json');
           const data = await response.json();
           return data.ip;
         } catch {
-          return '0.0.0.0'; // Fallback IP
+          return '0.0.0.0';
         }
       };
-
       const ipAddress = await getCurrentIP();
 
-      // Create new user with the exact document structure as specified
       const userData = {
         email: values.email,
-        secondaryEmail: values.secondaryEmail,
-        password: 'Welcome123!', // Default temporary password
-
-
-        // Personal information - exact field names as required
+        password: 'Welcome123!',
         firstname: values.firstname,
         lastname: values.lastname,
         phoneNumber: values.phoneNumber,
         phoneNumber2: values.phoneNumber2,
         phoneNumber3: values.phoneNumber3,
-
-
-
-        // Company relationship - using exact field name
         company_id: companyId,
-
         country: values.country,
-
-        // Role - must be "Seller" for sales team
         Role: values.Role,
-
-        // Timestamps - exact field names with proper format
         CreationDate: new Date(),
         LastLogin: new Date(),
-
-        // Boolean fields - exact as specified
         Notification: false,
-        forcePasswordReset: true, // IMPORTANT: Force password reset on first login
+        forcePasswordReset: true,
         isBanned: false,
-        isVerified: false, // New users start unverified
-
-        // Network information
+        isVerified: false,
         ipAddress: ipAddress
       };
 
-      console.log('Creating new seller with exact document structure:', { ...userData, password: '***hidden***' });
-
-      // Store current user auth state
-      const currentUser = auth.currentUser;
-
-      // Use the new direct seller creation method
       const result = await UserService.createSellerDirectly(userData);
-
-      console.log('Seller created successfully with ID:', result.uid);
-
-      // Inform user about successful creation and refresh requirement
-      message.success(
-        `${values.firstname} ${values.lastname} added successfully as a ${values.Role}. ` +
-        'Please refresh the page to see the new seller in the list.'
-      );
-
+      message.success(`${values.firstname} ${values.lastname} added successfully. Refresh to see.`);
       setIsAddModalVisible(false);
-
-      // Refresh the users list
       await fetchUsers();
     } catch (error) {
       console.error('Failed to add seller:', error);
@@ -422,28 +326,22 @@ const SellersPage = () => {
     }
   };
 
-  // Handle updating a user
   const handleUpdateUser = async (values) => {
     try {
       setLoading(true);
-
-      // Update user profile
       const updateData = {
         firstname: values.firstname,
         lastName: values.lastname,
         phoneNumber: values.phoneNumber,
-        secondaryEmail: values.secondaryEmail,
         phoneNumber2: values.phoneNumber2,
         phoneNumber3: values.phoneNumber3,
         country: values.country,
         Role: values.role
       };
-
       await UserService.updateUserProfile(currentUser.id, updateData);
-
       message.success(`${values.firstname} ${values.lastname} updated successfully`);
       setIsEditModalVisible(false);
-      fetchUsers(); // Refresh user list
+      fetchUsers();
     } catch (error) {
       console.error('Failed to update user:', error);
       message.error(`Failed to update user: ${error.message}`);
@@ -452,13 +350,12 @@ const SellersPage = () => {
     }
   };
 
-  // Handle deleting a user
   const handleDeleteUser = async (userId) => {
     try {
       setLoading(true);
       await UserService.deleteUser(userId);
       message.success('User deleted successfully');
-      fetchUsers(); // Refresh user list
+      fetchUsers();
     } catch (error) {
       console.error('Failed to delete user:', error);
       message.error(`Failed to delete user: ${error.message}`);
@@ -467,13 +364,11 @@ const SellersPage = () => {
     }
   };
 
-  // Show edit modal
   const showEditModal = (user) => {
     setCurrentUser(user);
     setIsEditModalVisible(true);
   };
 
-  // Table columns configuration
   const columns = [
     {
       title: 'Name',
@@ -496,13 +391,6 @@ const SellersPage = () => {
       key: 'email',
       sorter: (a, b) => a.email.localeCompare(b.email)
     },
-
-    {
-      title: 'Secondary Email',
-      dataIndex: 'secondaryEmail',
-      key: 'secondaryEmail',
-      sorter: (a, b) => a.secondaryEmail.localeCompare(b.secondaryEmail)
-    },
     {
       title: 'Role',
       dataIndex: 'Role',
@@ -510,62 +398,25 @@ const SellersPage = () => {
       render: (role) => {
         let color;
         switch (role) {
-          case UserRoles.SUPER_ADMIN:
-            color = '#6DCEEE'; // Theme color from previous components
-            break;
-          case UserRoles.CEO:
-            color = 'gold';
-            break;
-          case UserRoles.HR:
-            color = 'geekblue';
-            break;
-          case UserRoles.SELLER:
-            color = 'green';
-            break;
-          case UserRoles.COORDINATOR:
-            color = 'cyan';
-            break;
-          case UserRoles.SALES_EXECUTIVE:
-            color = 'blue';
-            break;
-          case UserRoles.AGENT:
-            color = 'purple';
-            break;
-          case UserRoles.TEAM_LEADER:
-            color = 'orange';
-            break;
-          case UserRoles.SALES_MANAGER:
-            color = 'magenta';
-            break;
-          case UserRoles.MARKETING_MANAGER:
-            color = 'volcano';
-            break;
-          case UserRoles.OFF_PLAN_SALES:
-            color = '#2db7f5'; // Lighter blue shade
-            break;
-          case UserRoles.READY_TO_MOVE_SALES:
-            color = '#87d068'; // Lighter green shade
-            break;
-          case UserRoles.SECRETARY:
-            color = 'lime';
-            break;
-          case UserRoles.FRONT_DESK_OFFICER:
-            color = 'red';
-            break;
-          case UserRoles.OFFICE_BOY:
-            color = 'pink';
-            break;
-          case UserRoles.ACCOUNTANT:
-            color = '#108ee9'; // Medium blue
-            break;
-          case UserRoles.HUMAN_RESOURCES:
-            color = '#f50'; // Orange-red
-            break;
-          case UserRoles.PUBLIC_RELATIONS_OFFICER:
-            color = '#d4380d'; // Darker red
-            break;
-          default:
-            color = 'default';
+          case UserRoles.SUPER_ADMIN: color = '#6DCEEE'; break;
+          case UserRoles.CEO: color = 'gold'; break;
+          case UserRoles.HR: color = 'geekblue'; break;
+          case UserRoles.SELLER: color = 'green'; break;
+          case UserRoles.COORDINATOR: color = 'cyan'; break;
+          case UserRoles.SALES_EXECUTIVE: color = 'blue'; break;
+          case UserRoles.AGENT: color = 'purple'; break;
+          case UserRoles.TEAM_LEADER: color = 'orange'; break;
+          case UserRoles.SALES_MANAGER: color = 'magenta'; break;
+          case UserRoles.MARKETING_MANAGER: color = 'volcano'; break;
+          case UserRoles.OFF_PLAN_SALES: color = '#2db7f5'; break;
+          case UserRoles.READY_TO_MOVE_SALES: color = '#87d068'; break;
+          case UserRoles.SECRETARY: color = 'lime'; break;
+          case UserRoles.FRONT_DESK_OFFICER: color = 'red'; break;
+          case UserRoles.OFFICE_BOY: color = 'pink'; break;
+          case UserRoles.ACCOUNTANT: color = '#108ee9'; break;
+          case UserRoles.HUMAN_RESOURCES: color = '#f50'; break;
+          case UserRoles.PUBLIC_RELATIONS_OFFICER: color = '#d4380d'; break;
+          default: color = 'default';
         }
         return <Tag color={color}>{role}</Tag>;
       }
@@ -592,26 +443,63 @@ const SellersPage = () => {
       dataIndex: 'country',
       key: 'country'
     },
+{
+  title: 'Leads',
+  key: 'leads',
+  width: 160,
+  render: (_, record) => (
+    <div style={{ textAlign: 'center' }}>
+      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+        Total Leads | Contacted
+      </Text>
+      <Space size={8}>
+        <div
+          style={{
+            backgroundColor: '#ff4d4f',
+            color: 'white',
+            fontWeight: 'bold',
+            fontSize: 16,
+            padding: '4px 8px',
+            borderRadius: 6,
+            minWidth: 36,
+            textAlign: 'center'
+          }}
+        >
+          {record.totalLeads || 0}
+        </div>
+        <div
+          style={{
+            backgroundColor: '#52c41a',
+            color: 'white',
+            fontWeight: 'bold',
+            fontSize: 16,
+            padding: '4px 8px',
+            borderRadius: 6,
+            minWidth: 36,
+            textAlign: 'center'
+          }}
+        >
+          {record.contactedLeads || 0}
+        </div>
+      </Space>
+    </div>
+  )
+},
     {
       title: 'Status',
       key: 'status',
       render: (_, record) => {
-        if (record.isBanned) {
-          return <Tag color="red">Banned</Tag>;
-        }
-        if (record.forcePasswordReset) {
-          return <Tag color="orange">Password Reset Required</Tag>;
-        }
+        if (record.isBanned) return <Tag color="red">Banned</Tag>;
+        if (record.forcePasswordReset) return <Tag color="orange">Password Reset Required</Tag>;
         return <Tag color="green">Active</Tag>;
       }
     },
     {
       title: 'Created',
-      dataIndex: 'CreationDate', // Match Firestore field
+      dataIndex: 'CreationDate',
       key: 'CreationDate',
       render: (date) => {
         if (!date) return '-';
-        // Handle both Firestore Timestamp and JavaScript Date
         const dateObj = date.toDate ? date.toDate() : new Date(date);
         return moment(dateObj).format('YYYY-MM-DD');
       },
@@ -623,26 +511,23 @@ const SellersPage = () => {
     }
   ];
 
-  // Add actions column if user has permission
   if (canManageUsers) {
     columns.push({
       title: 'Actions',
       key: 'action',
       render: (_, record) => (
         <Space size="small">
-          {/* Analytics button for sellers */}
-       {(salesRoles.includes(record.Role) || salesRoles.includes(record.role)) && (
-  <Tooltip title="View Analytics">
-    <Button
-      type="default"
-      icon={<EyeOutlined />}
-      size="small"
-      onClick={() => handleSellerClick(record)}
-      style={{ color: '#722ed1', borderColor: '#722ed1' }}
-    />
-  </Tooltip>
-)}
-
+          {(salesRoles.includes(record.Role) || salesRoles.includes(record.role)) && (
+            <Tooltip title="View Analytics">
+              <Button
+                type="default"
+                icon={<EyeOutlined />}
+                size="small"
+                onClick={() => handleSellerClick(record)}
+                style={{ color: '#722ed1', borderColor: '#722ed1' }}
+              />
+            </Tooltip>
+          )}
           <Tooltip title="Edit">
             <Button
               type="primary"
@@ -659,11 +544,7 @@ const SellersPage = () => {
               cancelText="No"
               icon={<ExclamationCircleOutlined style={{ color: 'red' }} />}
             >
-              <Button
-                danger
-                icon={<DeleteOutlined />}
-                size="small"
-              />
+              <Button danger icon={<DeleteOutlined />} size="small" />
             </Popconfirm>
           </Tooltip>
         </Space>
@@ -676,18 +557,13 @@ const SellersPage = () => {
       <Card className="shadow-lg">
         <div className="flex justify-between items-center mb-6">
           <Title level={2}>Team Management</Title>
-
           {canManageUsers && (
-            <Button
-              type="primary"
-              icon={<UserAddOutlined />}
-              onClick={() => setIsAddModalVisible(true)}
-            >
+            <Button type="primary" icon={<UserAddOutlined />} onClick={() => setIsAddModalVisible(true)}>
               Add Team Member
             </Button>
           )}
         </div>
-        <br></br>
+        <br />
         <div className="flex justify-between mb-4">
           <Input
             placeholder="Search by name or email"
@@ -711,7 +587,6 @@ const SellersPage = () => {
             <Option value={UserRoles.SALES_MANAGER}>Sales Manager</Option>
             <Option value={UserRoles.OFF_PLAN_SALES}>Off-plan Sales</Option>
             <Option value={UserRoles.READY_TO_MOVE_SALES}>Ready to Move Sales</Option>
-
           </Select>
         </div>
 
@@ -720,15 +595,10 @@ const SellersPage = () => {
           dataSource={filteredUsers}
           rowKey="id"
           loading={loading}
-          pagination={{
-            defaultPageSize: 10,
-            showSizeChanger: true,
-            pageSizeOptions: ['10', '20', '50']
-          }}
+          pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
         />
       </Card>
 
-      {/* Add User Modal */}
       <Modal
         title="Add New Team Member"
         visible={isAddModalVisible}
@@ -736,13 +606,9 @@ const SellersPage = () => {
         footer={null}
         destroyOnClose
       >
-        <AddUserForm
-          onFinish={handleAddUser}
-          onCancel={() => setIsAddModalVisible(false)}
-        />
+        <AddUserForm onFinish={handleAddUser} onCancel={() => setIsAddModalVisible(false)} />
       </Modal>
 
-      {/* Edit User Modal */}
       <Modal
         title="Edit Team Member"
         visible={isEditModalVisible}
@@ -759,7 +625,6 @@ const SellersPage = () => {
         )}
       </Modal>
 
-      {/* Seller Analytics Drawer */}
       <Drawer
         title={
           <div style={{
@@ -769,14 +634,10 @@ const SellersPage = () => {
             color: 'white'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <Avatar
-                size={64}
-                style={{ backgroundColor: 'rgba(255,255,255,0.2)', fontSize: '24px' }}
-                icon={<TrophyOutlined />}
-              />
+              <Avatar size={64} style={{ backgroundColor: 'rgba(255,255,255,0.2)', fontSize: '24px' }} icon={<TrophyOutlined />} />
               <div>
                 <Title level={3} style={{ color: 'white', margin: 0 }}>
-                  {selectedSeller ? `${selectedSeller.firstname || selectedSeller.firstName || ''} ${selectedSeller.lastname || selectedSeller.lastName || ''}` : 'Seller Analytics'}
+                  {selectedSeller ? `${selectedSeller.firstname || ''} ${selectedSeller.lastname || ''}` : 'Seller Analytics'}
                 </Title>
                 <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: '16px' }}>
                   Performance Dashboard & Insights
@@ -788,11 +649,7 @@ const SellersPage = () => {
                       strokeColor={'rgba(255,255,255,0.8)'}
                       trailColor={'rgba(255,255,255,0.2)'}
                       size="small"
-                      format={percent => (
-                        <span style={{ color: 'white', fontSize: '12px' }}>
-                          {percent}% Overall Progress
-                        </span>
-                      )}
+                      format={percent => <span style={{ color: 'white', fontSize: '12px' }}>{percent}% Overall Progress</span>}
                     />
                   </div>
                 )}
@@ -809,7 +666,8 @@ const SellersPage = () => {
         }}
         destroyOnClose
       >
-        <div style={{ padding: '0 8px' }}>
+        {/* Analytics content unchanged */}
+                <div style={{ padding: '0 8px' }}>
           {/* Date Range Filters */}
           <Card
             style={{

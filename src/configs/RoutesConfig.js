@@ -132,48 +132,111 @@ export const protectedRoutes = [
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
     },
     
-    // Seller Role Routes
-    {
-        key: 'seller-dashboard',
-        path: `${APP_PREFIX_PATH}/seller/dashboard`,
-        component: React.lazy(() => import('views/app-views/seller/dashboard')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.SELLER]
-    },
-    {
-        key: 'seller-todo',
-        path: `${APP_PREFIX_PATH}/seller/todo`,
-        component: React.lazy(() => import('views/app-views/seller/todo')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.SELLER]
-    },
-    {
-        key: 'seller-contacts',
-        path: `${APP_PREFIX_PATH}/seller/contacts`,
-        component: React.lazy(() => import('views/app-views/seller/contacts')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.SELLER]
-    },
-    {
-        key: 'seller-leads',
-        path: `${APP_PREFIX_PATH}/seller/leads`,
-        component: React.lazy(() => import('views/app-views/seller/leads')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.SELLER]
-    },
-    {
-        key: 'seller-deals',
-        path: `${APP_PREFIX_PATH}/seller/deals`,
-        component: React.lazy(() => import('views/app-views/seller/deals')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.SELLER]
-    },
-    {
-        key: 'seller-properties',
-        path: `${APP_PREFIX_PATH}/seller/properties`,
-        component: React.lazy(() => import('views/app-views/seller/properties')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.SELLER]
-    },
-    {
-        key: 'seller-invoices',
-        path: `${APP_PREFIX_PATH}/seller/invoices`,
-        component: React.lazy(() => import('views/app-views/seller/invoices')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.SELLER]
-    }
+   // Seller Role Routes
+{
+    key: 'seller-dashboard',
+    path: `${APP_PREFIX_PATH}/seller/dashboard`,
+    component: React.lazy(() => import('views/app-views/seller/dashboard')),
+    allowedRoles: [
+        UserRoles.SUPER_ADMIN,
+        UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES
+    ]
+},
+{
+    key: 'seller-todo',
+    path: `${APP_PREFIX_PATH}/seller/todo`,
+    component: React.lazy(() => import('views/app-views/seller/todo')),
+    allowedRoles: [
+        UserRoles.SUPER_ADMIN,
+        UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES
+    ]
+},
+{
+    key: 'seller-contacts',
+    path: `${APP_PREFIX_PATH}/seller/contacts`,
+    component: React.lazy(() => import('views/app-views/seller/contacts')),
+    allowedRoles: [
+        UserRoles.SUPER_ADMIN,
+        UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES
+    ]
+},
+{
+    key: 'seller-leads',
+    path: `${APP_PREFIX_PATH}/seller/leads`,
+    component: React.lazy(() => import('views/app-views/seller/leads')),
+    allowedRoles: [
+        UserRoles.SUPER_ADMIN,
+        UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES
+    ]
+},
+{
+    key: 'seller-deals',
+    path: `${APP_PREFIX_PATH}/seller/deals`,
+    component: React.lazy(() => import('views/app-views/seller/deals')),
+    allowedRoles: [
+        UserRoles.SUPER_ADMIN,
+        UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES
+    ]
+},
+{
+    key: 'seller-properties',
+    path: `${APP_PREFIX_PATH}/seller/properties`,
+    component: React.lazy(() => import('views/app-views/seller/properties')),
+    allowedRoles: [
+        UserRoles.SUPER_ADMIN,
+        UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES
+    ]
+},
+{
+    key: 'seller-invoices',
+    path: `${APP_PREFIX_PATH}/seller/invoices`,
+    component: React.lazy(() => import('views/app-views/seller/invoices')),
+    allowedRoles: [
+        UserRoles.SUPER_ADMIN,
+        UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES
+    ]
+}
 ]
    

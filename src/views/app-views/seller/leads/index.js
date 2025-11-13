@@ -9,7 +9,8 @@ import {
   Modal,
   message,
   Statistic,
-  Progress
+  Progress,
+  Tooltip
 } from 'antd';
 import { 
   UserAddOutlined, 
@@ -19,7 +20,8 @@ import {
   ClockCircleOutlined,
   TrophyOutlined,
   StarOutlined,
-  UploadOutlined
+  UploadOutlined,
+  InfoCircleOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import LeadsService from 'services/LeadsService';
@@ -265,7 +267,8 @@ const SellerLeadsPage = () => {
         </Col>
         <Col>
           <Space>
-            <Button 
+            {/** 
+             * <Button 
               type="primary" 
               icon={<UserAddOutlined />}
               onClick={handleAddLead}
@@ -278,6 +281,8 @@ const SellerLeadsPage = () => {
             >
               Import CSV
             </Button>
+             */}
+            
             <Button 
               icon={<ReloadOutlined />}
               onClick={fetchLeads}
@@ -349,7 +354,12 @@ const SellerLeadsPage = () => {
       </Row>
       
       {/* Leads List */}
-      <Card title="Leads" style={{ marginBottom: '24px' }}>
+      <Card title="Leads" style={{ marginBottom: '24px' }}
+       extra={
+    <Tooltip title="Click any lead to view details, send WhatsApp/email, or log a call">
+      <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'pointer', fontSize: '20px' }} />
+    </Tooltip>
+  }>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '50px' }}>
             Loading leads...

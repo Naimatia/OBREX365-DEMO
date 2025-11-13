@@ -1,32 +1,27 @@
 // @ts-nocheck
 import React, { useState, useMemo } from 'react';
-import { 
-  Table, 
-  Tag, 
-  Space, 
-  Button, 
-  Tooltip, 
-  Input, 
+import {
+  Table,
+  Tag,
+  Space,
+  Button,
+  Tooltip,
+  Input,
   Select,
   DatePicker,
   Dropdown,
   Modal,
-  message
+  message,
 } from 'antd';
-import { 
-  EyeOutlined, 
-  EditOutlined, 
-  DeleteOutlined, 
-  SearchOutlined, 
+import {
+  EyeOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  SearchOutlined,
   FilterOutlined,
   FileTextOutlined,
-  MoreOutlined,
   ExclamationCircleOutlined,
-  WhatsAppOutlined,
-  MailOutlined,
   DollarOutlined,
-  StarOutlined,
-  ShareAltOutlined
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import moment from 'moment';
@@ -37,49 +32,46 @@ const { RangePicker } = DatePicker;
 const { confirm } = Modal;
 
 /**
- * LeadList component for sellers to view and manage their leads
+ * SellerLeadList – Clean, interactive, row-clickable lead table
  */
-const SellerLeadList = ({ 
-  leads, 
-  loading, 
-  onViewLead, 
-  onEditLead, 
+const SellerLeadList = ({
+  leads,
+  loading,
+  onViewLead,
+  onEditLead,
   onDeleteLead,
   onUpdateStatus,
-  onAddNote
+  onAddNote,
 }) => {
   const [searchText, setSearchText] = useState('');
   const [filteredStatus, setFilteredStatus] = useState(null);
   const [filteredInterest, setFilteredInterest] = useState(null);
   const [dateRange, setDateRange] = useState(null);
 
-  // Filter leads based on search and filters
+  // Filter leads
   const filteredLeads = useMemo(() => {
     let filtered = [...leads];
 
-    // Search filter
     if (searchText) {
-      filtered = filtered.filter(lead =>
-        lead.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-        lead.email?.toLowerCase().includes(searchText.toLowerCase()) ||
-        lead.phoneNumber?.includes(searchText) ||
-        lead.region?.toLowerCase().includes(searchText.toLowerCase())
+      filtered = filtered.filter(
+        (lead) =>
+          lead.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+          lead.email?.toLowerCase().includes(searchText.toLowerCase()) ||
+          lead.phoneNumber?.includes(searchText) ||
+          lead.region?.toLowerCase().includes(searchText.toLowerCase())
       );
     }
 
-    // Status filter
     if (filteredStatus) {
-      filtered = filtered.filter(lead => lead.status === filteredStatus);
+      filtered = filtered.filter((lead) => lead.status === filteredStatus);
     }
 
-    // Interest level filter
     if (filteredInterest) {
-      filtered = filtered.filter(lead => lead.InterestLevel === filteredInterest);
+      filtered = filtered.filter((lead) => lead.InterestLevel === filteredInterest);
     }
 
-    // Date range filter
     if (dateRange && dateRange.length === 2) {
-      filtered = filtered.filter(lead => {
+      filtered = filtered.filter((lead) => {
         if (!lead.CreationDate) return false;
         const leadDate = moment(lead.CreationDate);
         return leadDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
@@ -89,7 +81,7 @@ const SellerLeadList = ({
     return filtered;
   }, [leads, searchText, filteredStatus, filteredInterest, dateRange]);
 
-  // Handle delete confirmation
+  // Delete confirmation
   const handleDelete = (lead) => {
     confirm({
       title: 'Delete Lead',
@@ -104,33 +96,12 @@ const SellerLeadList = ({
     });
   };
 
-  // Handle status update
+  // Status update
   const handleStatusUpdate = (lead, newStatus) => {
     onUpdateStatus(lead.id, newStatus);
   };
 
-  // Handle communication actions
-  const handleSendEmail = (lead) => {
-    if (lead.email) {
-      const subject = `Follow up - ${lead.name}`;
-      const body = `Hi ${lead.name},\n\nI wanted to follow up with you regarding your inquiry from ${lead.RedirectedFrom}.\n\nBest regards`;
-      window.open(`mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
-    } else {
-      message.warning('No email address available');
-    }
-  };
-
-  const handleSendWhatsApp = (lead) => {
-    if (lead.phoneNumber) {
-      const cleanPhone = lead.phoneNumber.replace(/[\s\-\(\)]/g, '');
-      const message = `Hi ${lead.name}, I wanted to follow up with you regarding your inquiry from ${lead.RedirectedFrom}.`;
-      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
-    } else {
-      message.warning('No phone number available');
-    }
-  };
-
-  // Get source icon
+// Get source icon
   const getSourceIcon = (source) => {
     switch (source?.toLowerCase()) {
       case 'facebook':
@@ -150,53 +121,14 @@ const SellerLeadList = ({
     }
   };
 
-  // Table columns
+  // Table Columns
   const columns = [
     {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
       sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
-      render: (text, record) => (
-        <Button type="link" onClick={() => onViewLead(record)} style={{ padding: 0 }}>
-          {text || 'Unknown'}
-        </Button>
-      ),
-    },
-    {
-      title: 'Contact',
-      key: 'contact',
-      render: (_, record) => (
-        <Space direction="vertical" size="small">
-          {record.email && (
-            <Space>
-              <span style={{ fontSize: '12px' }}>{record.email}</span>
-              <Tooltip title="Send Email">
-                <Button 
-                  type="text" 
-                  size="small" 
-                  icon={<MailOutlined />}
-                  onClick={() => handleSendEmail(record)}
-                />
-              </Tooltip>
-            </Space>
-          )}
-          {record.phoneNumber && (
-            <Space>
-              <span style={{ fontSize: '12px' }}>{record.phoneNumber}</span>
-              <Tooltip title="WhatsApp">
-                <Button 
-                  type="text" 
-                  size="small" 
-                  icon={<WhatsAppOutlined />}
-                  onClick={() => handleSendWhatsApp(record)}
-                  style={{ color: '#25D366' }}
-                />
-              </Tooltip>
-            </Space>
-          )}
-        </Space>
-      ),
+      render: (text) => <strong>{text || 'Unknown'}</strong>,
     },
     {
       title: 'Region',
@@ -208,12 +140,15 @@ const SellerLeadList = ({
       title: 'Source',
       dataIndex: 'RedirectedFrom',
       key: 'source',
-      render: (source) => source ? (
-        <Space>
-          <span>{getSourceIcon(source)}</span>
-          <span>{source}</span>
-        </Space>
-      ) : '-',
+      render: (source) =>
+        source ? (
+          <Space>
+            <span>{getSourceIcon(source)}</span>
+            <span>{source}</span>
+          </Space>
+        ) : (
+          '-'
+        ),
     },
     {
       title: 'Interest',
@@ -225,28 +160,28 @@ const SellerLeadList = ({
         { text: 'Low', value: LeadInterestLevel.LOW },
       ],
       render: (level) => {
-        switch (level) {
-          case LeadInterestLevel.HIGH:
-            return <Tag color="red">High</Tag>;
-          case LeadInterestLevel.MEDIUM:
-            return <Tag color="orange">Medium</Tag>;
-          case LeadInterestLevel.LOW:
-            return <Tag color="blue">Low</Tag>;
-          default:
-            return level ? <Tag color="default">{level}</Tag> : '-';
-        }
+        const map = {
+          [LeadInterestLevel.HIGH]: { color: 'red', text: 'High' },
+          [LeadInterestLevel.MEDIUM]: { color: 'orange', text: 'Medium' },
+          [LeadInterestLevel.LOW]: { color: 'blue', text: 'Low' },
+        };
+        const { color, text } = map[level] || { color: 'default', text: level };
+        return <Tag color={color}>{text}</Tag>;
       },
     },
     {
       title: 'Budget',
       dataIndex: 'Budget',
       key: 'budget',
-      render: (budget) => budget ? (
-        <Space>
-          <DollarOutlined />
-          <span>{budget.toLocaleString()}</span>
-        </Space>
-      ) : '-',
+      render: (budget) =>
+        budget ? (
+          <Space>
+            <DollarOutlined />
+            <span>{budget.toLocaleString()}</span>
+          </Space>
+        ) : (
+          '-'
+        ),
     },
     {
       title: 'Status',
@@ -258,43 +193,23 @@ const SellerLeadList = ({
         { text: 'Loss', value: LeadStatus.LOSS },
       ],
       render: (status, record) => {
-        let color = 'default';
-        switch (status) {
-          case LeadStatus.PENDING:
-            color = 'orange';
-            break;
-          case LeadStatus.GAIN:
-            color = 'green';
-            break;
-          case LeadStatus.LOSS:
-            color = 'red';
-            break;
-        }
-        
+        const colorMap = {
+          [LeadStatus.PENDING]: 'orange',
+          [LeadStatus.GAIN]: 'green',
+          [LeadStatus.LOSS]: 'red',
+        };
         return (
-          <Dropdown 
+          <Dropdown
             menu={{
-              items: [
-                {
-                  key: LeadStatus.PENDING,
-                  label: <Tag color="orange">Pending</Tag>,
-                  onClick: () => handleStatusUpdate(record, LeadStatus.PENDING)
-                },
-                {
-                  key: LeadStatus.GAIN,
-                  label: <Tag color="green">Gain</Tag>,
-                  onClick: () => handleStatusUpdate(record, LeadStatus.GAIN)
-                },
-                {
-                  key: LeadStatus.LOSS,
-                  label: <Tag color="red">Loss</Tag>,
-                  onClick: () => handleStatusUpdate(record, LeadStatus.LOSS)
-                }
-              ]
+              items: Object.values(LeadStatus).map((s) => ({
+                key: s,
+                label: <Tag color={colorMap[s]}>{s}</Tag>,
+                onClick: () => handleStatusUpdate(record, s),
+              })),
             }}
             trigger={['click']}
           >
-            <Tag color={color} style={{ cursor: 'pointer' }}>
+            <Tag color={colorMap[status]} style={{ cursor: 'pointer' }}>
               {status || 'Unknown'}
             </Tag>
           </Dropdown>
@@ -309,60 +224,71 @@ const SellerLeadList = ({
         if (!a.CreationDate || !b.CreationDate) return 0;
         return moment(a.CreationDate).unix() - moment(b.CreationDate).unix();
       },
-      render: (date) => date ? moment(date).format('MMM DD, YYYY') : '-',
+      render: (date) => (date ? moment(date).format('MMM DD, YYYY') : '-'),
     },
     {
       title: 'Actions',
       key: 'actions',
-      width: 120,
+      width: 160,
       render: (_, record) => (
-        <Dropdown 
-          menu={{
-            items: [
-              {
-                key: 'view',
-                icon: <EyeOutlined />,
-                label: 'View Details',
-                onClick: () => onViewLead(record)
-              },
-              {
-                key: 'edit',
-                icon: <EditOutlined />,
-                label: 'Edit',
-                onClick: () => onEditLead(record)
-              },
-              {
-                key: 'note',
-                icon: <FileTextOutlined />,
-                label: 'Quick Note',
-                onClick: () => {
-                  const note = prompt('Enter note:');
-                  if (note && note.trim()) {
-                    onAddNote(record.id, note.trim());
-                  }
-                }
-              },
-              {
-                type: 'divider'
-              },
-              {
-                key: 'delete',
-                icon: <DeleteOutlined />,
-                label: 'Delete',
-                danger: true,
-                onClick: () => handleDelete(record)
-              }
-            ]
-          }}
-          trigger={['click']}
-        >
-          <Button type="text" icon={<MoreOutlined />} />
-        </Dropdown>
+        <Space size="middle">
+          <Tooltip title="View Details">
+            <Button
+              type="text"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewLead(record);
+              }}
+            />
+          </Tooltip>
+
+          <Tooltip title="Edit">
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditLead(record);
+              }}
+            />
+          </Tooltip>
+
+          <Tooltip title="Quick Note">
+            <Button
+              type="text"
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                const note = prompt('Enter note:');
+                if (note?.trim()) onAddNote(record.id, note.trim());
+              }}
+            />
+          </Tooltip>
+
+         {/**
+          * <Tooltip title="Delete">
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(record);
+              }}
+            />
+          </Tooltip>
+          */} 
+        </Space>
       ),
     },
   ];
 
-  // Clear all filters
+  // Clear filters
   const clearFilters = () => {
     setSearchText('');
     setFilteredStatus(null);
@@ -372,8 +298,15 @@ const SellerLeadList = ({
 
   return (
     <div>
-      {/* Filters */}
-      <Space style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+      {/* Filter Bar */}
+      <Space
+        style={{
+          marginBottom: 16,
+          display: 'flex',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+        }}
+      >
         <Space wrap>
           <Search
             placeholder="Search leads..."
@@ -383,7 +316,7 @@ const SellerLeadList = ({
             onChange={(e) => setSearchText(e.target.value)}
             prefix={<SearchOutlined />}
           />
-          
+
           <Select
             placeholder="Filter by status"
             allowClear
@@ -407,19 +340,19 @@ const SellerLeadList = ({
             <Option value={LeadInterestLevel.MEDIUM}>Medium Interest</Option>
             <Option value={LeadInterestLevel.LOW}>Low Interest</Option>
           </Select>
-          
+
           <RangePicker
             placeholder={['Start Date', 'End Date']}
             value={dateRange}
             onChange={setDateRange}
             style={{ width: 250 }}
           />
-          
+
           <Button onClick={clearFilters} icon={<FilterOutlined />}>
             Clear Filters
           </Button>
         </Space>
-        
+
         <Space>
           <span style={{ color: '#8c8c8c' }}>
             Total: {filteredLeads.length} leads
@@ -438,10 +371,14 @@ const SellerLeadList = ({
           pageSize: 10,
           showSizeChanger: true,
           showQuickJumper: true,
-          showTotal: (total, range) => 
-            `${range[0]}-${range[1]} of ${total} leads`,
+          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} leads`,
         }}
         scroll={{ x: 1000 }}
+        onRow={(record) => ({
+          onClick: () => onViewLead(record),
+          style: { cursor: 'pointer' },
+        })}
+        rowClassName="clickable-row"
       />
     </div>
   );

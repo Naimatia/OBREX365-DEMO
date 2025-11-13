@@ -83,14 +83,15 @@ const ceoHrNavigation = [
       }
     ]
   },
+
   // HR Management
   {
     key: 'hr',
     title: 'HR',
-    icon: TeamOutlined, // You can choose an appropriate icon for HR
+    icon: TeamOutlined,
     breadcrumb: true,
     submenu: [
-        {
+      {
         key: 'invoices',
         path: `${APP_PREFIX_PATH}/invoices`,
         title: 'Invoices & Billing',
@@ -203,7 +204,8 @@ const ceoHrNavigation = [
 ];
 
 /**
- * Navigation configuration for Seller role
+ * Navigation configuration for Seller & Sales Team roles
+ * Used by: SELLER, SALES_EXECUTIVE, AGENT, TEAM_LEADER, SALES_MANAGER, OFF_PLAN_SALES, READY_TO_MOVE_SALES
  */
 const sellerNavigation = [
   // Seller Dashboard
@@ -309,17 +311,33 @@ const sellerNavigation = [
  * @returns {Array} - Navigation configuration array
  */
 export const getNavigation = (role) => {
-  switch (role) {
-    case UserRoles.CEO:
-    case UserRoles.HR:
-      return ceoHrNavigation;
-    case UserRoles.SELLER:
-      return sellerNavigation;
-    case UserRoles.SUPER_ADMIN:
-      return [...ceoHrNavigation]; // SuperAdmin sees everything
-    default:
-      return sellerNavigation; // Default to seller for unknown roles
+  // Super Admin sees everything (CEO + Seller + more if needed)
+  if (role === UserRoles.SUPER_ADMIN) {
+    return [...ceoHrNavigation, ...sellerNavigation]; // Combine both
   }
+
+  // CEO & HR
+  if (role === UserRoles.CEO || role === UserRoles.HR) {
+    return ceoHrNavigation;
+  }
+
+  // All Sales & Seller Roles use the same navigation
+  const salesRoles = [
+    UserRoles.SELLER,
+    UserRoles.SALES_EXECUTIVE,
+    UserRoles.AGENT,
+    UserRoles.TEAM_LEADER,
+    UserRoles.SALES_MANAGER,
+    UserRoles.OFF_PLAN_SALES,
+    UserRoles.READY_TO_MOVE_SALES
+  ];
+
+  if (salesRoles.includes(role)) {
+    return sellerNavigation;
+  }
+
+  // Default fallback
+  return sellerNavigation;
 };
 
 export default getNavigation;

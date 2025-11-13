@@ -1,6 +1,6 @@
 // services/firebase/LeadHistoryService.js
 import { db } from 'configs/FirebaseConfig';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
 
 class LeadHistoryService {
   static async addHistory(leadId, history) {
@@ -53,6 +53,16 @@ class LeadHistoryService {
     } catch (error) {
       console.error('Error fetching company:', error);
       return { name: '[Your Company]', email: 'info@company.com', phone: 'your phone' };
+    }
+  }
+
+  /** Mark the lead as contacted (idempotent) */
+  static async markAsContacted(leadId) {
+    const leadRef = doc(db, 'leads', leadId);
+    try {
+      await updateDoc(leadRef, { contacted: true });
+    } catch (err) {
+      console.error('Failed to mark lead as contacted:', err);
     }
   }
 }
