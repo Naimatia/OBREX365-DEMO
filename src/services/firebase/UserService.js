@@ -862,6 +862,32 @@ static async deleteUser(userId) {
       return null;
     }
   }
+
+  // Add this method to your existing UserService class
+static async changeUserCompanyId(targetUserId, newCompanyId) {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('You must be logged in.');
+
+    // Get current user data to check if you're the owner
+    const ownerData = await this.getUserData(currentUser.uid);
+    if (!ownerData?.isOwner) {
+      throw new Error('Only the owner can change company_id.');
+    }
+
+    const userRef = doc(db, 'users', targetUserId);
+    await updateDoc(userRef, {
+      company_id: newCompanyId,
+      updatedAt: serverTimestamp()
+    });
+
+    console.log(`company_id updated to ${newCompanyId} for user ${targetUserId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to update company_id:', error);
+    throw error;
+  }
+}
 }
 
 export default UserService;

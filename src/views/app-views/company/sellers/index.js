@@ -580,6 +580,7 @@ const SellersPage = () => {
             onChange={setRoleFilter}
             allowClear
           >
+                        <Option value={UserRoles.HR}>HR</Option>
             <Option value={UserRoles.SELLER}>Sales Representative</Option>
             <Option value={UserRoles.SALES_EXECUTIVE}>Sales Executive</Option>
             <Option value={UserRoles.AGENT}>Agent</Option>

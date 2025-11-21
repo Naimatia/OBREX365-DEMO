@@ -249,6 +249,8 @@ class CompanyService {
       throw new Error(`Failed to update company logo: ${error.message}`);
     }
   }
+
+  
 }
 
 const companyService = new CompanyService();

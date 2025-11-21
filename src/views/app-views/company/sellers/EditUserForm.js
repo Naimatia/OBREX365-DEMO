@@ -118,6 +118,7 @@ const EditUserForm = ({ initialValues, onFinish, onCancel }) => {
           tooltip="HR members can manage the team and settings. Sellers have access to sales features."
         >
           <Select>
+            <Option value={UserRoles.HR}>HR</Option>
             <Option value={UserRoles.SELLER}>Sales Representative</Option>
             <Option value={UserRoles.SALES_EXECUTIVE}>Sales Executive</Option>
             <Option value={UserRoles.AGENT}>Agent</Option>
