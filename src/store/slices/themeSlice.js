@@ -3,6 +3,7 @@ import { THEME_CONFIG } from 'configs/AppConfig'
 
 export const initialState = THEME_CONFIG
 
+
 export const themeSlice = createSlice({
 	name: 'theme',
 	initialState,

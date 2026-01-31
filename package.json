@@ -5,6 +5,10 @@
   "dependencies": {
     "@ant-design/plots": "^2.6.1",
     "@antv/g2": "^5.3.5",
+    "@capacitor/android": "^8.0.1",
+    "@capacitor/cli": "^8.0.1",
+    "@capacitor/core": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.0",
     "@emotion/react": "^11.10.5",
     "@emotion/styled": "^11.10.5",
     "@hello-pangea/dnd": "^16.0.0",

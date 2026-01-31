@@ -119,6 +119,7 @@ export const AppLayout = ({ navCollapsed, navType, direction, children, user }) 
                 <MobileNav 
                     routeInfo={currentRouteInfo} 
                     hideGroupTitle={false} 
+                    navigationConfig={configToUse}   // ← add this!
                 />}
         </Layout>
     )
