@@ -58,7 +58,7 @@ const SearchForm = ({ onSearch, loading: parentLoading }) => {
           property_type: '',
           bedrooms: undefined,
           price_range: '',
-          maxPages: 3,
+          maxPages: 1,
         }}
       >
         <Row gutter={[16, 16]}>
