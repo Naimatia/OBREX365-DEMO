@@ -90,20 +90,39 @@ const PropertyDetail = ({
 
   // Get type color for better distinction
   const getTypeColor = (type) => {
-    switch (type?.toLowerCase()) {
-      case 'apartment':
-        return '#fa541c'; // Strong orange
-      case 'villa':
-        return '#52c41a'; // Strong green  
-      case 'townhouse':
-        return '#1890ff'; // Strong blue
-      case 'penthouse':
-        return '#eb2f96'; // Strong pink
-      case 'studio':
-        return '#722ed1'; // Strong purple
-      default:
-        return '#595959'; // Strong gray
-    }
+   if (!type) return '#595959'; // fallback for null/undefined
+
+  switch (type.toLowerCase()) {
+    // Residential
+    case 'studio':
+      return '#722ed1';     // Purple
+    case 'apartment':
+      return '#fa541c';     // Strong orange
+    case 'villa':
+      return '#52c41a';     // Fresh green
+    case 'townhouse':
+      return '#1890ff';     // Bright blue
+    case 'penthouse':
+      return '#eb2f96';     // Vibrant pink/magenta
+    case 'duplex':
+      return '#13c2c2';     // Cyan / teal (distinct from others)
+
+    // Commercial / Business
+    case 'office':
+      return '#2f54eb';     // Deep indigo / corporate blue
+    case 'retail':
+      return '#fadb14';     // Bright yellow / gold (eye-catching for shops)
+    case 'commercial':
+      return '#d48806';     // Warm amber / business orange
+
+    // Land / Plot
+    case 'land':
+      return '#8c8c8c';     // Neutral dark gray (land feels more "raw")
+
+    // Fallback
+    default:
+      return '#595959';
+  }
   };
 
   // Check if the current user has permission to edit/delete
