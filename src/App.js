@@ -1,14 +1,12 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Provider } from 'react-redux';
-import { HashRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom'
 import { ThemeSwitcherProvider } from 'react-css-theme-switcher';
-import { Capacitor } from '@capacitor/core';
-import { StatusBar, Style } from '@capacitor/status-bar';
-
 import store from './store';
-import Layouts from './layouts';
+// history is imported but not used with BrowserRouter in React Router v6
+import Layouts from './layouts'
 import { THEME_CONFIG } from './configs/AppConfig';
-import './lang';
+import './lang'
 
 const themes = {
   dark: `${process.env.PUBLIC_URL}/css/dark-theme.css`,
@@ -16,27 +14,18 @@ const themes = {
 };
 
 function App() {
-
-  // ✅ FIX STATUS BAR / NOTCH
-  useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-    //  StatusBar.setOverlaysWebView({ overlay: false });
-      StatusBar.setStyle({ style: Style.Dark }); // dark icons
-    }
-  }, []);
-
   return (
     <div className="App">
       <Provider store={store}>
-        <HashRouter>
-          <ThemeSwitcherProvider
-            themeMap={themes}
-            defaultTheme={THEME_CONFIG.currentTheme}
+        <BrowserRouter>
+          <ThemeSwitcherProvider 
+            themeMap={themes} 
+            defaultTheme={THEME_CONFIG.currentTheme} 
             insertionPoint="styles-insertion-point"
           >
             <Layouts />
           </ThemeSwitcherProvider>
-        </HashRouter>
+        </BrowserRouter>  
       </Provider>
     </div>
   );
