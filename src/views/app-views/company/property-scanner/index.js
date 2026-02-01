@@ -186,7 +186,7 @@ useEffect(() => {
     try {
       message.loading({ content: 'Scanning PropertyFinder.ae...', key: 'scrapeKey', duration: 0 });
 
-      const res = await axios.get('https://propertyscraper.netlify.app/api/scrape', {
+      const res = await axios.get('https://property-scraper-duw1.onrender.com/api/scrape', {
         params: {
           maxPages: formData.maxPages || 3,
         },

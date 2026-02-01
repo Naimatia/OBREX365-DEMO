@@ -58,14 +58,6 @@ const ceoHrNavigation = [
         submenu: []
       },
       {
-        key: 'invoices',
-        path: `${APP_PREFIX_PATH}/invoices`,
-        title: 'Invoices & Billing',
-        icon: FileTextOutlined,
-        breadcrumb: true,
-        submenu: []
-      },
-      {
         key: 'employees',
         path: `${APP_PREFIX_PATH}/company/employees`,
         title: 'Employees',
