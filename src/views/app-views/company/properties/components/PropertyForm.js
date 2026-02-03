@@ -153,16 +153,18 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
   };
 
   const propertyTypes = [
-    'Studio', 
-    'Apartment', 
-    'Villa', 
-    'Townhouse', 
-    'Penthouse', 
-    'Duplex', 
-    'Office', 
-    'Retail', 
-    'Commercial', 
-    'Land'
+ "Studio",
+  "Apartment",
+  "Villa",
+  "Penthouse",
+  "Retail",
+  "Hotel",
+  "Building",
+  "Tower",
+  "Land",
+  "Hotel Room",
+  "Store",
+  "Mall",
   ];
 
   const propertyCategories = ['OffPlan', 'Buy', 'Rent'];

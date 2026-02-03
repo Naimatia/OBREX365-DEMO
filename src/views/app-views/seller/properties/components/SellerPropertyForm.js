@@ -39,14 +39,22 @@ const PropertyCategories = {
 };
 
 const PropertyTypes = {
+ALL: 'All Types',
   STUDIO: 'Studio',
   APARTMENT: 'Apartment',
   VILLA: 'Villa',
   PENTHOUSE: 'Penthouse',
   TOWNHOUSE: 'Townhouse',
+  RETAIL: 'Retail',
+  HOTEL: 'Hotel',
+  BUILDING: 'Building',
+  TOWER: 'Tower',
+  LAND: 'Land',
+  HOTEL_ROOM: 'Hotel Room',
+  STORE: 'Store',
+  MALL: 'Mall',
   OFFICE: 'Office',
   WAREHOUSE: 'Warehouse',
-  LAND: 'Land'
 };
 
 const PropertyStatus = {

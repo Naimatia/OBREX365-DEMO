@@ -1,42 +1,42 @@
 [
-	{
-		"name": "Erin Gonzales",
-		"desc": "has comment on your board",
-		"img": "thumb-1.jpg",
-		"icon": "",
-		"time": "7:57PM",
-		"type": ""
-	},
-	{
-		"name": "Frederick Adams",
-		"desc": "has mentioned you in a post",
-		"img": "thumb-8.jpg",
-		"icon": "",
-		"time": "3:12PM",
-		"type": ""
-	},
-	{
-		"name": "",
-		"desc": "You have received a new message",
-		"img": "",
-		"icon": "mail",
-		"time": "11:38AM",
-		"type": "info"
-	},
-	{
-		"name": "Carolyn Hanson",
-		"desc": "has invited you to a project",
-		"img": "thumb-9.jpg",
-		"icon": "",
-		"time": "9:42AM",
-		"type": ""
-	},
-	{
-		"name": "",
-		"desc": "Please fill in your daily report",
-		"img": "",
-		"icon": "alert",
-		"time": "7:57AM",
-		"type": "danger"
-	}
+  {
+    "name": "Sara Al Maktoum",
+    "desc": "has enquired about your Downtown apartment listing",
+    "img": "thumb-1.jpg",
+    "icon": "",
+    "time": "7:57 PM",
+    "type": ""
+  },
+  {
+    "name": "Mohammed Khalid",
+    "desc": "has booked a viewing for Villa in Palm Jumeirah",
+    "img": "thumb-8.jpg",
+    "icon": "",
+    "time": "3:12 PM",
+    "type": ""
+  },
+  {
+    "name": "",
+    "desc": "You have received a new WhatsApp message from a lead",
+    "img": "",
+    "icon": "mail",
+    "time": "11:38 AM",
+    "type": "info"
+  },
+  {
+    "name": "Ahmed Rossi",
+    "desc": "submitted an offer on your Burj Khalifa penthouse",
+    "img": "thumb-9.jpg",
+    "icon": "",
+    "time": "9:42 AM",
+    "type": ""
+  },
+  {
+    "name": "",
+    "desc": "Follow-up reminder: Contact client about Emaar Beachfront unit",
+    "img": "",
+    "icon": "alert",
+    "time": "7:57 AM",
+    "type": "danger"
+  }
 ]

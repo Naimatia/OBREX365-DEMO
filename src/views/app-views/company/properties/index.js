@@ -229,7 +229,7 @@ const PropertiesPage = () => {
   };
 
   // Get available property types for filter
-  const propertyTypes = Array.from(new Set(properties.map(p => p.Type || ''))).filter(Boolean);
+ // const propertyTypes = Array.from(new Set(properties.map(p => p.Type || ''))).filter(Boolean);
   
   // Format currency for statistics
   const formatCurrency = (value) => {
@@ -325,20 +325,29 @@ const PropertiesPage = () => {
             />
           </Col>
           
-          <Col xs={12} md={4}>
-            <Select
-              placeholder='Filter by type'
-              style={{ width: '100%' }}
-              value={filterType}
-              onChange={setFilterType}
-              allowClear
-            >
-              <Option value='All'>All Types</Option>
-              {propertyTypes.map(type => (
-                <Option key={type} value={type}>{type}</Option>
-              ))}
-            </Select>
-          </Col>
+        <Col xs={12} md={4}>
+  <Select
+    placeholder="Filter by property type"
+    style={{ width: '100%' }}
+    value={filterType}           // ← assume you have this state
+    onChange={setFilterType}     // ← assume you have this setter
+    allowClear
+  >
+    <Option value="All">All Types</Option>
+    <Option value="Studio">Studio</Option>
+    <Option value="Apartment">Apartment</Option>
+    <Option value="Villa">Villa</Option>
+    <Option value="Penthouse">Penthouse</Option>
+    <Option value="Retail">Retail</Option>
+    <Option value="Hotel">Hotel</Option>
+    <Option value="Building">Building</Option>
+    <Option value="Tower">Tower</Option>
+    <Option value="Land">Land</Option>
+    <Option value="Hotel Room">Hotel Room</Option>
+    <Option value="Store">Store</Option>
+    <Option value="Mall">Mall</Option>
+  </Select>
+</Col>
           
           <Col xs={12} md={4}>
             <Select
