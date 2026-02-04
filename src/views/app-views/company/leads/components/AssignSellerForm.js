@@ -3,37 +3,27 @@ import { Modal, Form, Select, Typography } from 'antd';
 
 const { Text } = Typography;
 
-/**
- * Component for assigning a seller to a lead
- */
-const AssignSellerForm = ({ 
-  visible, 
-  onCancel, 
-  onSubmit, 
-  confirmLoading, 
-  lead,
-  sellers = []
-}) => {
+const AssignSellerForm = ({ visible, onCancel, onSubmit, confirmLoading, lead, sellers = [] }) => {
   const [form] = Form.useForm();
-  
+
   useEffect(() => {
     if (visible) {
       form.resetFields();
-      
       if (lead) {
-        form.setFieldsValue({
-          seller_id: lead.seller_id || undefined
-        });
+        form.setFieldsValue({ seller_id: lead.seller_id || undefined });
       }
     }
   }, [visible, lead, form]);
-  
+
   const handleSubmit = () => {
-    form.validateFields().then(values => {
-      onSubmit(lead.id, values.seller_id);
-    }).catch(error => {
-      console.error('Form validation failed:', error);
-    });
+    form
+      .validateFields()
+      .then((values) => {
+        onSubmit(lead.id, values.seller_id);
+      })
+      .catch((error) => {
+        console.error('Form validation failed:', error);
+      });
   };
 
   return (
@@ -57,9 +47,14 @@ const AssignSellerForm = ({
             allowClear
             size="large"
             style={{ width: '100%' }}
+            virtual={false} // keep this if you had many sellers
+            // ↓ This forces the dropdown to open BELOW the input
+            placement="bottomLeft"   // or "bottomRight" if you prefer right-aligned
+            // Optional: make it even more "sticky" to bottom
+            // dropdownAlign={{ offset: [0, 4] }} // small vertical offset
           >
             {sellers.length > 0 ? (
-              sellers.map(seller => (
+              sellers.map((seller) => (
                 <Select.Option key={seller.id} value={seller.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>
@@ -75,7 +70,7 @@ const AssignSellerForm = ({
             )}
           </Select>
         </Form.Item>
-        
+
         <Text type="secondary">
           The assigned seller will be responsible for this lead and will receive notifications about updates.
         </Text>

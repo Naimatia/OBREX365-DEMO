@@ -3,7 +3,7 @@ import { db } from 'configs/FirebaseConfig';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
 
 class LeadHistoryService {
-  static async addHistory(leadId, history) {
+  static async addHistory(leadId, history, currentUserId) {
     return await addDoc(collection(db, 'leads', leadId, 'leadHistory'), {
       ...history,
       createdAt: serverTimestamp()
