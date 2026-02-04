@@ -126,7 +126,7 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
   // Load history
   useEffect(() => {
     if (visible && lead?.id) {
-      const unsubscribe = LeadHistoryService.listenToHistory(lead.id, setHistory);
+      const unsubscribe = LeadHistoryService.listenToHistory(lead.id,lead.seller_id, setHistory);
       return () => unsubscribe();
     }
   }, [visible, lead?.id]);
@@ -146,6 +146,8 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
       await LeadHistoryService.addHistory(lead.id, {
         type: 'note',
         message: note,
+              sellerId: currentUser.id,               // ← important new field
+
         createdBy: { id: currentUser.id, name: `${currentUser.firstname} ${currentUser.lastname}` }
       });
       noteForm.resetFields();
@@ -219,6 +221,7 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
       type: 'email',
       message: body,
       templateId: values.template,
+            sellerId: currentUser.id,               // ← important new field
       createdBy: { id: currentUser.id, name: historyName }
     });
 
@@ -240,6 +243,8 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
       type: 'call',
       duration: values.duration,
       outcome: values.outcome,
+            sellerId: currentUser.id,               // ← important new field
+
       createdBy: { id: currentUser.id, name: historyName }
     });
     callForm.resetFields();
@@ -257,6 +262,8 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
     await LeadHistoryService.addHistory(lead.id, {
       type: 'status',
       message: `Status changed to ${newStatus}`,
+            sellerId: currentUser.id,               // ← important new field
+
       createdBy: { id: currentUser.id, name: historyName }
     });
   };
