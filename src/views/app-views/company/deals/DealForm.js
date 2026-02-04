@@ -465,7 +465,7 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
                 >
                   {properties.map(property => (
                     <Option key={property.id} value={property.id}>
-                      {property.street}, {property.city}
+                      {property.title}, {property.city}
                     </Option>
                   ))}
                 </Select>

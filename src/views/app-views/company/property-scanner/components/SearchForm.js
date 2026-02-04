@@ -62,8 +62,8 @@ const propertyTypes = [
     { label: 'Any', value: '' },
   { label: 'Rent', value: '2' },
   { label: 'Buy', value: '1' },
-  { label: 'Sell', value: '3' },
-  { label: 'Share', value: '4' },
+  { label: 'New Projects', value: '3' },
+  { label: 'Commercial', value: '4' },
 ];
 
 const bedroomsOptions = [
@@ -75,6 +75,8 @@ const bedroomsOptions = [
   { label: '4 Bedrooms', value: '4' },
   { label: '5+ Bedrooms', value: '5+' },
 ];
+
+
 
 const SearchForm = ({ onSearch, loading }) => {
   const [form] = Form.useForm();
@@ -149,6 +151,52 @@ const SearchForm = ({ onSearch, loading }) => {
               </Select>
             </Form.Item>
           </Col>
+
+<Col xs={24} sm={12} md={6}>
+  <Form.Item name="minPrice" label="Min Price (AED)">
+    <Select placeholder="No minimum" allowClear>
+      <Option value="">No minimum</Option>
+      <Option value="300000">300,000</Option>
+      <Option value="400000">400,000</Option>
+      <Option value="500000">500,000</Option>
+      <Option value="750000">750,000</Option>
+      <Option value="1000000">1,000,000</Option>
+      <Option value="1500000">1,500,000</Option>
+      <Option value="2000000">2,000,000</Option>
+      <Option value="3000000">3,000,000</Option>
+      <Option value="5000000">5,000,000</Option>
+      <Option value="7500000">7,500,000</Option>
+      <Option value="10000000">10,000,000</Option>
+      <Option value="15000000">15,000,000</Option>
+      <Option value="20000000">20,000,000</Option>
+      <Option value="30000000">30,000,000</Option>
+      <Option value="50000000">50,000,000</Option>
+    </Select>
+  </Form.Item>
+</Col>
+
+<Col xs={24} sm={12} md={6}>
+  <Form.Item name="maxPrice" label="Max Price (AED)">
+    <Select placeholder="No maximum" allowClear>
+      <Option value="">No maximum</Option>
+      <Option value="400000">400,000</Option>
+      <Option value="500000">500,000</Option>
+      <Option value="750000">750,000</Option>
+      <Option value="1000000">1,000,000</Option>
+      <Option value="1500000">1,500,000</Option>
+      <Option value="2000000">2,000,000</Option>
+      <Option value="3000000">3,000,000</Option>
+      <Option value="5000000">5,000,000</Option>
+      <Option value="7500000">7,500,000</Option>
+      <Option value="10000000">10,000,000</Option>
+      <Option value="15000000">15,000,000</Option>
+      <Option value="20000000">20,000,000</Option>
+      <Option value="30000000">30,000,000</Option>
+      <Option value="50000000">50,000,000+</Option>
+    </Select>
+  </Form.Item>
+</Col>
+
 
           <Col xs={24} sm={12} md={6}>
             <Form.Item name="maxPages" label="Max Pages to Scan">

@@ -113,6 +113,11 @@ const PropertyScannerPage = () => {
         } else {
           params.bedrooms = values.bedrooms;
         }
+
+        // Ajout des prix
+    if (values.minPrice) params.minPrice = values.minPrice;
+    if (values.maxPrice) params.maxPrice = values.maxPrice;
+    
       }
 
       const res = await axios.get('https://property-scraper-duw1.onrender.com/api/scrape', { // ← CHANGE TO YOUR REAL BACKEND URL
