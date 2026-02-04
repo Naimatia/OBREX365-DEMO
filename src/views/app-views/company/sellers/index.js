@@ -331,7 +331,7 @@ const SellersPage = () => {
       setLoading(true);
       const updateData = {
         firstname: values.firstname,
-        lastName: values.lastname,
+        lastname: values.lastname,
         phoneNumber: values.phoneNumber,
         phoneNumber2: values.phoneNumber2,
         phoneNumber3: values.phoneNumber3,

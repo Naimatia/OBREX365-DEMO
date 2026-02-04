@@ -48,8 +48,8 @@ const EditUserForm = ({ initialValues, onFinish, onCancel }) => {
         onFinish={handleSubmit}
         requiredMark="optional"
         initialValues={{
-          firstname: getInitialValue(initialValues, ['firstname', 'firstName']),
-          lastname: getInitialValue(initialValues, ['lastname', 'lastName']),
+          firstname: getInitialValue(initialValues, ['firstname', 'firstname']),
+          lastname: getInitialValue(initialValues, ['lastname', 'lastname']),
           email: initialValues?.email,
           secondaryEmail: initialValues?.secondaryEmail,
           role: getInitialValue(initialValues, ['Role', 'role']),

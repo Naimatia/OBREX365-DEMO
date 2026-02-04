@@ -60,10 +60,10 @@ const transactionTypes = [
 
 const propertyTypes = [
     { label: 'Any', value: '' },
-  { label: 'Rent', value: '1' },
-  { label: 'Sale', value: '2' },
-  { label: 'New projects', value: '3' },
-  { label: 'Commercial', value: '4' },
+  { label: 'Rent', value: '2' },
+  { label: 'Buy', value: '1' },
+  { label: 'Sell', value: '3' },
+  { label: 'Share', value: '4' },
 ];
 
 const bedroomsOptions = [
@@ -115,7 +115,7 @@ const SearchForm = ({ onSearch, loading }) => {
           </Col>
 
           <Col xs={24} sm={12} md={6}>
-            <Form.Item name="transactionType" label="Type">
+            <Form.Item name="transactionType" label="Property Type">
               <Select placeholder="Any Type" allowClear>
                 {transactionTypes.map((t) => (
                   <Option key={t.value} value={t.value}>
@@ -127,7 +127,7 @@ const SearchForm = ({ onSearch, loading }) => {
           </Col>
 
           <Col xs={24} sm={12} md={6}>
-            <Form.Item name="property_type" label="Property Type">
+            <Form.Item name="property_type" label="Type">
               <Select placeholder="Any Type" allowClear>
                 {propertyTypes.map((t) => (
                   <Option key={t.value} value={t.value}>
