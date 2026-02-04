@@ -279,6 +279,7 @@ const sellerNavigation = [
   },
 
   // Financial for Sellers
+  /*
   {
     key: 'seller.financial',
     title: 'Financial',
@@ -295,6 +296,7 @@ const sellerNavigation = [
       }
     ]
   }
+    */
 ];
 
 /**

@@ -4,61 +4,83 @@ import { useSelector } from 'react-redux';
 import { UserRoles } from 'models/UserModel';
 import { AUTH_PREFIX_PATH, APP_PREFIX_PATH } from 'configs/AppConfig';
 
-/**
- * Role-based route guard component
- * @param {Object} props - Component props
- * @param {React.ReactNode} props.children - Child component to render if authorized
- * @param {string[]} props.allowedRoles - Array of roles allowed to access this route
- * @param {string} [props.redirectPath] - Path to redirect if not authorized
- * @returns {JSX.Element} - Rendered component or redirect
- */
-const RoleBasedRoute = ({ 
-  children, 
-  allowedRoles = [], 
-  redirectPath = `${APP_PREFIX_PATH}/access-denied` 
+// All roles that should behave like "sales team / seller" users
+const SALES_TEAM_ROLES = [
+  UserRoles.SELLER,
+  UserRoles.SALES_EXECUTIVE,
+  UserRoles.AGENT,
+  UserRoles.TEAM_LEADER,
+  UserRoles.SALES_MANAGER,
+  UserRoles.OFF_PLAN_SALES,
+  UserRoles.READY_TO_MOVE_SALES,
+  // Add COORDINATOR here too if they should have same access
+];
+
+const RoleBasedRoute = ({
+  children,
+  allowedRoles = [],
+  redirectPath = `${APP_PREFIX_PATH}/access-denied`,
 }) => {
-  // Get user from Redux state
-  const user = useSelector(state => state.auth.user);
-  
-  // If no user or token, redirect to login
+  const user = useSelector((state) => state.auth.user);
+
   if (!user) {
     return <Navigate to={`${AUTH_PREFIX_PATH}/login`} replace />;
   }
-  
-  // Check if user role is allowed - check both Role and role fields
-  const userRole = user.Role || user.role || '';
-  
-  console.log('🔍 RoleBasedRoute - User role check:', { userRole, userId: user.id, allowedRoles, currentPath: window.location.pathname });
-  
-  // SuperAdmin has access to all routes
+
+  // Normalize role field (some docs use Role, some use role)
+  const userRole = (user.Role || user.role || '').trim();
+
+  console.log('🔍 RoleBasedRoute', {
+    userRole,
+    userId: user.id,
+    allowedRoles,
+    currentPath: window.location.pathname,
+  });
+
+  // 1. Super Admin → full access to everything
   if (userRole === UserRoles.SUPER_ADMIN) {
-    console.log('✅ RoleBasedRoute - SuperAdmin access granted');
+    console.log('✅ SuperAdmin – full access granted');
     return <>{children}</>;
   }
-  
-  // For CEO and HR, they share the same permissions
-  if ((userRole === UserRoles.CEO || userRole === UserRoles.HR) && 
-      (allowedRoles.includes(UserRoles.CEO) || allowedRoles.includes(UserRoles.HR))) {
-    console.log('✅ RoleBasedRoute - CEO/HR access granted');
-    return <>{children}</>;
-  }
-  
-  // For Seller role, check both 'Seller' and UserRoles.SELLER
-  if (userRole === 'Seller' || userRole === UserRoles.SELLER) {
-    if (allowedRoles.includes('Seller') || allowedRoles.includes(UserRoles.SELLER)) {
-      console.log('✅ RoleBasedRoute - Seller access granted');
+
+  // 2. Sales team members (Seller + Managers + Executives + ...)
+  if (SALES_TEAM_ROLES.includes(userRole)) {
+    // Grant access if route allows SELLER or any sales-team role
+    const allowsSales =
+      allowedRoles.includes(UserRoles.SELLER) ||
+      allowedRoles.includes('Seller') || // legacy support
+      allowedRoles.some((r) => SALES_TEAM_ROLES.includes(r));
+
+    if (allowsSales) {
+      console.log(`✅ ${userRole} – sales team access granted`);
       return <>{children}</>;
     }
   }
-  
-  // For other roles, check if explicitly allowed
-  if (allowedRoles.includes(userRole)) {
-    console.log('✅ RoleBasedRoute - Role access granted for:', userRole);
+
+  // 3. CEO & HR group
+  if (
+    (userRole === UserRoles.CEO || userRole === UserRoles.HR) &&
+    (allowedRoles.includes(UserRoles.CEO) ||
+     allowedRoles.includes(UserRoles.HR) ||
+     allowedRoles.includes('CEO') ||
+     allowedRoles.includes('HR'))
+  ) {
+    console.log(`✅ ${userRole} – CEO/HR access granted`);
     return <>{children}</>;
   }
-  
-  // If not authorized, redirect to specified path
-  console.log('❌ RoleBasedRoute - Access DENIED for role:', userRole, 'Required roles:', allowedRoles);
+
+  // 4. Explicit match (fallback – other roles like Accountant, Secretary…)
+  if (allowedRoles.includes(userRole)) {
+    console.log(`✅ Explicit role match – ${userRole} granted`);
+    return <>{children}</>;
+  }
+
+  // Denied
+  console.log('❌ ACCESS DENIED', {
+    userRole,
+    requiredRoles: allowedRoles,
+  });
+
   return <Navigate to={redirectPath} replace />;
 };
 

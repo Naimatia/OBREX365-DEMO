@@ -1,13 +1,14 @@
 import React from 'react';
 import { Form, Select, Button, Row, Col, Card, Typography } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
+import PropTypes from 'prop-types';
 
 const { Option } = Select;
 const { Title } = Typography;
 
 // Real PropertyFinder location IDs
 const mainLocations = [
-  // Emirates
+   // Emirates
   { label: 'Dubai (All)', value: '1' },
   { label: 'Abu Dhabi', value: '3' },
   { label: 'Sharjah', value: '4' },
@@ -40,41 +41,39 @@ const mainLocations = [
   { label: 'Damac Hills', value: '97' },
   { label: 'Tilal Al Ghaf', value: '1132' },
   { label: 'Emirates Living', value: '98' },
+
+];
+
+const transactionTypes = [
+  { label: 'Apartment',     value: '1'  },
+  { label: 'Villa',         value: '35'  },
+  { label: 'Townhouse',     value: '22'  },
+  { label: 'Penthouse',     value: '20'  },
+  { label: 'Duplex',        value: '24' },   // Seen in some links as subtype, but can appear as category
+  { label: 'Hotel Apartment', value: '45' }, // Common in UAE listings
+  { label: 'Whole Building',  value: '10' },
+  { label: 'Land',          value: '5'  },   // Plots / land
+  { label: 'Office',        value: '4'  },
+  { label: 'Retail / Shop', value: '21' },   // Shops / stores
+  { label: 'Warehouse',     value: '13' },
 ];
 
 const propertyTypes = [
-  { label: 'Any Type', value: '' },
-  { label: 'Studio', value: 'studios' },
-  { label: 'Apartment', value: 'apartments' },
-  { label: 'Villa', value: 'villas' },
-  { label: 'Penthouse', value: 'penthouses' },
-  { label: 'Retail', value: 'retail' },
-  { label: 'Hotel', value: 'hotels' },
-  { label: 'Building', value: 'buildings' },
-  { label: 'Tower', value: 'towers' },
-  { label: 'Land', value: 'land' },
-  { label: 'Hotel Room', value: 'hotel-rooms' },
-  { label: 'Store', value: 'shops' },     // or 'stores' — 'shops' is more common on PF
-  { label: 'Mall', value: 'malls' },
+    { label: 'Any', value: '' },
+  { label: 'Rent', value: '1' },
+  { label: 'Sale', value: '2' },
+  { label: 'New projects', value: '3' },
+  { label: 'Commercial', value: '4' },
 ];
 
 const bedroomsOptions = [
   { label: 'Any', value: '' },
-  { label: 'Studio', value: 'studio' },
+  { label: 'Studio', value: '0' },
   { label: '1 Bedroom', value: '1' },
   { label: '2 Bedrooms', value: '2' },
   { label: '3 Bedrooms', value: '3' },
   { label: '4 Bedrooms', value: '4' },
   { label: '5+ Bedrooms', value: '5+' },
-];
-
-const priceRanges = [
-  { label: 'Any Price', value: '' },
-  { label: 'Under 500K AED', value: '0-500000' },
-  { label: '500K – 1M AED', value: '500000-1000000' },
-  { label: '1M – 2M AED', value: '1000000-2000000' },
-  { label: '2M – 5M AED', value: '2000000-5000000' },
-  { label: '5M+ AED', value: '5000000-' },
 ];
 
 const SearchForm = ({ onSearch, loading }) => {
@@ -95,10 +94,10 @@ const SearchForm = ({ onSearch, loading }) => {
         layout="vertical"
         onFinish={handleFinish}
         initialValues={{
-          location: '1',           // default Dubai (All)
+          location: '1',
+          transactionType: '1', // rent by default
           property_type: '',
           bedrooms: '',
-          price_range: '',
           maxPages: 3,
         }}
       >
@@ -116,8 +115,20 @@ const SearchForm = ({ onSearch, loading }) => {
           </Col>
 
           <Col xs={24} sm={12} md={6}>
+            <Form.Item name="transactionType" label="Type">
+              <Select placeholder="Any Type" allowClear>
+                {transactionTypes.map((t) => (
+                  <Option key={t.value} value={t.value}>
+                    {t.label}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+          </Col>
+
+          <Col xs={24} sm={12} md={6}>
             <Form.Item name="property_type" label="Property Type">
-              <Select placeholder="Any Type" allowClear showSearch>
+              <Select placeholder="Any Type" allowClear>
                 {propertyTypes.map((t) => (
                   <Option key={t.value} value={t.value}>
                     {t.label}
@@ -140,21 +151,9 @@ const SearchForm = ({ onSearch, loading }) => {
           </Col>
 
           <Col xs={24} sm={12} md={6}>
-            <Form.Item name="price_range" label="Price Range (AED)">
-              <Select placeholder="Any Price" allowClear>
-                {priceRanges.map((r) => (
-                  <Option key={r.value} value={r.value}>
-                    {r.label}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </Col>
-
-          <Col xs={24} sm={12} md={6}>
-            <Form.Item name="maxPages" label="Max Pages">
+            <Form.Item name="maxPages" label="Max Pages to Scan">
               <Select>
-                {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => (
+                {[1, 2, 3, 4, 5, 6, 8, 10, 15].map((n) => (
                   <Option key={n} value={n}>
                     {n} page{n > 1 ? 's' : ''}
                   </Option>
@@ -180,11 +179,16 @@ const SearchForm = ({ onSearch, loading }) => {
         </Row>
 
         <div style={{ marginTop: 12, color: '#888', fontSize: 12 }}>
-          Note: More pages = longer wait + higher ban risk. Scrape responsibly.
+          Note: More pages = longer wait + higher risk of blocking. Use responsibly.
         </div>
       </Form>
     </Card>
   );
+};
+
+SearchForm.propTypes = {
+  onSearch: PropTypes.func.isRequired,
+  loading: PropTypes.bool.isRequired,
 };
 
 export default SearchForm;
