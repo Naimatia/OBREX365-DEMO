@@ -29,11 +29,30 @@ export const DealStatus = {
 /**
  * Deal Source options
  */
-export const DealSource = {
+
+export const DealSourceEnum = {
   LEADS: 'Leads',
   CONTACTS: 'Contacts',
+  FACEBOOK: 'Facebook',
+  INSTAGRAM: 'Instagram',
+  WEBSITE: 'Website',
+  LINKEDIN: 'LinkedIn',
+  TIKTOK: 'TikTok',
   FREELANCE: 'Freelance'
-}
+};
+
+export const DealSource = [
+  { value: DealSourceEnum.LEADS, icon: '🧲', color: '#1890ff' },
+  { value: DealSourceEnum.CONTACTS, icon: '👥', color: '#52c41a' },
+  { value: DealSourceEnum.FACEBOOK, icon: '📘', color: '#1877F2' },
+  { value: DealSourceEnum.INSTAGRAM, icon: '📷', color: '#E4405F' },
+  { value: DealSourceEnum.WEBSITE, icon: '🌐', color: '#52c41a' },
+  { value: DealSourceEnum.LINKEDIN, icon: '💼', color: '#0A66C2' },
+  { value: DealSourceEnum.TIKTOK, icon: '🎵', color: '#ff0050' },
+  { value: DealSourceEnum.FREELANCE, icon: '💪', color: '#fa8c16' }
+];
+
+
 
 /**
  * Convert Firestore document to deal model

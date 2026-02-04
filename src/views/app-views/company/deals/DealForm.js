@@ -1,15 +1,15 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
-import { 
-  Modal, Form, Input, Select, DatePicker, InputNumber, Button, 
+import {
+  Modal, Form, Input, Select, DatePicker, InputNumber, Button,
   Row, Col, Spin, Alert
 } from 'antd';
 import { db, collection, query, where, getDocs, doc } from 'configs/FirebaseConfig';
-import { 
-  DollarOutlined, UserOutlined, TagOutlined, 
+import {
+  DollarOutlined, UserOutlined, TagOutlined,
   HomeOutlined, FormOutlined, UserSwitchOutlined
 } from '@ant-design/icons';
-import { DealStatus, DealSource } from 'models/DealModel';
+import { DealStatus, DealSource, DealSourceEnum } from 'models/DealModel';
 import contactService from 'services/firebase/ContactService';
 import userService from 'services/firebase/UserService';
 import propertyService from 'services/firebase/PropertyService';
@@ -26,26 +26,42 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
   const [sellers, setSellers] = useState([]);
   const [properties, setProperties] = useState([]);
   const [leads, setLeads] = useState([]);
-  const [selectedSource, setSelectedSource] = useState(isEditing && initialValues ? initialValues.Source : DealSource.LEADS);
+  const [selectedSource, setSelectedSource] = useState(isEditing && initialValues ? initialValues.Source : DealSourceEnum.LEADS);
   const [error, setError] = useState('');
 
   // Reset form when modal becomes visible or hidden
   useEffect(() => {
     if (visible) {
       form.resetFields();
-      
+
       // If we're editing, set the form values
       if (isEditing && initialValues) {
         // Need to format dates for the form
         const formattedValues = {
           ...initialValues,
-          CreationDate: initialValues.CreationDate ? moment(initialValues.CreationDate.toDate()) : null,
-          LastUpdateDate: initialValues.LastUpdateDate ? moment(initialValues.LastUpdateDate.toDate()) : null,
-          ClosedDate: initialValues.ClosedDate ? moment(initialValues.ClosedDate.toDate()) : null,
-          StatusUpdateDate: initialValues.StatusUpdateDate ? moment(initialValues.StatusUpdateDate.toDate()) : null,
-        };
-        
+          Source: initialValues.Source || DealSourceEnum.LEADS,
+    lead_id: initialValues.lead_id || null,
+    contact_id: initialValues.contact_id || null,
+         CreationDate: initialValues.CreationDate && typeof initialValues.CreationDate.toDate === 'function'
+          ? moment(initialValues.CreationDate.toDate())
+          : null,
+
+        LastUpdateDate: initialValues.LastUpdateDate && typeof initialValues.LastUpdateDate.toDate === 'function'
+          ? moment(initialValues.LastUpdateDate.toDate())
+          : null,
+
+        ClosedDate: initialValues.ClosedDate && typeof initialValues.ClosedDate.toDate === 'function'
+          ? moment(initialValues.ClosedDate.toDate())
+          : null,
+
+        // If you have StatusUpdateDate in form (you do in formattedValues but not in JSX)
+        StatusUpdateDate: initialValues.StatusUpdateDate && typeof initialValues.StatusUpdateDate.toDate === 'function'
+          ? moment(initialValues.StatusUpdateDate.toDate())
+          : null,
+      };
+
         form.setFieldsValue(formattedValues);
+        setSelectedSource(formattedValues.Source);  // Important!
       }
 
       // Fetch related data
@@ -59,7 +75,7 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
   const fetchData = async () => {
     // More thorough logging for debugging
     console.log('DealForm - fetchData called with companyId:', companyId);
-    
+
     if (!companyId) {
       console.log('No companyId available for filtering - waiting 1 second and retrying');
       // Add a delay and retry once if companyId is not available initially
@@ -77,24 +93,24 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
       // We need to create a proper reference object
       const companyRef = doc(db, 'companies', companyId);
       console.log('Using company reference path:', companyRef.path);
-      
+
       // Get all documents without filtering first
       const leadsSnap = await getDocs(collection(db, 'leads'));
       const contactsSnap = await getDocs(collection(db, 'contacts'));
       const propertiesSnap = await getDocs(collection(db, 'properties'));
       const usersSnap = await getDocs(collection(db, 'users'));
-      
+
       console.log('Total leads in DB:', leadsSnap.docs.length);
       console.log('Total contacts in DB:', contactsSnap.docs.length);
       console.log('Total properties in DB:', propertiesSnap.docs.length);
       console.log('Total users in DB:', usersSnap.docs.length);
-      
+
       // Manual filtering to handle both string IDs and reference types
       const companyPath = `companies/${companyId}`;
       const companyRefPath = `/companies/${companyId}`;
-      
+
       console.log('Looking for company paths:', [companyId, companyPath, companyRefPath]);
-      
+
       // Process and filter results manually
       const leadsData = leadsSnap.docs
         .map(docSnap => {
@@ -106,20 +122,20 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
           // Handle possible formats of company_id
           const leadCompanyId = lead.company_id;
           if (!leadCompanyId) return false;
-          
+
           // If it's a Firebase reference object
           if (typeof leadCompanyId === 'object' && leadCompanyId.path) {
             console.log('Found lead with reference path:', leadCompanyId.path);
             return leadCompanyId.path.includes(companyId);
           }
-          
+
           // If it's a string path
           if (typeof leadCompanyId === 'string') {
-            return leadCompanyId === companyId || 
-                  leadCompanyId === companyPath || 
-                  leadCompanyId === companyRefPath;
+            return leadCompanyId === companyId ||
+              leadCompanyId === companyPath ||
+              leadCompanyId === companyRefPath;
           }
-          
+
           return false;
         });
 
@@ -131,17 +147,17 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
         .filter(contact => {
           const contactCompanyId = contact.company_id;
           if (!contactCompanyId) return false;
-          
+
           if (typeof contactCompanyId === 'object' && contactCompanyId.path) {
             return contactCompanyId.path.includes(companyId);
           }
-          
+
           if (typeof contactCompanyId === 'string') {
-            return contactCompanyId === companyId || 
-                  contactCompanyId === companyPath || 
-                  contactCompanyId === companyRefPath;
+            return contactCompanyId === companyId ||
+              contactCompanyId === companyPath ||
+              contactCompanyId === companyRefPath;
           }
-          
+
           return false;
         });
 
@@ -153,17 +169,17 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
         .filter(property => {
           const propertyCompanyId = property.company_id;
           if (!propertyCompanyId) return false;
-          
+
           if (typeof propertyCompanyId === 'object' && propertyCompanyId.path) {
             return propertyCompanyId.path.includes(companyId);
           }
-          
+
           if (typeof propertyCompanyId === 'string') {
-            return propertyCompanyId === companyId || 
-                  propertyCompanyId === companyPath || 
-                  propertyCompanyId === companyRefPath;
+            return propertyCompanyId === companyId ||
+              propertyCompanyId === companyPath ||
+              propertyCompanyId === companyRefPath;
           }
-          
+
           return false;
         });
 
@@ -175,17 +191,17 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
         .filter(user => {
           const userCompanyId = user.company_id;
           if (!userCompanyId) return false;
-          
+
           if (typeof userCompanyId === 'object' && userCompanyId.path) {
             return userCompanyId.path.includes(companyId);
           }
-          
+
           if (typeof userCompanyId === 'string') {
-            return userCompanyId === companyId || 
-                  userCompanyId === companyPath || 
-                  userCompanyId === companyRefPath;
+            return userCompanyId === companyId ||
+              userCompanyId === companyPath ||
+              userCompanyId === companyRefPath;
           }
-          
+
           return false;
         });
 
@@ -218,53 +234,47 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
       setLoading(false);
     }
   };
-  
+
   // Handle source change
   const handleSourceChange = (value) => {
     setSelectedSource(value);
-    
+
     // Reset dependent fields when source changes
-    if (value === DealSource.LEADS) {
+    if (value === DealSourceEnum.LEADS) {
       form.setFieldsValue({ contact_id: undefined });
-    } else if (value === DealSource.CONTACTS) {
+    } else if (value === DealSourceEnum.CONTACTS) {
       form.setFieldsValue({ lead_id: undefined });
     }
   };
 
-  const handleSubmit = async () => {
-    try {
-      const values = await form.validateFields();
-      console.log('Form values before processing:', values);
-      
-      // Clean up contact_id and lead_id based on source
-      const cleanedValues = { ...values };
-      
-      // Handle lead_id and contact_id based on source
-      if (values.Source === DealSource.LEADS) {
-        // For Leads source: ensure lead_id is set, set contact_id to null
-        if (!cleanedValues.lead_id) {
-          throw new Error('Please select a lead when source is Leads');
-        }
-        cleanedValues.contact_id = null; // Explicitly set to null instead of undefined
-      } else if (values.Source === DealSource.CONTACTS) {
-        // For Contacts source: ensure contact_id is set, set lead_id to null
-        if (!cleanedValues.contact_id) {
-          throw new Error('Please select a contact when source is Contacts');
-        }
-        cleanedValues.lead_id = null; // Explicitly set to null instead of undefined
-      } else {
-        // For other sources (e.g. Freelance): set both to null
-        cleanedValues.lead_id = null;
-        cleanedValues.contact_id = null;
+const handleSubmit = async () => {
+  try {
+    const values = await form.validateFields();
+
+    const cleanedValues = { ...values };
+
+    // Enforce correct nulls based on Source
+    if (values.Source === DealSourceEnum.LEADS) {
+      if (!cleanedValues.lead_id) {
+        throw new Error('Lead is required when source is Leads');
       }
-      
-      // Filter out any remaining undefined values
-      Object.keys(cleanedValues).forEach(key => {
-        if (cleanedValues[key] === undefined) {
-          delete cleanedValues[key]; // Remove undefined values
-        }
-      });
-      
+      cleanedValues.contact_id = null;
+    } else if (values.Source === DealSourceEnum.CONTACTS) {
+      if (!cleanedValues.contact_id) {
+        throw new Error('Contact is required when source is Contacts');
+      }
+      cleanedValues.lead_id = null;
+    } else {
+      // All other sources (Website, Facebook, Freelance, etc.)
+      cleanedValues.lead_id = null;
+      cleanedValues.contact_id = null;
+    }
+
+    // Remove undefined keys
+    Object.keys(cleanedValues).forEach(key => {
+      if (cleanedValues[key] === undefined) delete cleanedValues[key];
+    });
+
       // Format the data for Firestore
       const formData = {
         ...cleanedValues,
@@ -275,12 +285,12 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
         ...(values.ClosedDate && { ClosedDate: values.ClosedDate.toDate() }),
         ...(values.StatusUpdateDate && { StatusUpdateDate: values.StatusUpdateDate.toDate() }),
       };
-      
+
       // If status is changed to won/lost, set closed date
       if ((values.Status === DealStatus.GAIN || values.Status === DealStatus.LOSS) && !values.ClosedDate) {
         formData.ClosedDate = new Date();
       }
-      
+
       console.log('Processed form data ready for submission:', formData);
       onSubmit(formData);
     } catch (error) {
@@ -313,7 +323,7 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
             style={{ marginBottom: 16 }}
           />
         )}
-        
+
         <Form
           form={form}
           layout="vertical"
@@ -335,7 +345,7 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
               </Form.Item>
             </Col>
           </Row>
-          
+
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
@@ -357,143 +367,152 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
                 label="Source"
                 rules={[{ required: true, message: 'Please select a source' }]}
               >
-                <Select 
+                <Select
                   placeholder="Select source"
                   onChange={handleSourceChange}
+                  optionLabelProp="label"
                 >
-                  {Object.values(DealSource).map(source => (
-                    <Option key={source} value={source}>
-                      {source}
+                  {DealSource.map(source => (
+                    <Option
+                      key={source.value}
+                      value={source.value}
+                      label={
+                        <span>
+                          <span style={{ marginRight: 8, color: source.color }}>
+                            {source.icon}
+                          </span>
+                          {source.value}
+                        </span>
+                      }
+                    >
+                      <span style={{ marginRight: 8, color: source.color }}>
+                        {source.icon}
+                      </span>
+                      {source.value}
                     </Option>
                   ))}
                 </Select>
+
               </Form.Item>
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Item
-                name="Status"
-                label="Status"
-                rules={[{ required: true, message: 'Please select a status' }]}
-              >
-                <Select placeholder="Select status">
-                  {Object.values(DealStatus).map(status => (
-                    <Option key={status} value={status}>
-                      {status}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
+{/* Status */}
+<Row gutter={16}>
+  <Col span={24}>
+    <Form.Item
+      name="Status"
+      label="Status"
+      rules={[{ required: true, message: 'Please select a status' }]}
+    >
+      <Select placeholder="Select status">
+        {Object.values(DealStatus).map(status => (
+          <Option key={status} value={status}>
+            {status}
+          </Option>
+        ))}
+      </Select>
+    </Form.Item>
+  </Col>
+</Row>
 
-          {/* Leads selection - only show when source is Leads */}
-          {selectedSource === DealSource.LEADS && (
-            <Row gutter={16}>
-              <Col span={24}>
-                <Form.Item
-                  name="lead_id"
-                  label="Lead"
-                  rules={[{ required: true, message: 'Please select a lead' }]}
-                >
-                  <Select
-                    placeholder="Select lead"
-                    showSearch
-                    optionFilterProp="children"
-                    filterOption={(input, option) =>
-                      option && option.children ? option.children.toString().toLowerCase().indexOf(input.toLowerCase()) >= 0 : false
-                    }
-                  >
-                    {leads.map(lead => (
-                      <Option key={lead.id} value={lead.id}>
-                        {lead.firstName} {lead.lastName} - {lead.email}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-          )}
+{/* Lead selection - ONLY when source is Leads */}
+{selectedSource === DealSourceEnum.LEADS && (
+  <Row gutter={16}>
+    <Col span={24}>
+      <Form.Item
+        name="lead_id"
+        label="Lead"
+        rules={[{ required: true, message: 'Please select a lead' }]}
+      >
+        <Select
+          placeholder="Select lead"
+          showSearch
+          optionFilterProp="children"
+          filterOption={(input, option) =>
+            option?.children?.toString().toLowerCase().includes(input.toLowerCase())
+          }
+        >
+          {leads.map(lead => (
+            <Option key={lead.id} value={lead.id}>
+              {lead.firstName} {lead.lastName} - {lead.email}
+            </Option>
+          ))}
+        </Select>
+      </Form.Item>
+    </Col>
+  </Row>
+)}
 
-          {/* Contact selection - required when source is Contacts */}
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Item
-                name="contact_id"
-                label="Contact"
-                rules={[{ 
-                  required: selectedSource === DealSource.CONTACTS, 
-                  message: 'Please select a contact' 
-                }]}
-              >
-                <Select 
-                  placeholder="Select contact"
-                  allowClear={selectedSource !== DealSource.CONTACTS}
-                  showSearch
-                  optionFilterProp="children"
-                  filterOption={(input, option) =>
-                    option && option.children ? option.children.toString().toLowerCase().indexOf(input.toLowerCase()) >= 0 : false
-                  }
-                  disabled={selectedSource === DealSource.LEADS}
-                >
-                  {contacts.map(contact => (
-                    <Option key={contact.id} value={contact.id}>
-                      {contact.FirstName} {contact.LastName} - {contact.email || ''}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
+{/* Contact selection - ONLY when source is Contacts */}
+{selectedSource === DealSourceEnum.CONTACTS && (
+  <Row gutter={16}>
+    <Col span={24}>
+      <Form.Item
+        name="contact_id"
+        label="Contact"
+        rules={[{ required: true, message: 'Please select a contact' }]}
+      >
+        <Select
+          placeholder="Select contact"
+          showSearch
+          optionFilterProp="children"
+          filterOption={(input, option) =>
+            option?.children?.toString().toLowerCase().includes(input.toLowerCase())
+          }
+        >
+          {contacts.map(contact => (
+            <Option key={contact.id} value={contact.id}>
+              {contact.FirstName} {contact.LastName} - {contact.email || ''}
+            </Option>
+          ))}
+        </Select>
+      </Form.Item>
+    </Col>
+  </Row>
+)}
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="property_id"
-                label="Property (Optional)"
-              >
-                <Select 
-                  placeholder="Select property"
-                  allowClear
-                  showSearch
-                  optionFilterProp="children"
-                  filterOption={(input, option) =>
-                    option && option.children ? option.children.toString().toLowerCase().indexOf(input.toLowerCase()) >= 0 : false
-                  }
-                >
-                  {properties.map(property => (
-                    <Option key={property.id} value={property.id}>
-                      {property.title}, {property.city}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="seller_id"
-                label="Seller (Optional)"
-              >
-                <Select 
-                  placeholder="Select seller"
-                  allowClear
-                  showSearch
-                  optionFilterProp="children"
-                  filterOption={(input, option) =>
-                    option && option.children ? option.children.toString().toLowerCase().indexOf(input.toLowerCase()) >= 0 : false
-                  }
-                >
-                  {sellers.map(seller => (
-                    <Option key={seller.id} value={seller.id}>
-                      {seller.firstname} {seller.lastname} - {seller.email || ''}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
+{/* Property & Seller (always visible, optional) */}
+<Row gutter={16}>
+  <Col span={12}>
+    <Form.Item name="property_id" label="Property (Optional)">
+      <Select
+        placeholder="Select property"
+        allowClear
+        showSearch
+        optionFilterProp="children"
+        filterOption={(input, option) =>
+          option?.children?.toString().toLowerCase().includes(input.toLowerCase())
+        }
+      >
+        {properties.map(property => (
+          <Option key={property.id} value={property.id}>
+            {property.title}, {property.city}
+          </Option>
+        ))}
+      </Select>
+    </Form.Item>
+  </Col>
+  <Col span={12}>
+    <Form.Item name="seller_id" label="Seller (Optional)">
+      <Select
+        placeholder="Select seller"
+        allowClear
+        showSearch
+        optionFilterProp="children"
+        filterOption={(input, option) =>
+          option?.children?.toString().toLowerCase().includes(input.toLowerCase())
+        }
+      >
+        {sellers.map(seller => (
+          <Option key={seller.id} value={seller.id}>
+            {seller.firstname} {seller.lastname} - {seller.email || ''}
+          </Option>
+        ))}
+      </Select>
+    </Form.Item>
+  </Col>
+</Row>
 
           <Row gutter={16}>
             <Col span={24}>
@@ -501,14 +520,14 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
                 name="Notes"
                 label="Notes"
               >
-                <TextArea 
-                  rows={4} 
+                <TextArea
+                  rows={4}
                   placeholder="Enter additional notes for this deal"
                 />
               </Form.Item>
             </Col>
           </Row>
-          
+
           {isEditing && (
             <>
               <Row gutter={16}>

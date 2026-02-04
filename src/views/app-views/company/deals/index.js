@@ -16,7 +16,7 @@ import dealService from 'services/firebase/DealService';
 import contactService from 'services/firebase/ContactService';
 import userService from 'services/firebase/UserService';
 import propertyService from 'services/firebase/PropertyService';
-import { DealStatus, DealSource } from 'models/DealModel';
+import { DealStatus, DealSource, DealSourceEnum } from 'models/DealModel';
 import moment from 'moment';
 import DealDetails from './DealDetails';
 import DealStatsDrawer from './DealStatsDrawer';
@@ -289,16 +289,34 @@ const DealsPage = () => {
 
   // Render source with appropriate icon
   const renderSource = (source) => {
-    switch(source) {
-      case DealSource.LEADS:
-        return <Tag color="purple">Leads</Tag>;
-      case DealSource.CONTACTS:
-        return <Tag color="cyan">Contacts</Tag>;
-      case DealSource.FREELANCE:
-        return <Tag color="orange">Freelance</Tag>;
-      default:
-        return <Tag>Other</Tag>;
-    }
+  switch (source) {
+    case DealSourceEnum.LEADS:
+      return <Tag color="#1890ff">🧲 Leads</Tag>;
+
+    case DealSourceEnum.CONTACTS:
+      return <Tag color="#52c41a">👥 Contacts</Tag>;
+
+    case DealSourceEnum.FACEBOOK:
+      return <Tag color="#1877F2">📘 Facebook</Tag>;
+
+    case DealSourceEnum.INSTAGRAM:
+      return <Tag color="#E4405F">📷 Instagram</Tag>;
+
+    case DealSourceEnum.WEBSITE:
+      return <Tag color="#52c41a">🌐 Website</Tag>;
+
+    case DealSourceEnum.LINKEDIN:
+      return <Tag color="#0A66C2">💼 LinkedIn</Tag>;
+
+    case DealSourceEnum.TIKTOK:
+      return <Tag color="#ff0050">🎵 TikTok</Tag>;
+
+    case DealSourceEnum.FREELANCE:
+      return <Tag color="#fa8c16">💪 Freelance</Tag>;
+
+    default:
+      return <Tag>{source || 'Other'}</Tag>;
+  }
   };
   
   // Table columns configuration

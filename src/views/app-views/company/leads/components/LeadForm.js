@@ -20,6 +20,16 @@ const salesRoles = [
   UserRoles.READY_TO_MOVE_SALES,
 ];
 
+  // Source options with icons
+  const sourceOptions = [
+    { value: 'Facebook', icon: '📘', color: '#1877F2' },
+    { value: 'Instagram', icon: '📷', color: '#E4405F' },
+    { value: 'Website', icon: '🌐', color: '#52c41a' },
+    { value: 'LinkedIn', icon: '💼', color: '#0A66C2' },
+    { value: 'TikTok', icon: '🎵', color: '#ff0050' },
+    { value: 'Freelance', icon: '💪', color: '#fa8c16' }
+  ];
+
 /**
  * Component for adding or editing lead
  */
@@ -257,13 +267,31 @@ const LeadForm = ({
               label="Lead Source"
               rules={[{ required: true, message: 'Please select lead source' }]}
             >
-              <Select placeholder="Select lead source">
-                {Object.values(LeadRedirectionSource).map(source => (
-                  <Option key={source} value={source}>
-                    {source}
-                  </Option>
-                ))}
-              </Select>
+            <Select
+  placeholder="Select lead source"
+  optionLabelProp="label"
+>
+  {sourceOptions.map(source => (
+    <Option
+      key={source.value}
+      value={source.value}
+      label={
+        <span>
+          <span style={{ color: source.color, marginRight: 8 }}>
+            {source.icon}
+          </span>
+          {source.value}
+        </span>
+      }
+    >
+      <span style={{ color: source.color, marginRight: 8 }}>
+        {source.icon}
+      </span>
+      {source.value}
+    </Option>
+  ))}
+</Select>
+
             </Form.Item>
           </Col>
           <Col span={12}>

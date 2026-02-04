@@ -51,11 +51,13 @@ export const ContactType = {
  */
 export const convertToContactModel = (doc) => {
   if (!doc) return null;
-  
+
   return {
     id: doc.id || '',
     firstName: doc.firstName || '',
     lastName: doc.lastName || '',
+    name: doc.name,
+    phoneNumber: doc.phoneNumber || '',
     email: doc.email || '',
     phone: doc.phone || '',
     mobile: doc.mobile || '',

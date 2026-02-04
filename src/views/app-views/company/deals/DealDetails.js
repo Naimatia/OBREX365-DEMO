@@ -14,7 +14,7 @@ import contactService from 'services/firebase/ContactService';
 import userService from 'services/firebase/UserService';
 import propertyService from 'services/firebase/PropertyService';
 import leadService from 'services/firebase/LeadService';
-import { DealStatus, DealSource } from 'models/DealModel';
+import { DealStatus, DealSource, DealSourceEnum } from 'models/DealModel';
 
 const { Title, Text } = Typography;
 
@@ -80,18 +80,37 @@ const DealDetails = ({ visible, deal, onClose, onEdit, onDelete, onStatusChange 
     }
   };
 
-  const renderSourceTag = (source) => {
-    switch(source) {
-      case DealSource.LEADS:
-        return <Tag color="purple">Leads</Tag>;
-      case DealSource.CONTACTS:
-        return <Tag color="cyan">Contacts</Tag>;
-      case DealSource.FREELANCE:
-        return <Tag color="orange">Freelance</Tag>;
-      default:
-        return <Tag>Other</Tag>;
-    }
-  };
+const renderSourceTag = (source) => {
+  switch (source) {
+    case DealSourceEnum.LEADS:
+      return <Tag color="#1890ff">🧲 Leads</Tag>;
+
+    case DealSourceEnum.CONTACTS:
+      return <Tag color="#52c41a">👥 Contacts</Tag>;
+
+    case DealSourceEnum.FACEBOOK:
+      return <Tag color="#1877F2">📘 Facebook</Tag>;
+
+    case DealSourceEnum.INSTAGRAM:
+      return <Tag color="#E4405F">📷 Instagram</Tag>;
+
+    case DealSourceEnum.WEBSITE:
+      return <Tag color="#52c41a">🌐 Website</Tag>;
+
+    case DealSourceEnum.LINKEDIN:
+      return <Tag color="#0A66C2">💼 LinkedIn</Tag>;
+
+    case DealSourceEnum.TIKTOK:
+      return <Tag color="#ff0050">🎵 TikTok</Tag>;
+
+    case DealSourceEnum.FREELANCE:
+      return <Tag color="#fa8c16">💪 Freelance</Tag>;
+
+    default:
+      return <Tag>{source || 'Other'}</Tag>;
+  }
+};
+
 
   const handleMarkAsWon = () => {
     onStatusChange(deal.id, DealStatus.GAIN);
@@ -193,7 +212,7 @@ const DealDetails = ({ visible, deal, onClose, onEdit, onDelete, onStatusChange 
                 <div className="detail-item">
                   <div className="detail-label">Name</div>
                   <div className="detail-value">
-                    {contact.FirstName} {contact.LastName}
+                    {contact.name}
                   </div>
                 </div>
               </Col>
@@ -209,7 +228,7 @@ const DealDetails = ({ visible, deal, onClose, onEdit, onDelete, onStatusChange 
                 <div className="detail-item">
                   <div className="detail-label">Phone</div>
                   <div className="detail-value">
-                    <PhoneOutlined /> {contact.phone || 'N/A'}
+                    <PhoneOutlined /> {contact.phoneNumber || 'N/A'}
                   </div>
                 </div>
               </Col>
@@ -236,7 +255,7 @@ const DealDetails = ({ visible, deal, onClose, onEdit, onDelete, onStatusChange 
                 <div className="detail-item">
                   <div className="detail-label">Lead Phone</div>
                   <div className="detail-value">
-                    <PhoneOutlined /> {lead.phone || 'N/A'}
+                    <PhoneOutlined /> {lead.phoneNumber || 'N/A'}
                   </div>
                 </div>
               </Col>
@@ -272,7 +291,7 @@ const DealDetails = ({ visible, deal, onClose, onEdit, onDelete, onStatusChange 
                 <div className="detail-item">
                   <div className="detail-label">Phone</div>
                   <div className="detail-value">
-                    <PhoneOutlined /> {seller.phone || 'N/A'}
+                    <PhoneOutlined /> {seller.phoneNumber || 'N/A'}
                   </div>
                 </div>
               </Col>
@@ -292,7 +311,7 @@ const DealDetails = ({ visible, deal, onClose, onEdit, onDelete, onStatusChange 
                 <div className="detail-item">
                   <div className="detail-label">Address</div>
                   <div className="detail-value">
-                    {property.street}, {property.city}, {property.state} {property.zip}
+                    {property.address}
                   </div>
                 </div>
               </Col>
@@ -308,7 +327,7 @@ const DealDetails = ({ visible, deal, onClose, onEdit, onDelete, onStatusChange 
                 <div className="detail-item">
                   <div className="detail-label">Price</div>
                   <div className="detail-value">
-                    <DollarOutlined /> AED {property.price ? property.price.toLocaleString() : 'N/A'}
+                    <DollarOutlined /> AED {property.OriginalPrice ? property.OriginalPrice.toLocaleString() : 'N/A'}
                   </div>
                 </div>
               </Col>

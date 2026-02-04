@@ -108,16 +108,9 @@ export const convertToPropertyModel = (doc) => {
     type: doc.type || PropertyType.RESIDENTIAL,
     subType: doc.subType || PropertySubType.HOUSE,
     status: doc.status || PropertyStatus.FOR_SALE,
-    address: {
-      street: doc.address?.street || '',
-      city: doc.address?.city || '',
-      state: doc.address?.state || '',
-      zipCode: doc.address?.zipCode || '',
-      country: doc.address?.country || '',
-      latitude: doc.address?.latitude || 0,
-      longitude: doc.address?.longitude || 0
-    },
+    address: doc.address || '',
     price: doc.price || 0,
+    OriginalPrice: doc.OriginalPrice,
     currency: doc.currency || 'USD',
     size: doc.size || 0,
     sizeUnit: doc.sizeUnit || 'sqft',
