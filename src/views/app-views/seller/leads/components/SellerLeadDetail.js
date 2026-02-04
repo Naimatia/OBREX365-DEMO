@@ -126,7 +126,7 @@ const SellerLeadDetail = ({
   /* ────── LISTEN TO HISTORY ────── */
   useEffect(() => {
     if (!visible || !lead?.id) return;
-    const unsub = LeadHistoryService.listenToHistory(lead.id, setHistory);
+    const unsub = LeadHistoryService.listenToHistory(lead.id,lead.seller_id, setHistory);
     return () => typeof unsub === 'function' && unsub();
   }, [visible, lead?.id]);
 
@@ -139,7 +139,7 @@ const SellerLeadDetail = ({
       callForm.resetFields();
       noteForm.resetFields();
     }
-  }, [lead?.id, visible, whatsappForm, emailForm, callForm, noteForm]);
+  }, [lead?.id, visible,currentUser?.id, whatsappForm, emailForm, callForm, noteForm]);
 
   /* ────── HELPERS ────── */
   const copyToClipboard = (text, key) => {
@@ -187,6 +187,7 @@ const SellerLeadDetail = ({
       type: 'whatsapp',
       message: msg,
       templateId: values.template,
+      sellerId: currentUser.id,               // ← important new field
       createdBy: { id: currentUser.id, name: historyName },
     });
 
@@ -224,6 +225,7 @@ const SellerLeadDetail = ({
       type: 'email',
       message: body,
       templateId: values.template,
+            sellerId: currentUser.id,               // ← important new field
       createdBy: { id: currentUser.id, name: historyName },
     });
 
@@ -239,6 +241,7 @@ const SellerLeadDetail = ({
       type: 'call',
       duration: values.duration,
       outcome: values.outcome,
+            sellerId: currentUser.id,               // ← important new field
       createdBy: { id: currentUser.id, name: historyName },
     });
 
@@ -255,6 +258,7 @@ const SellerLeadDetail = ({
     await LeadHistoryService.addHistory(lead.id, {
       type: 'note',
       message: note,
+            sellerId: currentUser.id,               // ← important new field
       createdBy: { id: currentUser.id, name: historyName },
     });
     noteForm.resetFields();
@@ -269,6 +273,7 @@ const SellerLeadDetail = ({
     await LeadHistoryService.addHistory(lead.id, {
       type: 'status',
       message: `Status changed to ${newStatus}`,
+            sellerId: currentUser.id,               // ← important new field
       createdBy: { id: currentUser.id, name: historyName },
     });
   };

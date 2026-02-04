@@ -1,30 +1,36 @@
 // services/firebase/LeadHistoryService.js
 import { db } from 'configs/FirebaseConfig';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, updateDoc, where } from 'firebase/firestore';
 
 class LeadHistoryService {
-  static async addHistory(leadId, history, currentUserId) {
+  static async addHistory(leadId, history) {
     return await addDoc(collection(db, 'leads', leadId, 'leadHistory'), {
       ...history,
-      sellerId: currentUserId,               // ← important new field
       createdAt: serverTimestamp()
     });
   }
 
-  static listenToHistory(leadId, callback) {
-    const q = query(
-      collection(db, 'leads', leadId, 'leadHistory'),
-      orderBy('createdAt', 'asc')
-    );
-    return onSnapshot(q, snapshot => {
-      const history = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date()
-      }));
-      callback(history);
-    });
+ static listenToHistory(leadId, sellerId, callback) {
+  if (!leadId || !sellerId) {
+    callback([]);
+    return () => {};
   }
+
+  const q = query(
+    collection(db, 'leads', leadId, 'leadHistory'),
+    where('sellerId', '==', sellerId),
+    orderBy('createdAt', 'asc')
+  );
+
+  return onSnapshot(q, snapshot => {
+    const history = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate() || new Date()
+    }));
+    callback(history);
+  });
+}
 
   // NEW: Get seller name by ID
   static async getSellerName(sellerId) {
