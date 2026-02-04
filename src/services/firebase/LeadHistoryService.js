@@ -6,6 +6,7 @@ class LeadHistoryService {
   static async addHistory(leadId, history, currentUserId) {
     return await addDoc(collection(db, 'leads', leadId, 'leadHistory'), {
       ...history,
+      sellerId: currentUserId,               // ← important new field
       createdAt: serverTimestamp()
     });
   }
