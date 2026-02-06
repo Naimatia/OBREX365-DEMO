@@ -3,6 +3,8 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { AUTH_TOKEN, USER_DATA } from 'constants/AuthConstant';
 import FirebaseService from 'services/FirebaseService';
 import UserService from 'services/firebase/UserService';
+import { UserRoles } from 'models/UserModel';
+
 
 /**
  * @typedef {Object} AuthState
@@ -41,11 +43,22 @@ export const initialState = {
 	pendingUser: null // Store user data when force reset is needed
 }
 
+const salesRoles = [
+	UserRoles.SELLER,
+	UserRoles.SALES_EXECUTIVE,
+	UserRoles.AGENT,
+	UserRoles.TEAM_LEADER,
+	UserRoles.SALES_MANAGER,
+	UserRoles.OFF_PLAN_SALES,
+	UserRoles.READY_TO_MOVE_SALES
+];
+
+
 /**
  * Sign in thunk
  * @type {import('@reduxjs/toolkit').AsyncThunk<any, any, {rejectValue: string}>}
  */
-export const signIn = createAsyncThunk('auth/signIn',async (data, { rejectWithValue }) => {
+export const signIn = createAsyncThunk('auth/signIn', async (data, { rejectWithValue }) => {
 	// Type checking for data
 	if (!data || typeof data !== 'object') {
 		return rejectWithValue('Invalid data provided');
@@ -53,7 +66,7 @@ export const signIn = createAsyncThunk('auth/signIn',async (data, { rejectWithVa
 	// Safely access properties with type checking
 	const email = data?.email;
 	const password = data?.password;
-	
+
 	if (!email || !password) {
 		return rejectWithValue('Email and password are required');
 	}
@@ -63,15 +76,15 @@ export const signIn = createAsyncThunk('auth/signIn',async (data, { rejectWithVa
 			const token = response.user.refreshToken;
 			// Store token in localStorage
 			localStorage.setItem(AUTH_TOKEN, response.user.refreshToken);
-			
+
 			// Store user data in localStorage
 			if (response.userData) {
 				localStorage.setItem(USER_DATA, JSON.stringify(response.userData));
 			}
-			
+
 			// Return both token and user data
-			return { 
-				token, 
+			return {
+				token,
 				user: response.userData,
 				forcePasswordReset: response.userData?.forcePasswordReset || false
 			};
@@ -87,7 +100,7 @@ export const signIn = createAsyncThunk('auth/signIn',async (data, { rejectWithVa
  * Sign up thunk
  * @type {import('@reduxjs/toolkit').AsyncThunk<any, any, {rejectValue: string}>}
  */
-export const signUp = createAsyncThunk('auth/signUp',async (data, { rejectWithValue }) => {
+export const signUp = createAsyncThunk('auth/signUp', async (data, { rejectWithValue }) => {
 	try {
 		// Include additional user fields beyond email and password
 		const response = await FirebaseService.signUpEmailRequest(data)
@@ -95,15 +108,15 @@ export const signUp = createAsyncThunk('auth/signUp',async (data, { rejectWithVa
 			const token = response.user.refreshToken;
 			// Store token in localStorage
 			localStorage.setItem(AUTH_TOKEN, response.user.refreshToken);
-			
+
 			// Store user data in localStorage
 			if (response.userData) {
 				localStorage.setItem(USER_DATA, JSON.stringify(response.userData));
 			}
-			
+
 			// Return both token and user data
-			return { 
-				token, 
+			return {
+				token,
 				user: response.userData,
 				forcePasswordReset: response.userData?.forcePasswordReset || false
 			};
@@ -115,36 +128,36 @@ export const signUp = createAsyncThunk('auth/signUp',async (data, { rejectWithVa
 	}
 })
 
-export const signOut = createAsyncThunk('auth/signOut',async (_, { dispatch }) => {
-    const response = await FirebaseService.signOutRequest()
-    
-    // Clear auth token and user data
-    localStorage.removeItem(AUTH_TOKEN);
-    localStorage.removeItem(USER_DATA);
-    
-    // Use setTimeout to prevent navigation throttling
-    setTimeout(() => {
-        dispatch(signOutSuccess());
-    }, 100);
-    
-    return { success: true }
+export const signOut = createAsyncThunk('auth/signOut', async (_, { dispatch }) => {
+	const response = await FirebaseService.signOutRequest()
+
+	// Clear auth token and user data
+	localStorage.removeItem(AUTH_TOKEN);
+	localStorage.removeItem(USER_DATA);
+
+	// Use setTimeout to prevent navigation throttling
+	setTimeout(() => {
+		dispatch(signOutSuccess());
+	}, 100);
+
+	return { success: true }
 })
 
 export const signInWithGoogle = createAsyncThunk('auth/signInWithGoogle', async (_, { rejectWithValue }) => {
-    const response = await FirebaseService.signInGoogleRequest()
+	const response = await FirebaseService.signInGoogleRequest()
 	if (response.user) {
 		const token = response.user.refreshToken;
 		// Store token in localStorage
 		localStorage.setItem(AUTH_TOKEN, response.user.refreshToken);
-		
+
 		// Store user data in localStorage
 		if (response.userData) {
 			localStorage.setItem(USER_DATA, JSON.stringify(response.userData));
 		}
-		
+
 		// Return both token and user data
-		return { 
-			token, 
+		return {
+			token,
 			user: response.userData,
 			forcePasswordReset: response.userData?.forcePasswordReset || false
 		};
@@ -154,20 +167,20 @@ export const signInWithGoogle = createAsyncThunk('auth/signInWithGoogle', async 
 })
 
 export const signInWithFacebook = createAsyncThunk('auth/signInWithFacebook', async (_, { rejectWithValue }) => {
-    const response = await FirebaseService.signInFacebookRequest()
+	const response = await FirebaseService.signInFacebookRequest()
 	if (response.user) {
 		const token = response.user.refreshToken;
 		// Store token in localStorage
 		localStorage.setItem(AUTH_TOKEN, response.user.refreshToken);
-		
+
 		// Store user data in localStorage
 		if (response.userData) {
 			localStorage.setItem(USER_DATA, JSON.stringify(response.userData));
 		}
-		
+
 		// Return both token and user data
-		return { 
-			token, 
+		return {
+			token,
 			user: response.userData,
 			forcePasswordReset: response.userData?.forcePasswordReset || false
 		};
@@ -182,22 +195,22 @@ export const signInWithFacebook = createAsyncThunk('auth/signInWithFacebook', as
  */
 export const forcePasswordReset = createAsyncThunk('auth/forcePasswordReset', async (data, { rejectWithValue }) => {
 	const { userId, userEmail, newPassword } = data;
-	
+
 	if (!userId || !userEmail || !newPassword) {
 		return rejectWithValue('User ID, email, and new password are required');
 	}
-	
+
 	try {
 		console.log('🔄 Force password reset thunk started for:', userEmail);
-		
+
 		const result = await UserService.completeForcePasswordReset(userId, userEmail, newPassword);
-		
+
 		// Update localStorage with new user data and token
 		localStorage.setItem(USER_DATA, JSON.stringify(result.user));
 		localStorage.setItem(AUTH_TOKEN, result.token);
-		
+
 		console.log('✅ Force password reset thunk completed successfully');
-		
+
 		return {
 			user: result.user,
 			token: result.token,
@@ -265,29 +278,29 @@ export const authSlice = createSlice({
 			})
 			.addCase(signIn.fulfilled, (state, action) => {
 				state.loading = false
-				
+
 				// 🚨 CRITICAL: Check for force password reset FIRST - BEFORE setting token/user
 				const needsForceReset = action.payload.forcePasswordReset === true || action.payload.user?.forcePasswordReset === true;
-				
+
 				console.log('🔍 AUTH SLICE - Sign In Success');
 				console.log('🔍 forcePasswordReset from payload:', action.payload.forcePasswordReset);
 				console.log('🔍 user.forcePasswordReset:', action.payload.user?.forcePasswordReset);
 				console.log('🔍 Needs force reset (computed):', needsForceReset);
-				
+
 				if (needsForceReset) {
 					// 🛑 DO NOT AUTHENTICATE - Clear everything and show force reset modal
 					console.log('🛑 AUTH SLICE - Force password reset required - DENYING AUTHENTICATION');
-					
+
 					// Clear localStorage to prevent any session persistence
 					localStorage.removeItem(AUTH_TOKEN);
 					localStorage.removeItem(USER_DATA);
-					
+
 					// Reset auth state (no token, no user)
 					state.token = null
 					state.user = null
 					state.forcePasswordReset = true
 					state.redirect = '/auth/login'
-					
+
 					// Store minimal user data needed for password reset (email, id)
 					state.pendingUser = {
 						id: action.payload.user?.id,
@@ -295,20 +308,21 @@ export const authSlice = createSlice({
 						firstname: action.payload.user?.firstname,
 						lastname: action.payload.user?.lastname
 					}
-					
+
 				} else {
 					// ✅ Normal authentication flow
 					console.log('✅ AUTH SLICE - No force reset needed, proceeding with authentication');
-					
+
 					state.token = action.payload.token
 					state.user = action.payload.user
 					state.forcePasswordReset = false
 					state.pendingUser = null
-					
+					const userRole = action.payload.user?.role || action.payload.user?.Role;
+
 					// Set redirect based on user role
-					if (action.payload.user?.Role === 'Seller' || action.payload.user?.role === 'Seller') {
-						console.log('🚀 AUTH SLICE - Setting seller redirect to dashboard');
-						state.redirect = '/app/seller/dashboard'
+					if (salesRoles.includes(userRole)) {
+						state.redirect = '/app/seller/dashboard';
+
 					} else {
 						console.log('🚀 AUTH SLICE - Setting non-seller redirect to main dashboard');
 						state.redirect = '/app/dashboards/default'
@@ -342,10 +356,12 @@ export const authSlice = createSlice({
 				state.token = action.payload.token
 				state.user = action.payload.user
 				state.forcePasswordReset = action.payload.forcePasswordReset || false
-				
+				const userRole = action.payload.user?.role || action.payload.user?.Role;
+
 				// Set redirect based on user role
-				if (action.payload.user?.Role === 'Seller' || action.payload.user?.role === 'Seller') {
-					state.redirect = '/app/seller/dashboard'
+				if (salesRoles.includes(userRole)) {
+					state.redirect = '/app/seller/dashboard';
+
 				} else {
 					state.redirect = '/app/dashboards/default'
 				}
@@ -363,12 +379,14 @@ export const authSlice = createSlice({
 				state.token = action.payload.token
 				state.user = action.payload.user
 				state.forcePasswordReset = action.payload.forcePasswordReset || false
-				
+				const userRole = action.payload.user?.role || action.payload.user?.Role;
+
 				// Redirect to password reset if needed, otherwise role-based dashboard
 				if (action.payload.forcePasswordReset) {
 					state.redirect = '/auth/reset-password'
-				} else if (action.payload.user?.Role === 'Seller' || action.payload.user?.role === 'Seller') {
-					state.redirect = '/app/seller/dashboard'
+				} else if (salesRoles.includes(userRole)) {
+					state.redirect = '/app/seller/dashboard';
+
 				} else {
 					state.redirect = '/app/dashboards/default'
 				}
@@ -386,12 +404,14 @@ export const authSlice = createSlice({
 				state.token = action.payload.token
 				state.user = action.payload.user
 				state.forcePasswordReset = action.payload.forcePasswordReset || false
-				
+				const userRole = action.payload.user?.role || action.payload.user?.Role;
+
 				// Redirect to password reset if needed, otherwise role-based dashboard
 				if (action.payload.forcePasswordReset) {
 					state.redirect = '/auth/reset-password'
-				} else if (action.payload.user?.Role === 'Seller' || action.payload.user?.role === 'Seller') {
-					state.redirect = '/app/seller/dashboard'
+				} else if (salesRoles.includes(userRole)) {
+					state.redirect = '/app/seller/dashboard';
+
 				} else {
 					state.redirect = '/app/dashboards/default'
 				}
@@ -414,10 +434,12 @@ export const authSlice = createSlice({
 				state.token = action.payload.token // Set new auth token
 				state.message = action.payload.message
 				state.showMessage = true
-				
+				const userRole = action.payload.user?.role || action.payload.user?.Role;
+
 				// Set appropriate redirect after password reset
-				if (action.payload.user?.Role === 'Seller' || action.payload.user?.role === 'Seller') {
-					state.redirect = '/app/seller/dashboard'
+				if (salesRoles.includes(userRole)) {
+					state.redirect = '/app/seller/dashboard';
+
 				} else {
 					state.redirect = '/app/dashboards/default'
 				}
@@ -430,7 +452,7 @@ export const authSlice = createSlice({
 	},
 })
 
-export const { 
+export const {
 	authenticated,
 	showAuthMessage,
 	hideAuthMessage,
