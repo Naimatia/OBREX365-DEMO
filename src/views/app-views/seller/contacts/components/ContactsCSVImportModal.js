@@ -122,12 +122,13 @@ const ContactsCSVImportModal = ({ visible, onClose, onSuccess }) => {
       }
 
       // Validate phone number format (should start with + and have digits)
-      if (row.phoneNumber && row.phoneNumber.trim() !== '') {
-        const phoneRegex = /^\+\d{10,15}$/;
-        if (!phoneRegex.test(row.phoneNumber.trim())) {
-          rowErrors.push('Invalid phone number format (should be +XXX format with 10-15 digits)');
-        }
-      }
+     if (row.phoneNumber && row.phoneNumber.trim() !== '') {
+  const phoneRegex = /\d+/;
+  if (!phoneRegex.test(row.phoneNumber)) {
+    rowErrors.push('Invalid phone number');
+  }
+}
+
 
       validatedRow.errors = rowErrors;
       validatedRow.isValid = rowErrors.length === 0;

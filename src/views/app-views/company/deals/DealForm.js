@@ -29,6 +29,24 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
   const [selectedSource, setSelectedSource] = useState(isEditing && initialValues ? initialValues.Source : DealSourceEnum.LEADS);
   const [error, setError] = useState('');
 
+  const handleStatusChange = (status) => {
+  if (
+    (status === DealStatus.GAIN || status === DealStatus.LOSS) &&
+    !form.getFieldValue('ClosedDate')
+  ) {
+    form.setFieldsValue({
+      ClosedDate: moment(),
+    });
+  }
+
+  // Optional: clear closed date if reopened
+  if (status === DealStatus.OPENED) {
+    form.setFieldsValue({
+      ClosedDate: null,
+    });
+  }
+};
+
   // Reset form when modal becomes visible or hidden
   useEffect(() => {
     if (visible) {
@@ -36,6 +54,7 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
 
       // If we're editing, set the form values
       if (isEditing && initialValues) {
+        const today = moment(); // today's date
         // Need to format dates for the form
         const formattedValues = {
           ...initialValues,
@@ -50,9 +69,12 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
           ? moment(initialValues.LastUpdateDate.toDate())
           : null,
 
-        ClosedDate: initialValues.ClosedDate && typeof initialValues.ClosedDate.toDate === 'function'
+       // ClosedDate: use existing value, or default to today if status is Gain/Loss
+        ClosedDate: initialValues.ClosedDate?.toDate
           ? moment(initialValues.ClosedDate.toDate())
-          : null,
+          : (initialValues.Status === DealStatus.GAIN || initialValues.Status === DealStatus.LOSS)
+            ? today
+            : null,
 
         // If you have StatusUpdateDate in form (you do in formattedValues but not in JSX)
         StatusUpdateDate: initialValues.StatusUpdateDate && typeof initialValues.StatusUpdateDate.toDate === 'function'
@@ -400,19 +422,23 @@ const handleSubmit = async () => {
 {/* Status */}
 <Row gutter={16}>
   <Col span={24}>
-    <Form.Item
-      name="Status"
-      label="Status"
-      rules={[{ required: true, message: 'Please select a status' }]}
-    >
-      <Select placeholder="Select status">
-        {Object.values(DealStatus).map(status => (
-          <Option key={status} value={status}>
-            {status}
-          </Option>
-        ))}
-      </Select>
-    </Form.Item>
+   <Form.Item
+  name="Status"
+  label="Status"
+  rules={[{ required: true, message: 'Please select a status' }]}
+>
+  <Select
+    placeholder="Select status"
+    onChange={handleStatusChange}
+  >
+    {Object.values(DealStatus).map(status => (
+      <Option key={status} value={status}>
+        {status}
+      </Option>
+    ))}
+  </Select>
+</Form.Item>
+
   </Col>
 </Row>
 
