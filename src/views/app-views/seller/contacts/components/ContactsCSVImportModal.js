@@ -46,6 +46,8 @@ const ContactsCSVImportModal = ({ visible, onClose, onSuccess }) => {
   const [validationErrors, setValidationErrors] = useState([]);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [showAllErrors, setShowAllErrors] = useState(false);
+
 
   // Required fields for contact creation
   const requiredFields = ['name', 'email', 'phoneNumber'];
@@ -407,21 +409,33 @@ const ContactsCSVImportModal = ({ visible, onClose, onSuccess }) => {
           {validationErrors.length > 0 && (
             <Alert
               message="Validation Errors Found"
-              description={
-                <div>
-                  <Text>The following rows have errors and will not be imported:</Text>
-                  <ul style={{ marginTop: 8, marginBottom: 0 }}>
-                    {validationErrors.slice(0, 5).map((error, index) => (
-                      <li key={index}>
-                        <strong>Row {error.row}:</strong> {error.errors.join(', ')}
-                      </li>
-                    ))}
-                    {validationErrors.length > 5 && (
-                      <li><em>... and {validationErrors.length - 5} more errors</em></li>
-                    )}
-                  </ul>
-                </div>
-              }
+      description={
+  <div>
+    <Text>The following rows have errors and will not be imported:</Text>
+
+    <ul style={{ marginTop: 8, marginBottom: 0 }}>
+      {(showAllErrors ? validationErrors : validationErrors.slice(0, 5))
+        .map((error, index) => (
+          <li key={index}>
+            <strong>Row {error.row}:</strong> {error.errors.join(', ')}
+          </li>
+        ))}
+    </ul>
+
+    {validationErrors.length > 5 && (
+      <Text
+        style={{ cursor: 'pointer', marginTop: 8, display: 'inline-block' }}
+        type="warning"
+        onClick={() => setShowAllErrors(!showAllErrors)}
+      >
+        {showAllErrors
+          ? 'Show less'
+          : `Show ${validationErrors.length - 5} more errors`}
+      </Text>
+    )}
+  </div>
+}
+
               type="warning"
               style={{ marginBottom: 16 }}
             />
