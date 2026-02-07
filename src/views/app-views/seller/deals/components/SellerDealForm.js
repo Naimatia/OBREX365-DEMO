@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
   Form,
   Input,
@@ -9,20 +9,20 @@ import {
   InputNumber,
   Modal,
   Space,
-  message
+  message,
+  Spin,
 } from 'antd';
-import { DealStatus, DealSource } from 'models/DealModel';
 import {
   DollarOutlined,
-  // @ts-ignore
-  FileTextOutlined,
   ContactsOutlined,
   UserOutlined,
   HomeOutlined,
-  TeamOutlined
+  TeamOutlined,
 } from '@ant-design/icons';
+import { DealStatus, DealSource } from 'models/DealModel';
 import LeadsService from 'services/LeadsService';
 import ContactsService from 'services/ContactsService';
+import PropertyService from 'services/PropertiesService';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -31,159 +31,134 @@ const SellerDealForm = ({
   visible,
   onCancel,
   onSubmit,
-  deal,
+  deal,           // existing deal when editing
   loading,
   sellerId,
-  companyId
+  companyId,
 }) => {
   const [form] = Form.useForm();
-  // @ts-ignore
-  const [sourceType, setSourceType] = useState(DealSource.LEADS);
-  const [leads, setLeads] = useState([]);
-  const [contacts, setContacts] = useState([]);
-  const [properties, setProperties] = useState([]);
-  const [loadingData, setLoadingData] = useState(false);
 
-  // Validation rules
-  const rules = {
-    Source: [{ required: true, message: 'Please select deal source!' }],
-    Amount: [
-      { required: true, message: 'Please enter deal amount!' },
-      { type: 'number', min: 0, message: 'Amount must be positive!' }
-    ],
-    Status: [{ required: true, message: 'Please select deal status!' }],
-    Description: [
-      { required: true, message: 'Please enter deal description!' },
-      { min: 10, message: 'Description must be at least 10 characters!' }
-    ],
-    // @ts-ignore
-    lead_id: [{ required: sourceType === DealSource.LEADS, message: 'Please select a lead!' }],
-    // @ts-ignore
-    contact_id: [{ required: sourceType === DealSource.CONTACTS, message: 'Please select a contact!' }]
-  };
+  const [leads, setLeads] = React.useState([]);
+  const [contacts, setContacts] = React.useState([]);
+  const [properties, setProperties] = React.useState([]);
+  const [dataLoading, setDataLoading] = React.useState(false);
 
-  // Load leads, contacts, properties when modal opens
+  // Watch current source (fallback to Leads)
+  const source = Form.useWatch('Source', form) ?? DealSource[0].value; // DealSource[0] = Leads
+
   useEffect(() => {
-    const loadSourceData = async () => {
-      if (!sellerId || !companyId) return;
+    if (!visible || !sellerId || !companyId) return;
 
-      setLoadingData(true);
+    const loadData = async () => {
+      setDataLoading(true);
       try {
-        const leadsData = await LeadsService.getSellerLeads(companyId, sellerId);
-        setLeads(leadsData);
-
-        const allContacts = await ContactsService.getCompanyContacts(companyId);
-        const sellerContacts = allContacts.filter(c => c.seller_id === sellerId);
-        setContacts(sellerContacts);
-
-        // Mock properties (replace with real service when available)
-        setProperties([
-          { id: '1', title: 'Luxury Apartment - Downtown', location: 'Dubai Marina' },
-          { id: '2', title: 'Villa - Palm Jumeirah', location: 'Palm Jumeirah' },
-          { id: '3', title: 'Office Space - Business Bay', location: 'Business Bay' }
+        const [leadsData, allContactsData, propertiesData] = await Promise.all([
+          LeadsService.getSellerLeads(companyId, sellerId),
+          ContactsService.getCompanyContacts(companyId),
+          PropertyService.getCompanyProperties(companyId),
         ]);
+
+        const sellerContacts = allContactsData.filter(c => c.seller_id === sellerId);
+
+        setLeads(leadsData?.filter(lead => lead?.id) ?? []);
+        setContacts(sellerContacts?.filter(c => c?.id) ?? []);
+        setProperties(propertiesData?.filter(p => p?.id) ?? []);
       } catch (error) {
-        console.error('Error loading source data:', error);
-        message.error('Failed to load source data');
+        console.error('Error loading form data:', error);
+        message.error('Failed to load leads, contacts or properties');
       } finally {
-        setLoadingData(false);
+        setDataLoading(false);
       }
     };
 
-    if (visible) {
-      loadSourceData();
-    }
+    loadData();
   }, [visible, sellerId, companyId]);
 
-  // Set form values when deal changes or modal opens
   useEffect(() => {
-    if (visible) {
-      if (deal) {
-        form.setFieldsValue({
-          ...deal,
-          Amount: deal.Amount || 0,
-          // @ts-ignore
-          Source: deal.Source || DealSource.LEADS
-        });
-        // @ts-ignore
-        setSourceType(deal.Source || DealSource.LEADS);
-      } else {
-        form.setFieldsValue({
-          Status: DealStatus.OPENED,
-          // @ts-ignore
-          Source: DealSource.LEADS,
-          Amount: 0
-        });
-        // @ts-ignore
-        setSourceType(DealSource.LEADS);
-      }
+    if (!visible) {
+      form.resetFields();
+      return;
+    }
+
+    const defaultSource = DealSource[0].value; // Leads
+
+    if (deal) {
+      form.setFieldsValue({
+        ...deal,
+        Amount: deal.Amount ?? 0,
+        Source: deal.Source ?? defaultSource,        // Prevent empty source
+        lead_id: deal.lead_id ?? undefined,
+        contact_id: deal.contact_id ?? undefined,
+        property_id: deal.property_id ?? undefined,
+      });
+    } else {
+      form.setFieldsValue({
+        Status: DealStatus.OPENED,
+        Source: defaultSource,
+        Amount: 0,
+      });
     }
   }, [visible, deal, form]);
 
   const handleSubmit = async () => {
     try {
-      // This triggers validation → shows "Please select deal source!" if missing
       const values = await form.validateFields();
 
       const dealData = {
         ...values,
-        // @ts-ignore
-        contact_id: values.Source === DealSource.CONTACTS ? values.contact_id : null,
-        // @ts-ignore
-        lead_id: values.Source === DealSource.LEADS ? values.lead_id : null,
-        property_id: values.property_id || null,
+        lead_id:    source === DealSource[0].value ? values.lead_id    : null,
+        contact_id: source === DealSource[1].value ? values.contact_id : null, // Contacts is index 1
+        property_id: values.property_id ?? null,
         seller_id: sellerId,
-        company_id: companyId
+        company_id: companyId,
       };
 
       await onSubmit(dealData);
-      form.resetFields();
-      // @ts-ignore
-      setSourceType(DealSource.LEADS);
       message.success(deal ? 'Deal updated successfully' : 'Deal created successfully');
+      form.resetFields();
     } catch (error) {
-      console.log('Validation failed or submit error:', error);
-      // Ant Design already shows error messages for required fields
+      console.log('Form validation/submit failed:', error);
     }
   };
 
-  const handleSourceChange = (value) => {
-    setSourceType(value);
-    // Clear dependent fields when source changes
-    form.setFieldsValue({
-      lead_id: undefined,
-      contact_id: undefined
-    });
-  };
+  const getLeadRules = () => [
+    { required: source === DealSource[0].value, message: 'Please select a lead!' },
+  ];
 
-  const renderSourceSelection = () => {
-    // @ts-ignore
-    if (sourceType === DealSource.LEADS) {
+  const getContactRules = () => [
+    { required: source === DealSource[1].value, message: 'Please select a contact!' },
+  ];
+
+  const renderRelatedSelector = () => {
+    if (source === DealSource[0].value) { // Leads
       return (
-        <Form.Item
-          name="lead_id"
-          label="Select Lead"
-          rules={rules.lead_id}
-        >
+        <Form.Item name="lead_id" label="Select Lead" rules={getLeadRules()}>
           <Select
             placeholder="Choose a lead"
-            loading={loadingData}
+            loading={dataLoading}
             showSearch
             filterOption={(input, option) =>
-              // @ts-ignore
-              option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+              option?.children?.props?.children?.toString()?.toLowerCase()?.includes(input.toLowerCase())
             }
+            allowClear
           >
-            {leads.map(lead => (
-              <Option key={lead.id} value={lead.id}>
+            {leads.map((lead, index) => (
+              <Option
+                key={lead.id ?? `lead-${index}`}
+                value={lead.id}
+                disabled={!lead.id}
+              >
                 <Space>
                   <UserOutlined />
-                  {lead.name} - {lead.email}
+                  {lead.name || 'Unnamed'} - {lead.email || 'No email'}
                   {lead.InterestLevel && (
-                    <span style={{
-                      color: lead.InterestLevel === 'High' ? '#ff4d4f' :
-                            lead.InterestLevel === 'Medium' ? '#faad14' : '#1890ff'
-                    }}>
+                    <span
+                      style={{
+                        color:
+                          lead.InterestLevel === 'High' ? '#ff4d4f' :
+                          lead.InterestLevel === 'Medium' ? '#faad14' : '#1890ff',
+                      }}
+                    >
                       ({lead.InterestLevel})
                     </span>
                   )}
@@ -195,33 +170,35 @@ const SellerDealForm = ({
       );
     }
 
-    // @ts-ignore
-    if (sourceType === DealSource.CONTACTS) {
+    if (source === DealSource[1].value) { // Contacts
       return (
-        <Form.Item
-          name="contact_id"
-          label="Select Contact"
-          rules={rules.contact_id}
-        >
+        <Form.Item name="contact_id" label="Select Contact" rules={getContactRules()}>
           <Select
             placeholder="Choose a contact"
-            loading={loadingData}
+            loading={dataLoading}
             showSearch
             filterOption={(input, option) =>
-              // @ts-ignore
-              option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+              option?.children?.props?.children?.toString()?.toLowerCase()?.includes(input.toLowerCase())
             }
+            allowClear
           >
-            {contacts.map(contact => (
-              <Option key={contact.id} value={contact.id}>
+            {contacts.map((contact, index) => (
+              <Option
+                key={contact.id ?? `contact-${index}`}
+                value={contact.id}
+                disabled={!contact.id}
+              >
                 <Space>
                   <ContactsOutlined />
-                  {contact.name} - {contact.email}
+                  {contact.name || 'Unnamed'} - {contact.email || 'No email'}
                   {contact.status && (
-                    <span style={{
-                      color: contact.status === 'Deal' ? '#52c41a' :
-                            contact.status === 'Contacted' ? '#1890ff' : '#d9d9d9'
-                    }}>
+                    <span
+                      style={{
+                        color:
+                          contact.status === 'Deal' ? '#52c41a' :
+                          contact.status === 'Contacted' ? '#1890ff' : '#d9d9d9',
+                      }}
+                    >
                       ({contact.status})
                     </span>
                   )}
@@ -233,7 +210,7 @@ const SellerDealForm = ({
       );
     }
 
-    return null; // Freelance - no selection needed
+    return null;
   };
 
   return (
@@ -254,137 +231,130 @@ const SellerDealForm = ({
           icon={<DollarOutlined />}
         >
           {deal ? 'Update Deal' : 'Create Deal'}
-        </Button>
+        </Button>,
       ]}
     >
-      <Form form={form} layout="vertical" size="large">
-        {/* Source and Related Selection */}
-        <Row gutter={16}>
-          <Col xs={24} sm={12}>
-            <Form.Item
-              name="Source"
-              label="Deal Source"
-              rules={rules.Source}
-            >
-              <Select
-                placeholder="Select deal source"
-                onChange={handleSourceChange}
+      <Spin spinning={dataLoading}>
+        <Form
+          form={form}
+          layout="vertical"
+          size="large"
+          initialValues={{
+            Source: DealSource[0].value,   // Always start with Leads
+            Status: DealStatus.OPENED,
+            Amount: 0,
+          }}
+        >
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="Source"
+                label="Deal Source"
+                rules={[{ required: true, message: 'Please select deal source!' }]}
               >
-                <Option value={DealSource.
-// @ts-ignore
-                LEADS}>
-                  <Space>
-                    <TeamOutlined />
-                    Leads
-                  </Space>
-                </Option>
-                <Option value={DealSource.
-// @ts-ignore
-                CONTACTS}>
-                  <Space>
-                    <ContactsOutlined />
-                    Contacts
-                  </Space>
-                </Option>
-                <Option value={DealSource.
-// @ts-ignore
-                FREELANCE}>
-                  <Space>
-                    <UserOutlined />
-                    Freelance
-                  </Space>
-                </Option>
-              </Select>
-            </Form.Item>
-          </Col>
+                <Select placeholder="Select deal source">
+                  {DealSource.map((src) => (
+                    <Option key={src.value} value={src.value}>
+                      <Space>
+                        <span style={{ color: src.color }}>{src.icon}</span>
+                        {src.value}
+                      </Space>
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
 
-          <Col xs={24} sm={12}>
-            {renderSourceSelection()}
-          </Col>
-        </Row>
+            <Col xs={24} sm={12}>
+              {renderRelatedSelector()}
+            </Col>
+          </Row>
 
-        {/* Amount and Status */}
-        <Row gutter={16}>
-          <Col xs={24} sm={12}>
-            <Form.Item name="Amount" label="Deal Amount (AED)" 
-// @ts-ignore
-            rules={rules.Amount}>
-              <InputNumber
-                style={{ width: '100%' }}
-                placeholder="Enter amount in AED"
-                formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                // @ts-ignore
-                parser={value => value.replace(/AED\s?|(,*)/g, '')}
-                prefix="AED"
-                min={0}
-                precision={2}
-              />
-            </Form.Item>
-          </Col>
-
-          <Col xs={24} sm={12}>
-            <Form.Item name="Status" label="Deal Status" rules={rules.Status}>
-              <Select placeholder="Select status">
-                <Option value={DealStatus.OPENED}>
-                  <Space>
-                    <span style={{ color: '#1890ff' }}>●</span> Opened
-                  </Space>
-                </Option>
-                <Option value={DealStatus.GAIN}>
-                  <Space>
-                    <span style={{ color: '#52c41a' }}>●</span> Gain
-                  </Space>
-                </Option>
-                <Option value={DealStatus.LOSS}>
-                  <Space>
-                    <span style={{ color: '#ff4d4f' }}>●</span> Loss
-                  </Space>
-                </Option>
-              </Select>
-            </Form.Item>
-          </Col>
-        </Row>
-
-        {/* Property Selection (optional) */}
-        <Row gutter={16}>
-          <Col xs={24}>
-            <Form.Item name="property_id" label="Related Property (Optional)">
-              <Select
-                placeholder="Select a property (optional)"
-                allowClear
-                showSearch
-                filterOption={(input, option) =>
-                  // @ts-ignore
-                  option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-                }
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="Amount"
+                label="Deal Amount (AED)"
+                rules={[
+                  { required: true, message: 'Please enter deal amount!' },
+                  { type: 'number', min: 0, message: 'Amount must be positive!' },
+                ]}
               >
-                {properties.map(property => (
-                  <Option key={property.id} value={property.id}>
-                    <Space>
-                      <HomeOutlined />
-                      {property.title} - {property.location}
-                    </Space>
+                <InputNumber
+                  style={{ width: '100%' }}
+                  placeholder="Enter amount in AED"
+                  formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  parser={(value) => value.replace(/AED\s?|(,*)/g, '')}
+                  prefix="AED"
+                  min={0}
+                  precision={2}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="Status"
+                label="Deal Status"
+                rules={[{ required: true, message: 'Please select deal status!' }]}
+              >
+                <Select placeholder="Select status">
+                  <Option value={DealStatus.OPENED}>
+                    <Space><span style={{ color: '#1890ff' }}>●</span> Opened</Space>
                   </Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </Col>
-        </Row>
+                  <Option value={DealStatus.GAIN}>
+                    <Space><span style={{ color: '#52c41a' }}>●</span> Gain</Space>
+                  </Option>
+                  <Option value={DealStatus.LOSS}>
+                    <Space><span style={{ color: '#ff4d4f' }}>●</span> Loss</Space>
+                  </Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
 
-        {/* Description */}
-        <Row gutter={16}>
-          <Col xs={24}>
-            <Form.Item name="Description" label="Deal Description" rules={rules.Description}>
-              <TextArea
-                rows={4}
-                placeholder="Describe the deal details, terms, and any relevant information..."
-                maxLength={1000}
-                showCount
-              />
-            </Form.Item>
-          </Col>
-        </Row>
-      </Form>
+          <Form.Item name="property_id" label="Related Property (Optional)">
+            <Select
+              placeholder="Select a property (optional)"
+              allowClear
+              showSearch
+              loading={dataLoading}
+              filterOption={(input, option) =>
+                option?.children?.props?.children?.toString()?.toLowerCase()?.includes(input.toLowerCase())
+              }
+            >
+              {properties.map((prop, index) => (
+                <Option
+                  key={prop.id ?? `prop-${index}`}
+                  value={prop.id}
+                  disabled={!prop.id}
+                >
+                  <Space>
+                    <HomeOutlined />
+                    {prop.title || prop.name || 'Unnamed Property'} - {prop.location || prop.city || ''}
+                  </Space>
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="Description"
+            label="Deal Description"
+            rules={[
+              { required: true, message: 'Please enter deal description!' },
+              { min: 10, message: 'Description must be at least 10 characters!' },
+            ]}
+          >
+            <TextArea
+              rows={4}
+              placeholder="Describe the deal details, terms, negotiation status, and any relevant information..."
+              maxLength={1000}
+              showCount
+            />
+          </Form.Item>
+        </Form>
+      </Spin>
     </Modal>
   );
 };
