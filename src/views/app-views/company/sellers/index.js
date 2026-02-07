@@ -49,6 +49,9 @@ import dayjs from 'dayjs';
 
 import AddUserForm from './AddUserForm';
 import EditUserForm from './EditUserForm';
+import LeadHistoryService from 'services/firebase/LeadHistoryService';
+
+
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -99,17 +102,46 @@ const SellersPage = () => {
       }
 
       // Fetch leads count per seller
-      const usersWithLeads = await Promise.all(
-        fetchedUsers.map(async (u) => {
-          const allLeads = await LeadsService.getSellerLeadsByDateRange(companyId, u.id, new Date('1970-01-01'), new Date());
-          const contacted = allLeads.filter(l => l.contacted === true).length;
-          return {
-            ...u,
-            totalLeads: allLeads.length,
-            contactedLeads: contacted
-          };
-        })
+// Fetch leads count per seller – focused only on leads table
+const usersWithLeads = await Promise.all(
+  fetchedUsers.map(async (u) => {
+    try {
+      // 1. Get all leads assigned to this seller (or ever assigned)
+      const allLeads = await LeadsService.getSellerLeadsByDateRange(
+        companyId,
+        u.id,
       );
+
+      
+
+      // 2. For each lead → check if this seller has at least one contact action in history
+      const contactedLeadsCount = await Promise.all(
+        allLeads.map(async (lead) => {
+          // We need to check the leadHistory subcollection for this lead
+          // → see if there is at least one entry with sellerId === u.id
+          //    and type in ['whatsapp', 'email', 'call']
+
+const hasContacted = await LeadHistoryService.hasSellerContactedLead(lead.id, u.id);
+
+          return hasContacted ? 1 : 0;
+        })
+      ).then(counts => counts.reduce((sum, v) => sum + v, 0));
+
+      return {
+        ...u,
+        totalLeads: allLeads.length,
+        contactedLeads: contactedLeadsCount,
+      };
+    } catch (err) {
+      console.error(`Error processing seller ${u.id}:`, err);
+      return {
+        ...u,
+        totalLeads: 0,
+        contactedLeads: 0,
+      };
+    }
+  })
+);
 
       setUsers(usersWithLeads);
       setFilteredUsers(usersWithLeads);
@@ -162,7 +194,8 @@ const SellersPage = () => {
       const [contacts, deals, leads, invoices] = await Promise.all([
         ContactsService.getSellerContactsByDateRange(sellerId, startDate, endDate),
         DealsService.getSellerDealsByDateRange(sellerId, startDate, endDate),
-        LeadsService.getSellerLeadsByDateRange(companyId, sellerId, startDate, endDate),
+        LeadsService.getSellerLeadsByDateRange(companyId, sellerId),
+        
         InvoicesService.getSellerInvoicesByDateRange(sellerId, startDate, endDate)
       ]);
 
@@ -183,12 +216,28 @@ const SellersPage = () => {
         gainValue: deals.filter(d => d.status === 'Gain').reduce((sum, deal) => sum + (parseFloat(deal.amount) || 0), 0)
       };
 
-      const leadStats = {
-        total: leads.length,
-        hot: leads.filter(l => l.interestLevel === 'Hot').length,
-        warm: leads.filter(l => l.interestLevel === 'Warm').length,
-        cold: leads.filter(l => l.interestLevel === 'Cold').length
-      };
+      console.log(`Analytics leads fetch - seller: ${sellerId}`);
+console.log(`Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+console.log(`Leads returned: ${leads.length}`);
+if (leads.length > 0) {
+  console.log("First lead CreationDate:", leads[0].CreationDate);
+}
+
+const leadStats = {
+  total: leads.length,
+  hot: leads.filter(l => {
+    const level = (l.InterestLevel || '').toUpperCase();
+    return ['HIGH', 'HOT'].includes(level);
+  }).length,
+  warm: leads.filter(l => {
+    const level = (l.InterestLevel || '').toUpperCase();
+    return ['MEDIUM', 'WARM'].includes(level);
+  }).length,
+  cold: leads.filter(l => {
+    const level = (l.InterestLevel || '').toUpperCase();
+    return ['LOW', 'COLD'].includes(level);
+  }).length
+};
 
       const invoiceStats = {
         total: invoices.length,

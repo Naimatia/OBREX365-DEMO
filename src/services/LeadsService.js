@@ -103,19 +103,14 @@ const LeadsService = {
    * Get leads by seller_id and date range
    * @param {string} companyId - Company ID
    * @param {string} sellerId - ID of the seller
-   * @param {Date} startDate - Start date for filtering
-   * @param {Date} endDate - End date for filtering
    * @returns {Promise<Array>} - List of leads in the date range
    */
-  async getSellerLeadsByDateRange(companyId, sellerId, startDate, endDate) {
+  async getSellerLeadsByDateRange(companyId, sellerId) {
     try {
       const q = query(
         collection(db, 'leads'),
         where('company_id', '==', companyId),
         where('seller_id', '==', sellerId),
-        where('CreationDate', '>=', Timestamp.fromDate(startDate)),
-        where('CreationDate', '<=', Timestamp.fromDate(endDate)),
-        orderBy('CreationDate', 'desc')
       );
       
       const querySnapshot = await getDocs(q);
@@ -282,6 +277,8 @@ const LeadsService = {
       throw error;
     }
   }
+
+  
 };
 
 export default LeadsService;

@@ -22,7 +22,7 @@ const AssignSellerForm = ({
       
       if (lead) {
         form.setFieldsValue({
-          seller_id: lead.seller_id || undefined
+          seller_id: lead.seller_id || undefined,
         });
       }
     }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import {
   Form,
@@ -10,12 +9,13 @@ import {
   InputNumber,
   Modal,
   Space,
-  message 
+  message
 } from 'antd';
 import { DealStatus, DealSource } from 'models/DealModel';
-import { 
-  DollarOutlined, 
-  FileTextOutlined, 
+import {
+  DollarOutlined,
+  // @ts-ignore
+  FileTextOutlined,
   ContactsOutlined,
   UserOutlined,
   HomeOutlined,
@@ -27,19 +27,17 @@ import ContactsService from 'services/ContactsService';
 const { Option } = Select;
 const { TextArea } = Input;
 
-/**
- * Form component for creating/editing deals
- */
-const SellerDealForm = ({ 
-  visible, 
-  onCancel, 
-  onSubmit, 
-  deal, 
+const SellerDealForm = ({
+  visible,
+  onCancel,
+  onSubmit,
+  deal,
   loading,
   sellerId,
-  companyId 
+  companyId
 }) => {
   const [form] = Form.useForm();
+  // @ts-ignore
   const [sourceType, setSourceType] = useState(DealSource.LEADS);
   const [leads, setLeads] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -48,43 +46,37 @@ const SellerDealForm = ({
 
   // Validation rules
   const rules = {
-    Source: [
-      { required: true, message: 'Please select deal source!' }
-    ],
+    Source: [{ required: true, message: 'Please select deal source!' }],
     Amount: [
       { required: true, message: 'Please enter deal amount!' },
       { type: 'number', min: 0, message: 'Amount must be positive!' }
     ],
-    Status: [
-      { required: true, message: 'Please select deal status!' }
-    ],
+    Status: [{ required: true, message: 'Please select deal status!' }],
     Description: [
       { required: true, message: 'Please enter deal description!' },
       { min: 10, message: 'Description must be at least 10 characters!' }
-    ]
+    ],
+    // @ts-ignore
+    lead_id: [{ required: sourceType === DealSource.LEADS, message: 'Please select a lead!' }],
+    // @ts-ignore
+    contact_id: [{ required: sourceType === DealSource.CONTACTS, message: 'Please select a contact!' }]
   };
 
-  // Load leads and contacts when component mounts or source changes
+  // Load leads, contacts, properties when modal opens
   useEffect(() => {
     const loadSourceData = async () => {
-      if (!sellerId || !companyId) {
-        console.log('Missing sellerId or companyId:', { sellerId, companyId });
-        return;
-      }
-      
+      if (!sellerId || !companyId) return;
+
       setLoadingData(true);
       try {
-        // Load leads
         const leadsData = await LeadsService.getSellerLeads(companyId, sellerId);
         setLeads(leadsData);
-        
-        // Load contacts
+
         const allContacts = await ContactsService.getCompanyContacts(companyId);
-        const sellerContacts = allContacts.filter(contact => contact.seller_id === sellerId);
+        const sellerContacts = allContacts.filter(c => c.seller_id === sellerId);
         setContacts(sellerContacts);
-        
-        // For properties, we'll create a simple mock since PropertiesService might not exist
-        // In production, replace with actual PropertiesService call
+
+        // Mock properties (replace with real service when available)
         setProperties([
           { id: '1', title: 'Luxury Apartment - Downtown', location: 'Dubai Marina' },
           { id: '2', title: 'Villa - Palm Jumeirah', location: 'Palm Jumeirah' },
@@ -103,69 +95,82 @@ const SellerDealForm = ({
     }
   }, [visible, sellerId, companyId]);
 
-  // Set form values when deal prop changes
+  // Set form values when deal changes or modal opens
   useEffect(() => {
-    if (deal) {
-      form.setFieldsValue({
-        ...deal,
-        Amount: deal.Amount || 0
-      });
-      setSourceType(deal.Source || DealSource.LEADS);
-    } else {
-      // Set default values for new deal
-      form.setFieldsValue({
-        Status: DealStatus.OPENED,
-        Source: DealSource.LEADS,
-        Amount: 0
-      });
-      setSourceType(DealSource.LEADS);
+    if (visible) {
+      if (deal) {
+        form.setFieldsValue({
+          ...deal,
+          Amount: deal.Amount || 0,
+          // @ts-ignore
+          Source: deal.Source || DealSource.LEADS
+        });
+        // @ts-ignore
+        setSourceType(deal.Source || DealSource.LEADS);
+      } else {
+        form.setFieldsValue({
+          Status: DealStatus.OPENED,
+          // @ts-ignore
+          Source: DealSource.LEADS,
+          Amount: 0
+        });
+        // @ts-ignore
+        setSourceType(DealSource.LEADS);
+      }
     }
-  }, [form, deal]);
+  }, [visible, deal, form]);
 
   const handleSubmit = async () => {
     try {
+      // This triggers validation → shows "Please select deal source!" if missing
       const values = await form.validateFields();
-      
+
       const dealData = {
         ...values,
-        // Ensure nullability for IDs based on source
+        // @ts-ignore
         contact_id: values.Source === DealSource.CONTACTS ? values.contact_id : null,
+        // @ts-ignore
         lead_id: values.Source === DealSource.LEADS ? values.lead_id : null,
         property_id: values.property_id || null,
         seller_id: sellerId,
         company_id: companyId
       };
-      
+
       await onSubmit(dealData);
       form.resetFields();
+      // @ts-ignore
       setSourceType(DealSource.LEADS);
+      message.success(deal ? 'Deal updated successfully' : 'Deal created successfully');
     } catch (error) {
-      console.error('Form validation failed:', error);
+      console.log('Validation failed or submit error:', error);
+      // Ant Design already shows error messages for required fields
     }
   };
 
   const handleSourceChange = (value) => {
     setSourceType(value);
-    // Clear related fields when source changes
+    // Clear dependent fields when source changes
     form.setFieldsValue({
-      contact_id: undefined,
-      lead_id: undefined
+      lead_id: undefined,
+      contact_id: undefined
     });
   };
 
   const renderSourceSelection = () => {
+    // @ts-ignore
     if (sourceType === DealSource.LEADS) {
       return (
         <Form.Item
           name="lead_id"
           label="Select Lead"
-          rules={[{ required: true, message: 'Please select a lead!' }]}
+          rules={rules.lead_id}
         >
-          <Select 
+          <Select
             placeholder="Choose a lead"
             loading={loadingData}
             showSearch
             filterOption={(input, option) =>
+              // @ts-ignore
               option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
             }
           >
@@ -175,9 +180,9 @@ const SellerDealForm = ({
                   <UserOutlined />
                   {lead.name} - {lead.email}
                   {lead.InterestLevel && (
-                    <span style={{ 
-                      color: lead.InterestLevel === 'High' ? '#ff4d4f' : 
-                            lead.InterestLevel === 'Medium' ? '#faad14' : '#1890ff' 
+                    <span style={{
+                      color: lead.InterestLevel === 'High' ? '#ff4d4f' :
+                            lead.InterestLevel === 'Medium' ? '#faad14' : '#1890ff'
                     }}>
                       ({lead.InterestLevel})
                     </span>
@@ -189,19 +194,21 @@ const SellerDealForm = ({
         </Form.Item>
       );
     }
-    
+
+    // @ts-ignore
     if (sourceType === DealSource.CONTACTS) {
       return (
         <Form.Item
           name="contact_id"
           label="Select Contact"
-          rules={[{ required: true, message: 'Please select a contact!' }]}
+          rules={rules.contact_id}
         >
-          <Select 
+          <Select
             placeholder="Choose a contact"
             loading={loadingData}
             showSearch
             filterOption={(input, option) =>
+              // @ts-ignore
               option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
             }
           >
@@ -211,9 +218,9 @@ const SellerDealForm = ({
                   <ContactsOutlined />
                   {contact.name} - {contact.email}
                   {contact.status && (
-                    <span style={{ 
-                      color: contact.status === 'Deal' ? '#52c41a' : 
-                            contact.status === 'Contacted' ? '#1890ff' : '#d9d9d9' 
+                    <span style={{
+                      color: contact.status === 'Deal' ? '#52c41a' :
+                            contact.status === 'Contacted' ? '#1890ff' : '#d9d9d9'
                     }}>
                       ({contact.status})
                     </span>
@@ -225,7 +232,7 @@ const SellerDealForm = ({
         </Form.Item>
       );
     }
-    
+
     return null; // Freelance - no selection needed
   };
 
@@ -259,23 +266,29 @@ const SellerDealForm = ({
               label="Deal Source"
               rules={rules.Source}
             >
-              <Select 
+              <Select
                 placeholder="Select deal source"
                 onChange={handleSourceChange}
               >
-                <Option value={DealSource.LEADS}>
+                <Option value={DealSource.
+// @ts-ignore
+                LEADS}>
                   <Space>
                     <TeamOutlined />
                     Leads
                   </Space>
                 </Option>
-                <Option value={DealSource.CONTACTS}>
+                <Option value={DealSource.
+// @ts-ignore
+                CONTACTS}>
                   <Space>
                     <ContactsOutlined />
                     Contacts
                   </Space>
                 </Option>
-                <Option value={DealSource.FREELANCE}>
+                <Option value={DealSource.
+// @ts-ignore
+                FREELANCE}>
                   <Space>
                     <UserOutlined />
                     Freelance
@@ -284,7 +297,7 @@ const SellerDealForm = ({
               </Select>
             </Form.Item>
           </Col>
-          
+
           <Col xs={24} sm={12}>
             {renderSourceSelection()}
           </Col>
@@ -293,15 +306,14 @@ const SellerDealForm = ({
         {/* Amount and Status */}
         <Row gutter={16}>
           <Col xs={24} sm={12}>
-            <Form.Item
-              name="Amount"
-              label="Deal Amount (AED)"
-              rules={rules.Amount}
-            >
+            <Form.Item name="Amount" label="Deal Amount (AED)" 
+// @ts-ignore
+            rules={rules.Amount}>
               <InputNumber
                 style={{ width: '100%' }}
                 placeholder="Enter amount in AED"
                 formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                // @ts-ignore
                 parser={value => value.replace(/AED\s?|(,*)/g, '')}
                 prefix="AED"
                 min={0}
@@ -309,30 +321,23 @@ const SellerDealForm = ({
               />
             </Form.Item>
           </Col>
-          
+
           <Col xs={24} sm={12}>
-            <Form.Item
-              name="Status"
-              label="Deal Status"
-              rules={rules.Status}
-            >
+            <Form.Item name="Status" label="Deal Status" rules={rules.Status}>
               <Select placeholder="Select status">
                 <Option value={DealStatus.OPENED}>
                   <Space>
-                    <span style={{ color: '#1890ff' }}>●</span>
-                    Opened
+                    <span style={{ color: '#1890ff' }}>●</span> Opened
                   </Space>
                 </Option>
                 <Option value={DealStatus.GAIN}>
                   <Space>
-                    <span style={{ color: '#52c41a' }}>●</span>
-                    Gain
+                    <span style={{ color: '#52c41a' }}>●</span> Gain
                   </Space>
                 </Option>
                 <Option value={DealStatus.LOSS}>
                   <Space>
-                    <span style={{ color: '#ff4d4f' }}>●</span>
-                    Loss
+                    <span style={{ color: '#ff4d4f' }}>●</span> Loss
                   </Space>
                 </Option>
               </Select>
@@ -340,18 +345,16 @@ const SellerDealForm = ({
           </Col>
         </Row>
 
-        {/* Property Selection */}
+        {/* Property Selection (optional) */}
         <Row gutter={16}>
           <Col xs={24}>
-            <Form.Item
-              name="property_id"
-              label="Related Property (Optional)"
-            >
-              <Select 
+            <Form.Item name="property_id" label="Related Property (Optional)">
+              <Select
                 placeholder="Select a property (optional)"
                 allowClear
                 showSearch
                 filterOption={(input, option) =>
+                  // @ts-ignore
                   option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
                 }
               >
@@ -371,11 +374,7 @@ const SellerDealForm = ({
         {/* Description */}
         <Row gutter={16}>
           <Col xs={24}>
-            <Form.Item
-              name="Description"
-              label="Deal Description"
-              rules={rules.Description}
-            >
+            <Form.Item name="Description" label="Deal Description" rules={rules.Description}>
               <TextArea
                 rows={4}
                 placeholder="Describe the deal details, terms, and any relevant information..."

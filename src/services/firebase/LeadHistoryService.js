@@ -1,6 +1,6 @@
 // services/firebase/LeadHistoryService.js
 import { db } from 'configs/FirebaseConfig';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc, updateDoc, where, limit, getDocs } from 'firebase/firestore';
 
 class LeadHistoryService {
   static async addHistory(leadId, history) {
@@ -72,6 +72,26 @@ class LeadHistoryService {
       console.error('Failed to mark lead as contacted:', err);
     }
   }
+
+  // Example: add to LeadHistoryService.js
+static async hasSellerContactedLead(leadId, sellerId) {
+  if (!leadId || !sellerId) return false;
+
+  try {
+    const q = query(
+      collection(db, 'leads', leadId, 'leadHistory'),
+      where('sellerId', '==', sellerId),
+      where('type', 'in', ['whatsapp', 'email', 'call']),
+      limit(1)   // we only need to know if at least one exists
+    );
+
+    const snapshot = await getDocs(q);
+    return !snapshot.empty;
+  } catch (err) {
+    console.error('Error checking history for contact:', err);
+    return false;
+  }
+}
 }
 
 export default LeadHistoryService;

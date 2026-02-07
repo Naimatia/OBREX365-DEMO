@@ -234,36 +234,24 @@ const fetchSellers = async () => {
   };
 
   // Assign seller to a lead
-  const handleAssignSeller = async (leadId, sellerId) => {
-    setConfirmLoading(true);
-    try {
-      console.log('Assigning seller:', sellerId, 'to lead:', leadId);
-      
-      // Find seller name for success message
-      const assignedSeller = sellers.find(seller => seller.id === sellerId);
-      const sellerName = assignedSeller ? assignedSeller.name : 'Selected seller';
-      
-      await LeadService.update(leadId, { seller_id: sellerId });
-      
-      message.success(`Lead successfully assigned to ${sellerName}`);
-      setAssignSellerVisible(false);
-      setAssigningLead(null);
-      fetchLeads(); // Refresh leads
-      
-      // Update selected lead if it's the one being assigned
-      if (selectedLead && selectedLead.id === leadId) {
-        setSelectedLead({
-          ...selectedLead,
-          seller_id: sellerId
-        });
-      }
-    } catch (error) {
-      console.error('Error assigning seller:', error);
-      message.error('Failed to assign seller. Please try again.');
-    } finally {
-      setConfirmLoading(false);
-    }
-  };
+const handleAssignSeller = async (leadId, sellerId) => {
+  try {
+    const selectedSeller = sellers.find(s => s.id === sellerId);
+    if (!selectedSeller) throw new Error('Seller not found');
+
+    // Call the updated method
+    await LeadService.assignTo(leadId, {
+      id: sellerId,
+      firstName: selectedSeller.firstname || '',
+      lastName: selectedSeller.lastname || ''
+    });
+
+    message.success(`Lead assigned to ${selectedSeller.name || 'seller'}`);
+    fetchLeads(); // refresh
+  } catch (error) {
+    message.error('Failed to assign seller');
+  }
+};
 
   // Show assign seller modal
   const handleShowAssignSeller = (lead) => {

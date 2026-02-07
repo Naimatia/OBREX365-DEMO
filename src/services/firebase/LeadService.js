@@ -335,20 +335,40 @@ class LeadService extends BaseFirebaseService {
     return this.update(leadId, { status });
   }
 
-  /**
-   * Assign lead to a user
-   * @param {string} leadId - Lead ID
-   * @param {Object} user - User object with id and name
-   * @returns {Promise<Object>} - Updated lead
-   */
-  async assignTo(leadId, user) {
-    return this.update(leadId, { 
-      assignedTo: {
-        id: user.id,
-        name: user.firstName + ' ' + user.lastName
-      }
-    });
+/**
+ * Assign or reassign a lead to a user/seller and record the assignment timestamp
+ * @param {string} leadId - Lead document ID
+ * @param {Object} user - User/seller object with at least { id: string, firstName: string, lastName: string }
+ * @returns {Promise<Object>} - Updated lead data (converted to model)
+ */
+async assignTo(leadId, user) {
+  if (!leadId || !user?.id) {
+    throw new Error('Missing leadId or user.id');
   }
+
+  const now = serverTimestamp();
+
+  const updateData = {
+    seller_id: user.id,                        // flat ID for fast queries
+    assignedAt: now,                           // ← NEW: timestamp of assignment/reassignment
+    updatedAt: now,
+    assignedTo: {                              // keep your existing nested object
+      id: user.id,
+      name: `${user.firstName || ''} ${user.lastName || ''}`.trim()
+    }
+  };
+
+  try {
+    // Perform the update
+    await this.update(leadId, updateData);
+    // Fetch and return updated lead (converted to model)
+    const updatedLead = await this.getById(leadId);
+    return updatedLead;
+  } catch (error) {
+    console.error('Failed to assign lead:', error);
+    throw error;
+  }
+}
 }
 
 // Create and export a singleton instance
