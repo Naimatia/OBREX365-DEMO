@@ -72,7 +72,7 @@ export const convertToUserModel = (firebaseUser, userData = {}) => {
     LastLogin: userData.LastLogin || null,
     isVerified: firebaseUser.emailVerified || false,
     isBanned: userData.isBanned || false,
-    Role: userData.role || '',
+Role: userData.Role || userData.role || '',
     company_id: userData.company_id || '',
     Notification: userData.Notification || false,
     forcePasswordReset: userData.forcePasswordReset || false

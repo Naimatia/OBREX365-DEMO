@@ -321,7 +321,7 @@ export const authSlice = createSlice({
 
 					// Set redirect based on user role
 					if (salesRoles.includes(userRole)) {
-						state.redirect = '/app/seller/dashboard';
+  state.redirect = '/app/seller/dashboard';
 
 					} else {
 						console.log('🚀 AUTH SLICE - Setting non-seller redirect to main dashboard');
@@ -360,7 +360,7 @@ export const authSlice = createSlice({
 
 				// Set redirect based on user role
 				if (salesRoles.includes(userRole)) {
-					state.redirect = '/app/seller/dashboard';
+  state.redirect = '/app/seller/dashboard';
 
 				} else {
 					state.redirect = '/app/dashboards/default'
@@ -404,13 +404,13 @@ export const authSlice = createSlice({
 				state.token = action.payload.token
 				state.user = action.payload.user
 				state.forcePasswordReset = action.payload.forcePasswordReset || false
-				const userRole = action.payload.user?.role || action.payload.user?.Role;
+const userRole = action.payload.user?.role || action.payload.user?.Role;
 
 				// Redirect to password reset if needed, otherwise role-based dashboard
 				if (action.payload.forcePasswordReset) {
 					state.redirect = '/auth/reset-password'
 				} else if (salesRoles.includes(userRole)) {
-					state.redirect = '/app/seller/dashboard';
+  state.redirect = '/app/seller/dashboard';
 
 				} else {
 					state.redirect = '/app/dashboards/default'

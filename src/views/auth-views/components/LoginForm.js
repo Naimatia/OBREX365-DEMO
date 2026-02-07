@@ -8,20 +8,21 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from "framer-motion"
 import ForcePasswordResetModal from 'components/shared-components/ForcePasswordResetModal';
 import ResetPasswordModal from 'components/shared-components/ResetPasswordModal';
+import { UserRoles } from 'models/UserModel';
 
 export const LoginForm = props => {
-	
+
 	const navigate = useNavigate();
 	const dispatch = useDispatch();
 
 	// Local state for force reset modal
 	const [resetError, setResetError] = useState(null);
-	
+
 	// Local state for reset password modal
 	const [resetModalVisible, setResetModalVisible] = useState(false);
 
-	const { 
-		showForgetPassword, 
+	const {
+		showForgetPassword,
 		onForgetPasswordClick,
 		loading,
 		redirect,
@@ -44,22 +45,32 @@ export const LoginForm = props => {
 		signIn(values);
 	};
 
+	const salesRoles = [
+		UserRoles.SELLER,
+		UserRoles.SALES_EXECUTIVE,
+		UserRoles.AGENT,
+		UserRoles.TEAM_LEADER,
+		UserRoles.SALES_MANAGER,
+		UserRoles.OFF_PLAN_SALES,
+		UserRoles.READY_TO_MOVE_SALES
+	];
+
 	// Handle force password reset
 	const handleForcePasswordReset = async (newPassword) => {
 		setResetError(null);
 		try {
 			console.log('🔄 Handling force password reset for user:', pendingUser?.email);
-			
+
 			const result = await dispatch(forcePasswordReset({
 				userId: pendingUser?.id,
 				userEmail: pendingUser?.email,
 				newPassword: newPassword
 			})).unwrap();
-			
+
 			console.log('✅ Force password reset successful:', result);
-			
+
 			// Navigation will be handled by the useEffect when token is set
-			
+
 		} catch (error) {
 			console.error('❌ Force password reset failed:', error);
 			setResetError(typeof error === 'string' ? error : 'An error occurred during password reset');
@@ -83,12 +94,12 @@ export const LoginForm = props => {
 			// For sellers, force correct redirect regardless of what's in props
 			const userRole = user?.Role || user?.role;
 			let finalRedirect = redirect;
-			
-			if (userRole === 'Seller') {
+
+			if (salesRoles.includes(userRole)) {
 				finalRedirect = '/app/seller/dashboard';
 				console.log('🔧 LoginForm - FORCING seller redirect to:', finalRedirect);
 			}
-			
+
 			// Debounce navigation to prevent throttling
 			navigationTimerRef.current = setTimeout(() => {
 				console.log('🔍 LoginForm - Auth redirect value:', redirect);
@@ -113,61 +124,61 @@ export const LoginForm = props => {
 			}
 		};
 	}, [token, redirect, showMessage, hideAuthMessage, navigate, allowRedirect, needsForceReset]);
-	
+
 	return (
 		<>
-			<motion.div 
-				initial={{ opacity: 0, marginBottom: 0 }} 
-				animate={{ 
+			<motion.div
+				initial={{ opacity: 0, marginBottom: 0 }}
+				animate={{
 					opacity: showMessage ? 1 : 0,
-					marginBottom: showMessage ? 20 : 0 
-				}}> 
+					marginBottom: showMessage ? 20 : 0
+				}}>
 				<Alert type="error" showIcon message={message}></Alert>
 			</motion.div>
-			<Form 
-				layout="vertical" 
-				name="login-form" 
+			<Form
+				layout="vertical"
+				name="login-form"
 				onFinish={onLogin}
 			>
-				<Form.Item 
-					name="email" 
-					label="Email" 
+				<Form.Item
+					name="email"
+					label="Email"
 					rules={[
-						{ 
+						{
 							required: true,
 							message: 'Please input your email',
 						},
-						{ 
+						{
 							type: 'email',
 							message: 'Please enter a validate email!'
 						}
 					]}>
-					<Input prefix={<MailOutlined className="text-primary" />}/>
+					<Input prefix={<MailOutlined className="text-primary" />} />
 				</Form.Item>
-				<Form.Item 
-					name="password" 
+				<Form.Item
+					name="password"
 					label={
-						<div className={`${showForgetPassword? 'd-flex justify-content-between w-100 align-items-center' : ''}`}>
+						<div className={`${showForgetPassword ? 'd-flex justify-content-between w-100 align-items-center' : ''}`}>
 							<span>Password</span>
 							{
-								showForgetPassword && 
-								<span 
-									onClick={() => setResetModalVisible(true)} 
+								showForgetPassword &&
+								<span
+									onClick={() => setResetModalVisible(true)}
 									className="cursor-pointer font-size-sm font-weight-normal text-muted"
 								>
 									Forget Password?
 								</span>
-							} 
+							}
 						</div>
-					} 
+					}
 					rules={[
-						{ 
+						{
 							required: true,
 							message: 'Please input your password',
 						}
 					]}
 				>
-					<Input.Password prefix={<LockOutlined className="text-primary" />}/>
+					<Input.Password prefix={<LockOutlined className="text-primary" />} />
 				</Form.Item>
 				<Form.Item>
 					<Button type="primary" htmlType="submit" block loading={loading}>
@@ -202,10 +213,10 @@ LoginForm.defaultProps = {
 	showForgetPassword: false
 };
 
-const mapStateToProps = ({auth}) => {
-	const {loading, message, showMessage, token, redirect, forcePasswordReset, pendingUser} = auth;
+const mapStateToProps = ({ auth }) => {
+	const { loading, message, showMessage, token, redirect, forcePasswordReset, pendingUser } = auth;
 	console.log('🔍 LoginForm mapStateToProps - redirect from auth:', redirect);
-  return {loading, message, showMessage, token, redirect, forcePasswordReset, pendingUser}
+	return { loading, message, showMessage, token, redirect, forcePasswordReset, pendingUser }
 }
 
 const mapDispatchToProps = {

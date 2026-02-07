@@ -13,8 +13,10 @@ const SALES_TEAM_ROLES = [
   UserRoles.SALES_MANAGER,
   UserRoles.OFF_PLAN_SALES,
   UserRoles.READY_TO_MOVE_SALES,
-  // Add COORDINATOR here too if they should have same access
 ];
+
+
+
 
 const RoleBasedRoute = ({
   children,
@@ -44,18 +46,12 @@ const RoleBasedRoute = ({
   }
 
   // 2. Sales team members (Seller + Managers + Executives + ...)
-  if (SALES_TEAM_ROLES.includes(userRole)) {
-    // Grant access if route allows SELLER or any sales-team role
-    const allowsSales =
-      allowedRoles.includes(UserRoles.SELLER) ||
-      allowedRoles.includes('Seller') || // legacy support
-      allowedRoles.some((r) => SALES_TEAM_ROLES.includes(r));
-
-    if (allowsSales) {
-      console.log(`✅ ${userRole} – sales team access granted`);
-      return <>{children}</>;
-    }
+if (SALES_TEAM_ROLES.includes(userRole)) {
+  if (allowedRoles.includes(userRole)) {
+    console.log(`✅ ${userRole} – sales team access granted (exact match)`);
+    return <>{children}</>;
   }
+}
 
   // 3. CEO & HR group
   if (
