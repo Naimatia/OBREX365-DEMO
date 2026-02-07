@@ -25,6 +25,15 @@ import { UserRoles } from 'models/UserModel';
  */
 const hrNavigation = [
   // HR Management (only this section for HR)
+  // Dashboard for HR
+  {
+    key: 'dashboards',
+    path: `${APP_PREFIX_PATH}/dashboards`,
+    title: 'Dashboard',
+    icon: DashboardOutlined,
+    breadcrumb: false,
+    submenu: []
+  },
   {
     key: 'hr',
     title: 'HR',
