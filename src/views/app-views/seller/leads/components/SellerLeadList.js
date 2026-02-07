@@ -32,7 +32,8 @@ const { RangePicker } = DatePicker;
 const { confirm } = Modal;
 
 /**
- * SellerLeadList – Clean, interactive, row-clickable lead table
+ * SellerLeadList – Clean, interactive lead table
+ * Only "View" button opens details – row click is disabled
  */
 const SellerLeadList = ({
   leads,
@@ -101,7 +102,7 @@ const SellerLeadList = ({
     onUpdateStatus(lead.id, newStatus);
   };
 
-// Get source icon
+  // Get source icon
   const getSourceIcon = (source) => {
     switch (source?.toLowerCase()) {
       case 'facebook':
@@ -159,6 +160,7 @@ const SellerLeadList = ({
         { text: 'Medium', value: LeadInterestLevel.MEDIUM },
         { text: 'Low', value: LeadInterestLevel.LOW },
       ],
+      onFilter: (value, record) => record.InterestLevel === value,
       render: (level) => {
         const map = {
           [LeadInterestLevel.HIGH]: { color: 'red', text: 'High' },
@@ -192,6 +194,7 @@ const SellerLeadList = ({
         { text: 'Gain', value: LeadStatus.GAIN },
         { text: 'Loss', value: LeadStatus.LOSS },
       ],
+      onFilter: (value, record) => record.status === value,
       render: (status, record) => {
         const colorMap = {
           [LeadStatus.PENDING]: 'orange',
@@ -230,6 +233,7 @@ const SellerLeadList = ({
       title: 'Actions',
       key: 'actions',
       width: 160,
+      fixed: 'right', // optional: keep actions column on the right
       render: (_, record) => (
         <Space size="middle">
           <Tooltip title="View Details">
@@ -238,7 +242,7 @@ const SellerLeadList = ({
               size="small"
               icon={<EyeOutlined />}
               onClick={(e) => {
-                e.stopPropagation();
+                e.stopPropagation(); // prevent any row click bubbling
                 onViewLead(record);
               }}
             />
@@ -269,8 +273,9 @@ const SellerLeadList = ({
             />
           </Tooltip>
 
-         {/**
-          * <Tooltip title="Delete">
+          {/* Uncomment if you want to enable delete again */}
+          {/*
+          <Tooltip title="Delete">
             <Button
               type="text"
               size="small"
@@ -282,7 +287,7 @@ const SellerLeadList = ({
               }}
             />
           </Tooltip>
-          */} 
+          */}
         </Space>
       ),
     },
@@ -360,7 +365,7 @@ const SellerLeadList = ({
         </Space>
       </Space>
 
-      {/* Table */}
+      {/* Table – NO onRow click handler */}
       <Table
         columns={columns}
         dataSource={filteredLeads}
@@ -374,11 +379,9 @@ const SellerLeadList = ({
           showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} leads`,
         }}
         scroll={{ x: 1000 }}
-        onRow={(record) => ({
-          onClick: () => onViewLead(record),
-          style: { cursor: 'pointer' },
-        })}
-        rowClassName="clickable-row"
+        // Removed onRow – no row click opens details anymore
+        // Optional: add hover effect via rowClassName
+        rowClassName={() => 'ant-table-row-hover'} // just for visual feedback
       />
     </div>
   );

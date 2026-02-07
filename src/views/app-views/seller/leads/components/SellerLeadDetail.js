@@ -14,6 +14,8 @@ import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import UserService from 'services/firebase/UserService';
 import LeadHistoryService from 'services/firebase/LeadHistoryService';
 import moment from 'moment';
+import DealsService from 'services/DealsService';
+import { DealSourceEnum, DealStatus } from 'models/DealModel';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -114,6 +116,15 @@ const SellerLeadDetail = ({
   const [callForm] = Form.useForm();
   const [noteForm] = Form.useForm();
 
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-AE', {
+      style: 'currency',
+      currency: 'AED',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount || 0);
+  };
+
   const currentUser = useSelector((state) => state.auth.user);
 
   /* ────── LOAD SELLER + COMPANY ────── */
@@ -126,7 +137,7 @@ const SellerLeadDetail = ({
   /* ────── LISTEN TO HISTORY ────── */
   useEffect(() => {
     if (!visible || !lead?.id) return;
-    const unsub = LeadHistoryService.listenToHistory(lead.id,lead.seller_id, setHistory);
+    const unsub = LeadHistoryService.listenToHistory(lead.id, lead.seller_id, setHistory);
     return () => typeof unsub === 'function' && unsub();
   }, [visible, lead?.id]);
 
@@ -139,7 +150,7 @@ const SellerLeadDetail = ({
       callForm.resetFields();
       noteForm.resetFields();
     }
-  }, [lead?.id, visible,currentUser?.id, whatsappForm, emailForm, callForm, noteForm]);
+  }, [lead?.id, visible, currentUser?.id, whatsappForm, emailForm, callForm, noteForm]);
 
   /* ────── HELPERS ────── */
   const copyToClipboard = (text, key) => {
@@ -225,7 +236,7 @@ const SellerLeadDetail = ({
       type: 'email',
       message: body,
       templateId: values.template,
-            sellerId: currentUser.id,               // ← important new field
+      sellerId: currentUser.id,               // ← important new field
       createdBy: { id: currentUser.id, name: historyName },
     });
 
@@ -241,7 +252,7 @@ const SellerLeadDetail = ({
       type: 'call',
       duration: values.duration,
       outcome: values.outcome,
-            sellerId: currentUser.id,               // ← important new field
+      sellerId: currentUser.id,               // ← important new field
       createdBy: { id: currentUser.id, name: historyName },
     });
 
@@ -258,7 +269,7 @@ const SellerLeadDetail = ({
     await LeadHistoryService.addHistory(lead.id, {
       type: 'note',
       message: note,
-            sellerId: currentUser.id,               // ← important new field
+      sellerId: currentUser.id,               // ← important new field
       createdBy: { id: currentUser.id, name: historyName },
     });
     noteForm.resetFields();
@@ -268,14 +279,55 @@ const SellerLeadDetail = ({
 
   /* ────── STATUS CHANGE (does NOT mark contacted) ────── */
   const handleStatusChange = async (newStatus) => {
-    await onStatusChange(lead.id, newStatus);
-    const historyName = await getCreatedByName();
-    await LeadHistoryService.addHistory(lead.id, {
-      type: 'status',
-      message: `Status changed to ${newStatus}`,
-            sellerId: currentUser.id,               // ← important new field
-      createdBy: { id: currentUser.id, name: historyName },
-    });
+    try {
+      // Update lead status (your existing logic)
+      await onStatusChange?.(lead.id, newStatus);   // or call service directly
+
+      // ─── NEW: Auto-create Deal when lead becomes GAIN ───
+      if (newStatus === LeadStatus.GAIN) {
+        const dealData = {
+          // Core fields
+          Amount: lead.Budget || 0,                    // most important mapping
+          Description: `Converted from lead: ${lead.name || 'Unnamed lead'}\n` +
+            `Source: ${lead.RedirectedFrom || 'Unknown'}\n` +
+            `Interest: ${lead.InterestLevel || '-'}\n` +
+            `Region: ${lead.region || '-'}\n\n`,
+
+
+          // Relational IDs
+          lead_id: lead.id,
+          seller_id: lead.seller_id || currentUser?.id,
+          company_id: lead.company_id || currentUser?.company_id,
+
+          // Status & source
+          Status: DealStatus.GAIN,                   // start as open
+          Source: DealSourceEnum.LEADS,                    // came from a lead
+
+          // Contact info (very useful)
+          contact_name: lead.name,
+          contact_email: lead.email,
+          contact_phone: lead.phoneNumber,
+
+          // Optional – if you later link properties
+          property_id: null,
+
+          CreationDate: new Date(),
+        };
+
+        await DealsService.createDeal(dealData);
+
+        message.success(
+          `Lead converted to Gain! A new deal worth ${formatCurrency(lead.Budget || 0)} has been created.`
+        );
+      }
+
+      // Optional: refresh lead or parent list
+      // You might want to call a refresh callback here
+
+    } catch (err) {
+      console.error('Status update failed:', err);
+      message.error('Failed to update status');
+    }
   };
 
   /* ────── TIMELINE ITEMS ────── */
@@ -356,10 +408,11 @@ const SellerLeadDetail = ({
             )}
 
             <Select
-              value={lead.Status}
+              value={lead.status}
               onChange={handleStatusChange}
               size="small"
               style={{ width: 120 }}
+              disabled={lead.status === LeadStatus.GAIN}   // ← disable when status is Gain
             >
               {Object.values(LeadStatus).map(s => (
                 <Option key={s} value={s}>

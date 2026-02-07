@@ -21,9 +21,56 @@ import { APP_PREFIX_PATH } from 'configs/AppConfig';
 import { UserRoles } from 'models/UserModel';
 
 /**
- * Navigation configuration for CEO and HR roles
+ * Navigation configuration - only HR Management for HR role
  */
-const ceoHrNavigation = [
+const hrNavigation = [
+  // HR Management (only this section for HR)
+  {
+    key: 'hr',
+    title: 'HR',
+    icon: TeamOutlined,
+    breadcrumb: true,
+    submenu: [
+      {
+        key: 'invoices',
+        path: `${APP_PREFIX_PATH}/invoices`,
+        title: 'Invoices & Billing',
+        icon: FileTextOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'applications',
+        path: `${APP_PREFIX_PATH}/applications`,
+        title: 'C.V Applications',
+        icon: SolutionOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'payroll',
+        path: `${APP_PREFIX_PATH}/payroll`,
+        title: 'Payroll',
+        icon: DollarOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'attendees',
+        path: `${APP_PREFIX_PATH}/attendees`,
+        title: 'Attendees',
+        icon: ClockCircleOutlined,
+        breadcrumb: true,
+        submenu: []
+      }
+    ]
+  }
+];
+
+/**
+ * Navigation configuration for CEO (full access - company + HR + CRM + etc.)
+ */
+const ceoNavigation = [
   // Management Dashboard
   {
     key: 'dashboards',
@@ -76,47 +123,8 @@ const ceoHrNavigation = [
     ]
   },
 
-  // HR Management
-  {
-    key: 'hr',
-    title: 'HR',
-    icon: TeamOutlined,
-    breadcrumb: true,
-    submenu: [
-      {
-        key: 'invoices',
-        path: `${APP_PREFIX_PATH}/invoices`,
-        title: 'Invoices & Billing',
-        icon: FileTextOutlined,
-        breadcrumb: true,
-        submenu: []
-      },
-      {
-        key: 'applications',
-        path: `${APP_PREFIX_PATH}/applications`,
-        title: 'C.V Applications',
-        icon: SolutionOutlined,
-        breadcrumb: true,
-        submenu: []
-      },
-      {
-        key: 'payroll',
-        path: `${APP_PREFIX_PATH}/payroll`,
-        title: 'Payroll',
-        icon: DollarOutlined,
-        breadcrumb: true,
-        submenu: []
-      },
-      {
-        key: 'attendees',
-        path: `${APP_PREFIX_PATH}/attendees`,
-        title: 'Attendees',
-        icon: ClockCircleOutlined,
-        breadcrumb: true,
-        submenu: []
-      }
-    ]
-  },
+  // HR Management (CEO can see it too)
+  ...hrNavigation,
 
   // CRM Tools
   {
@@ -197,7 +205,6 @@ const ceoHrNavigation = [
 
 /**
  * Navigation configuration for Seller & Sales Team roles
- * Used by: SELLER, SALES_EXECUTIVE, AGENT, TEAM_LEADER, SALES_MANAGER, OFF_PLAN_SALES, READY_TO_MOVE_SALES
  */
 const sellerNavigation = [
   // Seller Dashboard
@@ -277,26 +284,6 @@ const sellerNavigation = [
       }
     ]
   },
-
-  // Financial for Sellers
-  /*
-  {
-    key: 'seller.financial',
-    title: 'Financial',
-    icon: FileTextOutlined,
-    breadcrumb: true,
-    submenu: [
-      {
-        key: 'seller.invoices',
-        path: `${APP_PREFIX_PATH}/seller/invoices`,
-        title: 'Invoices',
-        icon: FileTextOutlined,
-        breadcrumb: true,
-        submenu: []
-      }
-    ]
-  }
-    */
 ];
 
 /**
@@ -305,17 +292,22 @@ const sellerNavigation = [
  * @returns {Array} - Navigation configuration array
  */
 export const getNavigation = (role) => {
-  // Super Admin sees everything (CEO + Seller + more if needed)
+  // HR sees ONLY HR Management section
+  if (role === UserRoles.HR) {
+    return hrNavigation;
+  }
+
+  // SUPER_ADMIN sees everything (CEO + Seller navigation)
   if (role === UserRoles.SUPER_ADMIN) {
-    return [...ceoHrNavigation, ...sellerNavigation]; // Combine both
+    return [...ceoNavigation, ...sellerNavigation];
   }
 
-  // CEO & HR
-  if (role === UserRoles.CEO || role === UserRoles.HR) {
-    return ceoHrNavigation;
+  // CEO sees full company + HR + CRM + Tools
+  if (role === UserRoles.CEO) {
+    return ceoNavigation;
   }
 
-  // All Sales & Seller Roles use the same navigation
+  // All Sales & Seller Roles
   const salesRoles = [
     UserRoles.SELLER,
     UserRoles.SALES_EXECUTIVE,
@@ -330,7 +322,7 @@ export const getNavigation = (role) => {
     return sellerNavigation;
   }
 
-  // Default fallback
+  // Default fallback (for any other roles)
   return sellerNavigation;
 };
 

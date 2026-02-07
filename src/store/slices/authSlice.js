@@ -319,14 +319,13 @@ export const authSlice = createSlice({
 					state.pendingUser = null
 					const userRole = action.payload.user?.role || action.payload.user?.Role;
 
-					// Set redirect based on user role
-					if (salesRoles.includes(userRole)) {
-  state.redirect = '/app/seller/dashboard';
-
-					} else {
-						console.log('🚀 AUTH SLICE - Setting non-seller redirect to main dashboard');
-						state.redirect = '/app/dashboards/default'
-					}
+					if (userRole === UserRoles.HR) {
+          state.redirect = '/app/invoices';
+        } else if (salesRoles.includes(userRole)) {
+          state.redirect = '/app/seller/dashboard';
+        } else {
+          state.redirect = '/app/dashboards/default';
+        }
 				}
 			})
 			.addCase(signIn.rejected, (state, action) => {
@@ -358,13 +357,13 @@ export const authSlice = createSlice({
 				state.forcePasswordReset = action.payload.forcePasswordReset || false
 				const userRole = action.payload.user?.role || action.payload.user?.Role;
 
-				// Set redirect based on user role
-				if (salesRoles.includes(userRole)) {
-  state.redirect = '/app/seller/dashboard';
-
-				} else {
-					state.redirect = '/app/dashboards/default'
-				}
+				if (userRole === UserRoles.HR) {
+          state.redirect = '/app/invoices';
+        } else if (salesRoles.includes(userRole)) {
+          state.redirect = '/app/seller/dashboard';
+        } else {
+          state.redirect = '/app/dashboards/default';
+        }
 			})
 			.addCase(signUp.rejected, (state, action) => {
 				state.message = action.payload
@@ -384,12 +383,16 @@ export const authSlice = createSlice({
 				// Redirect to password reset if needed, otherwise role-based dashboard
 				if (action.payload.forcePasswordReset) {
 					state.redirect = '/auth/reset-password'
-				} else if (salesRoles.includes(userRole)) {
-					state.redirect = '/app/seller/dashboard';
-
 				} else {
-					state.redirect = '/app/dashboards/default'
-				}
+          const userRole = action.payload.user?.Role || action.payload.user?.role;
+          if (userRole === UserRoles.HR) {
+            state.redirect = '/app/invoices';
+          } else if (salesRoles.includes(userRole)) {
+            state.redirect = '/app/seller/dashboard';
+          } else {
+            state.redirect = '/app/dashboards/default';
+          }
+        }
 			})
 			.addCase(signInWithGoogle.rejected, (state, action) => {
 				state.message = action.payload
@@ -404,17 +407,21 @@ export const authSlice = createSlice({
 				state.token = action.payload.token
 				state.user = action.payload.user
 				state.forcePasswordReset = action.payload.forcePasswordReset || false
-const userRole = action.payload.user?.role || action.payload.user?.Role;
+				const userRole = action.payload.user?.role || action.payload.user?.Role;
 
 				// Redirect to password reset if needed, otherwise role-based dashboard
 				if (action.payload.forcePasswordReset) {
 					state.redirect = '/auth/reset-password'
-				} else if (salesRoles.includes(userRole)) {
-  state.redirect = '/app/seller/dashboard';
-
 				} else {
-					state.redirect = '/app/dashboards/default'
-				}
+          const userRole = action.payload.user?.Role || action.payload.user?.role;
+          if (userRole === UserRoles.HR) {
+            state.redirect = '/app/invoices';
+          } else if (salesRoles.includes(userRole)) {
+            state.redirect = '/app/seller/dashboard';
+          } else {
+            state.redirect = '/app/dashboards/default';
+          }
+        }
 			})
 			.addCase(signInWithFacebook.rejected, (state, action) => {
 				state.message = action.payload
@@ -436,13 +443,13 @@ const userRole = action.payload.user?.role || action.payload.user?.Role;
 				state.showMessage = true
 				const userRole = action.payload.user?.role || action.payload.user?.Role;
 
-				// Set appropriate redirect after password reset
-				if (salesRoles.includes(userRole)) {
-					state.redirect = '/app/seller/dashboard';
-
-				} else {
-					state.redirect = '/app/dashboards/default'
-				}
+				if (userRole === UserRoles.HR) {
+          state.redirect = '/app/invoices';
+        } else if (salesRoles.includes(userRole)) {
+          state.redirect = '/app/seller/dashboard';
+        } else {
+          state.redirect = '/app/dashboards/default';
+        }
 			})
 			.addCase(forcePasswordReset.rejected, (state, action) => {
 				state.loading = false

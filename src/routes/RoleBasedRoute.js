@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
@@ -15,9 +16,6 @@ const SALES_TEAM_ROLES = [
   UserRoles.READY_TO_MOVE_SALES,
 ];
 
-
-
-
 const RoleBasedRoute = ({
   children,
   allowedRoles = [],
@@ -26,6 +24,7 @@ const RoleBasedRoute = ({
   const user = useSelector((state) => state.auth.user);
 
   if (!user) {
+    console.log('🔒 No user found – redirecting to login');
     return <Navigate to={`${AUTH_PREFIX_PATH}/login`} replace />;
   }
 
@@ -39,39 +38,52 @@ const RoleBasedRoute = ({
     currentPath: window.location.pathname,
   });
 
-  // 1. Super Admin → full access to everything
+  // 1. Super Admin → full access to everything (bypass all checks)
   if (userRole === UserRoles.SUPER_ADMIN) {
     console.log('✅ SuperAdmin – full access granted');
     return <>{children}</>;
   }
 
-  // 2. Sales team members (Seller + Managers + Executives + ...)
-if (SALES_TEAM_ROLES.includes(userRole)) {
-  if (allowedRoles.includes(userRole)) {
-    console.log(`✅ ${userRole} – sales team access granted (exact match)`);
-    return <>{children}</>;
-  }
-}
-
-  // 3. CEO & HR group
-  if (
-    (userRole === UserRoles.CEO || userRole === UserRoles.HR) &&
-    (allowedRoles.includes(UserRoles.CEO) ||
-     allowedRoles.includes(UserRoles.HR) ||
-     allowedRoles.includes('CEO') ||
-     allowedRoles.includes('HR'))
-  ) {
-    console.log(`✅ ${userRole} – CEO/HR access granted`);
-    return <>{children}</>;
+  // 2. HR role – only allow if explicitly permitted
+  if (userRole === UserRoles.HR) {
+    const hrAllowed = allowedRoles.includes(UserRoles.HR) || allowedRoles.includes('HR');
+    if (hrAllowed) {
+      console.log('✅ HR – access granted (explicitly allowed)');
+      return <>{children}</>;
+    } else {
+      console.log('❌ HR – access denied (route not allowed for HR)');
+      return <Navigate to={redirectPath} replace />;
+    }
   }
 
-  // 4. Explicit match (fallback – other roles like Accountant, Secretary…)
+  // 3. Sales team members (Seller + Managers + Executives + ...)
+  if (SALES_TEAM_ROLES.includes(userRole)) {
+    const salesAllowed = allowedRoles.some(role => SALES_TEAM_ROLES.includes(role) || role === userRole);
+    if (salesAllowed) {
+      console.log(`✅ ${userRole} – sales team access granted`);
+      return <>{children}</>;
+    } else {
+      console.log(`❌ ${userRole} – access denied (not allowed on this route)`);
+      return <Navigate to={redirectPath} replace />;
+    }
+  }
+
+  // 4. CEO (and other non-HR, non-sales roles) – check explicit match
+  if (userRole === UserRoles.CEO) {
+    const ceoAllowed = allowedRoles.includes(UserRoles.CEO) || allowedRoles.includes('CEO');
+    if (ceoAllowed) {
+      console.log('✅ CEO – access granted');
+      return <>{children}</>;
+    }
+  }
+
+  // 5. Explicit match for any other roles (fallback)
   if (allowedRoles.includes(userRole)) {
     console.log(`✅ Explicit role match – ${userRole} granted`);
     return <>{children}</>;
   }
 
-  // Denied
+  // Denied – default case
   console.log('❌ ACCESS DENIED', {
     userRole,
     requiredRoles: allowedRoles,

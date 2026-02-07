@@ -50,6 +50,7 @@ import dayjs from 'dayjs';
 import AddUserForm from './AddUserForm';
 import EditUserForm from './EditUserForm';
 import LeadHistoryService from 'services/firebase/LeadHistoryService';
+import { DealStatus } from 'models/DealModel';
 
 
 
@@ -207,21 +208,19 @@ const hasContacted = await LeadHistoryService.hasSellerContactedLead(lead.id, u.
         loss: contacts.filter(c => c.status === 'Loss').length
       };
 
-      const dealStats = {
-        total: deals.length,
-        pending: deals.filter(d => d.status === 'Pending').length,
-        gain: deals.filter(d => d.status === 'Gain').length,
-        loss: deals.filter(d => d.status === 'Loss').length,
-        totalValue: deals.reduce((sum, deal) => sum + (parseFloat(deal.amount) || 0), 0),
-        gainValue: deals.filter(d => d.status === 'Gain').reduce((sum, deal) => sum + (parseFloat(deal.amount) || 0), 0)
-      };
-
-      console.log(`Analytics leads fetch - seller: ${sellerId}`);
-console.log(`Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
-console.log(`Leads returned: ${leads.length}`);
-if (leads.length > 0) {
-  console.log("First lead CreationDate:", leads[0].CreationDate);
-}
+   // ─── IMPROVED Deals stats ───
+    const dealStats = {
+      total: deals.length,
+      opened: deals.filter(d => d.Status === DealStatus.OPENED).length,
+      gain: deals.filter(d => d.Status === DealStatus.GAIN).length,
+      loss: deals.filter(d => d.Status === DealStatus.LOSS).length,
+      totalValue: deals.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0),
+      gainValue: deals
+        .filter(d => d.Status === DealStatus.GAIN)
+        .reduce((sum, d) => sum + (Number(d.Amount) || 0), 0),
+      avgDealValue: deals.length > 0 ? 
+        deals.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0) / deals.length : 0
+    };
 
 const leadStats = {
   total: leads.length,
@@ -496,43 +495,66 @@ const leadStats = {
   title: 'Leads',
   key: 'leads',
   width: 160,
-  render: (_, record) => (
-    <div style={{ textAlign: 'center' }}>
-      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-        Total Leads | Contacted
-      </Text>
-      <Space size={8}>
-        <div
-          style={{
-            backgroundColor: '#ff4d4f',
-            color: 'white',
-            fontWeight: 'bold',
-            fontSize: 16,
-            padding: '4px 8px',
-            borderRadius: 6,
-            minWidth: 36,
-            textAlign: 'center'
-          }}
+  // Only render this column if the user has one of the allowed sales roles
+  render: (_, record) => {
+    const allowedRoles = [
+        UserRoles.SELLER,
+      UserRoles.SALES_EXECUTIVE,
+      UserRoles.AGENT,
+      UserRoles.TEAM_LEADER,
+      UserRoles.SALES_MANAGER,
+      UserRoles.OFF_PLAN_SALES,
+      UserRoles.READY_TO_MOVE_SALES
+    ];
+
+
+    // Check if this row's user has one of the allowed roles
+    const userRole = record.Role || record.role; // handle both casing possibilities
+    if (!allowedRoles.includes(userRole)) {
+      return null; // ← hides the cell content for non-sales roles
+    }
+
+    return (
+      <div style={{ textAlign: 'center' }}>
+        <Text
+          type="secondary"
+          style={{ fontSize: 12, display: 'block', marginBottom: 4 }}
         >
-          {record.totalLeads || 0}
-        </div>
-        <div
-          style={{
-            backgroundColor: '#52c41a',
-            color: 'white',
-            fontWeight: 'bold',
-            fontSize: 16,
-            padding: '4px 8px',
-            borderRadius: 6,
-            minWidth: 36,
-            textAlign: 'center'
-          }}
-        >
-          {record.contactedLeads || 0}
-        </div>
-      </Space>
-    </div>
-  )
+          Total Leads | Contacted
+        </Text>
+        <Space size={8}>
+          <div
+            style={{
+              backgroundColor: '#ff4d4f',
+              color: 'white',
+              fontWeight: 'bold',
+              fontSize: 16,
+              padding: '4px 8px',
+              borderRadius: 6,
+              minWidth: 36,
+              textAlign: 'center'
+            }}
+          >
+            {record.totalLeads || 0}
+          </div>
+          <div
+            style={{
+              backgroundColor: '#52c41a',
+              color: 'white',
+              fontWeight: 'bold',
+              fontSize: 16,
+              padding: '4px 8px',
+              borderRadius: 6,
+              minWidth: 36,
+              textAlign: 'center'
+            }}
+          >
+            {record.contactedLeads || 0}
+          </div>
+        </Space>
+      </div>
+    );
+  }
 },
     {
       title: 'Status',
@@ -812,6 +834,47 @@ const leadStats = {
                     </Card>
                   </Col>
 
+                                    {/* Leads Analytics */}
+                  <Col span={12}>
+                    <Card
+                      title="🎯 Leads Quality"
+                      style={{ height: '100%' }}
+                      headStyle={{ background: '#fff7e6', color: '#d48806' }}
+                    >
+                      <Row gutter={[8, 8]}>
+                        <Col span={12}>
+                          <Statistic
+                            title="Total Leads"
+                            value={analyticsData.leads.total}
+                            valueStyle={{ color: '#fa8c16' }}
+                          />
+                        </Col>
+                        <Col span={12}>
+                          <Statistic
+                            title="Hot Leads"
+                            value={analyticsData.leads.hot}
+                            valueStyle={{ color: '#ff4d4f' }}
+                          />
+                        </Col>
+                        <Col span={12}>
+                          <Statistic
+                            title="Warm Leads"
+                            value={analyticsData.leads.warm}
+                            valueStyle={{ color: '#faad14' }}
+                          />
+                        </Col>
+                        <Col span={12}>
+                          <Statistic
+                            title="Cold Leads"
+                            value={analyticsData.leads.cold}
+                            valueStyle={{ color: '#13c2c2' }}
+                          />
+                        </Col>
+                      </Row>
+                    </Card>
+                  </Col>
+
+
                   {/* Deals Analytics */}
                   <Col span={12}>
                     <Card
@@ -854,47 +917,9 @@ const leadStats = {
                     </Card>
                   </Col>
 
-                  {/* Leads Analytics */}
-                  <Col span={12}>
-                    <Card
-                      title="🎯 Leads Quality"
-                      style={{ height: '100%' }}
-                      headStyle={{ background: '#fff7e6', color: '#d48806' }}
-                    >
-                      <Row gutter={[8, 8]}>
-                        <Col span={12}>
-                          <Statistic
-                            title="Total Leads"
-                            value={analyticsData.leads.total}
-                            valueStyle={{ color: '#fa8c16' }}
-                          />
-                        </Col>
-                        <Col span={12}>
-                          <Statistic
-                            title="Hot Leads"
-                            value={analyticsData.leads.hot}
-                            valueStyle={{ color: '#ff4d4f' }}
-                          />
-                        </Col>
-                        <Col span={12}>
-                          <Statistic
-                            title="Warm Leads"
-                            value={analyticsData.leads.warm}
-                            valueStyle={{ color: '#faad14' }}
-                          />
-                        </Col>
-                        <Col span={12}>
-                          <Statistic
-                            title="Cold Leads"
-                            value={analyticsData.leads.cold}
-                            valueStyle={{ color: '#13c2c2' }}
-                          />
-                        </Col>
-                      </Row>
-                    </Card>
-                  </Col>
 
-                  {/* Invoices Analytics */}
+
+                  {/* Invoices Analytics
                   <Col span={12}>
                     <Card
                       title="💰 Invoices Status"
@@ -935,6 +960,7 @@ const leadStats = {
                       </Row>
                     </Card>
                   </Col>
+                   */}
                 </Row>
 
                 {/* Progress Notes */}
@@ -1006,23 +1032,84 @@ const leadStats = {
                     />
                   </TabPane>
 
-                  <TabPane tab={`Deals (${analyticsData.deals.total})`} key="deals">
-                    <List
-                      size="small"
-                      header={<Text strong>All deals in selected period</Text>}
-                      dataSource={analyticsData.rawData.deals.slice(0, 20)}
-                      renderItem={deal => (
-                        <List.Item>
-                          <List.Item.Meta
-                            avatar={<Avatar style={{ backgroundColor: deal.status === 'Gain' ? '#52c41a' : deal.status === 'Loss' ? '#ff4d4f' : '#faad14' }}>{deal.title?.charAt(0) || 'D'}</Avatar>}
-                            title={deal.title || 'Unnamed Deal'}
-                            description={`Amount: AED ${Number(deal.amount || 0).toLocaleString('en-AE')} | Status: ${deal.status || 'Unknown'}`}
-                          />
-                          <Text type="secondary">{moment(deal.CreationDate).format('MMM DD, YYYY')}</Text>
-                        </List.Item>
-                      )}
-                    />
-                  </TabPane>
+               <TabPane tab={`Deals (${analyticsData.deals.total})`} key="deals">
+  <List
+    size="small"
+    header={<Text strong>All deals in selected period</Text>}
+    dataSource={analyticsData.rawData.deals.slice(0, 20)}
+    locale={{ emptyText: 'No deals found in this period' }}
+    renderItem={(deal) => {
+      // Use correct field names from your DealModel
+      const status = deal.Status || 'Unknown';
+      const amount = Number(deal.Amount || 0);
+      const description = deal.Description || 'No description available';
+      const creationDate = deal.CreationDate 
+        ? moment(deal.CreationDate).format('MMM DD, YYYY') 
+        : '—';
+
+      // Determine avatar color based on status
+      let avatarColor = '#faad14'; // default (opened/pending)
+      if (status === DealStatus.GAIN) avatarColor = '#52c41a';
+      if (status === DealStatus.LOSS) avatarColor = '#ff4d4f';
+
+      return (
+        <List.Item>
+          <List.Item.Meta
+            avatar={
+              <Avatar 
+                style={{ backgroundColor: avatarColor }}
+              >
+                {deal.Description?.charAt(0)?.toUpperCase() || 'D'}
+              </Avatar>
+            }
+            title={
+              <Space>
+                <Text strong>
+                  {description.substring(0, 60)}
+                  {description.length > 60 ? '...' : ''}
+                </Text>
+                {amount > 0 && (
+                  <Tag color={status === DealStatus.GAIN ? 'green' : 'default'}>
+                    AED {amount.toLocaleString('en-AE')}
+                  </Tag>
+                )}
+              </Space>
+            }
+            description={
+              <Space direction="vertical" size={2}>
+                <Text type="secondary">
+                  Status: <Tag color={
+                    status === DealStatus.GAIN ? 'green' :
+                    status === DealStatus.LOSS ? 'red' : 
+                    'orange'
+                  }>
+                    {status}
+                  </Tag>
+                </Text>
+                <Text type="secondary">
+                  Created: {creationDate}
+                </Text>
+              </Space>
+            }
+          />
+          {/* Optional: quick actions */}
+          <Space>
+            {status !== DealStatus.GAIN && status !== DealStatus.LOSS && (
+              <Tooltip title="View deal details">
+                <Button 
+                  type="text" 
+                  icon={<EyeOutlined />} 
+                  size="small"
+                  // onClick={() => handleViewDeal(deal)}  ← add if needed
+                />
+              </Tooltip>
+            )}
+          </Space>
+        </List.Item>
+      );
+    }}
+  />
+</TabPane>
 
                   <TabPane tab={`Leads (${analyticsData.leads.total})`} key="leads">
                     <List
@@ -1042,6 +1129,7 @@ const leadStats = {
                     />
                   </TabPane>
 
+{/* 
                   <TabPane tab={`Invoices (${analyticsData.invoices.total})`} key="invoices">
                     <List
                       size="small"
@@ -1059,9 +1147,11 @@ const leadStats = {
                       )}
                     />
                   </TabPane>
+                  */}
                 </Tabs>
               </TabPane>
             </Tabs>
+            
           ) : (
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <Text type="secondary">Select a date range to view analytics</Text>

@@ -25,6 +25,7 @@ import {
   StarOutlined,
   ShareAltOutlined
 } from '@ant-design/icons';
+import LeadsService from 'services/LeadsService';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -36,7 +37,9 @@ const SellerLeadForm = ({
   lead, 
   onSubmit, 
   onCancel, 
-  loading = false 
+  loading = false,
+  sellerId,       // ← Add these
+  companyId       // ← Add these
 }) => {
   const [form] = Form.useForm();
   const isEditMode = !!lead?.id;
@@ -56,18 +59,41 @@ const SellerLeadForm = ({
   }, [form, lead]);
 
   // Handle form submission
-  const handleSubmit = () => {
-    form.validateFields()
-      .then(values => {
-        const formattedValues = {
-          ...values,
-          status: LeadStatus.PENDING, // Always set status to PENDING for sellers
-        };
-        onSubmit(formattedValues);
+const handleSubmit = () => {
+    form
+      .validateFields()
+      .then(async (values) => {
+        try {
+          if (lead?.id) {
+            // Update
+            await LeadsService.updateLead(lead.id, values, sellerId, companyId);
+            message.success('Lead updated successfully');
+          } else {
+            // Create new lead
+            const leadData = {
+              ...values,
+              company_id: companyId,
+              seller_id: sellerId,
+              status: LeadStatus.PENDING,
+              Notes: values.initialNote ? [{
+                note: values.initialNote,
+                CreationDate: new Date()
+              }] : []
+            };
+            delete leadData.initialNote;
+            
+            await LeadsService.createLead(leadData);
+            message.success('Lead created successfully');
+          }
+
+          onSubmit?.(values);
+        } catch (err) {
+          message.error('Failed to save lead');
+          console.error(err);
+        }
       })
-      .catch(info => {
+      .catch((info) => {
         message.error('Please check the form for errors.');
-        console.error('Validate Failed:', info);
       });
   };
 

@@ -31,6 +31,8 @@ import SellerLeadForm from './components/SellerLeadForm';
 import SellerLeadDetail from './components/SellerLeadDetail';
 import LeadEncouragementModal from './components/LeadEncouragementModal';
 import CSVImportModal from './components/CSVImportModal';
+import DealsService from 'services/DealsService';
+import { DealSourceEnum, DealStatus } from 'models/DealModel';
 
 const { Title, Text } = Typography;
 
@@ -49,6 +51,14 @@ const SellerLeadsPage = () => {
     status: null,
     leadName: null
   });
+    const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-AE', {
+      style: 'currency',
+      currency: 'AED',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount || 0);
+  };
   const [csvImportVisible, setCsvImportVisible] = useState(false);
   const [monthlyStats, setMonthlyStats] = useState({
     total: 0,
@@ -178,28 +188,61 @@ const SellerLeadsPage = () => {
     setIsFormVisible(true);
   };
   
-  // Handle updating lead status
-  const handleUpdateStatus = async (leadId, status) => {
+  const currentUser = useSelector(state => state.auth.user);
+
+const handleUpdateStatus = async (leadId, newStatus) => {
     try {
-      // Find the lead to get the name
       const lead = leads.find(l => l.id === leadId);
-      
-      await LeadsService.updateLead(leadId, { status });
-      message.success('Lead status updated successfully');
-      
-      // Show encouragement modal for meaningful status changes
-      if ([LeadStatus.GAIN, LeadStatus.LOSS].includes(status)) {
+      if (!lead) throw new Error('Lead not found');
+
+      // Update lead status
+      await LeadsService.updateLead(leadId, { status: newStatus });
+
+      // Auto-create deal when status becomes GAIN
+      if (newStatus === LeadStatus.GAIN) {
+        const dealData = {
+          Amount: lead.Budget || 0,
+          Description: `Converted from lead: ${lead.name || 'Unnamed lead'}\n` +
+            `Source: ${lead.RedirectedFrom || 'Unknown'}\n` +
+            `Interest: ${lead.InterestLevel || '-'}\n` +
+            `Region: ${lead.region || '-'}\n\n` +
+            `Original lead note: ${lead.Notes?.[0]?.note || 'No initial note'}`,
+
+          lead_id: lead.id,
+          seller_id: lead.seller_id || currentUser?.id,
+          company_id: lead.company_id || currentUser?.company_id,
+
+          Status: DealStatus.GAIN,           // usually start as OPENED, not GAIN
+          Source: DealSourceEnum.LEADS,
+
+          contact_name: lead.name,
+          contact_email: lead.email,
+          contact_phone: lead.phoneNumber,
+
+          property_id: null,
+          CreationDate: new Date(),
+        };
+
+        await DealsService.createDeal(dealData);
+
+        message.success(
+          `Lead converted to Gain! New deal created for ${formatCurrency(lead.Budget || 0)}`
+        );
+      }
+
+      // Show encouragement modal (your existing logic)
+      if ([LeadStatus.GAIN, LeadStatus.LOSS].includes(newStatus)) {
         setEncouragementModal({
           visible: true,
-          status: status,
-          leadName: lead?.name || 'Unknown Lead'
+          status: newStatus,
+          leadName: lead?.name || 'Lead'
         });
       }
-      
-      fetchLeads();
+
+      fetchLeads(); // refresh list
     } catch (err) {
-      console.error('Error updating lead status:', err);
-      message.error('Failed to update lead status.');
+      console.error('Status update failed:', err);
+      message.error('Failed to update lead status');
     }
   };
   
@@ -409,6 +452,8 @@ const SellerLeadsPage = () => {
             setSelectedLead(null);
           }}
           loading={loading}
+          sellerId={sellerId}      // ← Pass here
+    companyId={companyId}    // ← Pass here
         />
       </Modal>
 
