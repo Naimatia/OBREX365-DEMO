@@ -133,7 +133,46 @@ const ceoNavigation = [
   },
 
   // HR Management (CEO can see it too)
-  ...hrNavigation,
+   {
+    key: 'hr',
+    title: 'HR',
+    icon: TeamOutlined,
+    breadcrumb: true,
+    submenu: [
+      {
+        key: 'invoices',
+        path: `${APP_PREFIX_PATH}/invoices`,
+        title: 'Invoices & Billing',
+        icon: FileTextOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'applications',
+        path: `${APP_PREFIX_PATH}/applications`,
+        title: 'C.V Applications',
+        icon: SolutionOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'payroll',
+        path: `${APP_PREFIX_PATH}/payroll`,
+        title: 'Payroll',
+        icon: DollarOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'attendees',
+        path: `${APP_PREFIX_PATH}/attendees`,
+        title: 'Attendees',
+        icon: ClockCircleOutlined,
+        breadcrumb: true,
+        submenu: []
+      }
+    ]
+  },
 
   // CRM Tools
   {
