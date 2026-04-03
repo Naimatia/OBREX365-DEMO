@@ -27,7 +27,7 @@ const WHATSAPP_TEMPLATES = {
 
 I'm {{seller}} from {{company}} – your dedicated property advisor.
 
-You recently showed interest in a {{budget}} property in {{region}}.
+You recently showed interest in a {{budget}} property in Dubai.
 
 Are you free for a quick 5-min call to discuss your needs?
 
@@ -36,7 +36,7 @@ Looking forward!
 
   follow_up: `Hi {{name}},
 
-Just checking in – still looking for a {{budget}}  property in {{region}}?
+Just checking in – still looking for a {{budget}}  property in Dubai?
 
 We have new listings matching your criteria.
 
@@ -47,7 +47,7 @@ Best,
 
 We found a **perfect match** for you:
 
- {{budget}} | {{region}}
+ {{budget}} | Dubai
 
 View details: [Insert Property Link]
 
@@ -61,7 +61,7 @@ Thank you for your interest in properties with us.
 
 I'm {{seller}}, your dedicated real estate advisor at {{company}}.
 
-I noticed you're looking for a property around ** {{budget}}** in **{{region}}**.
+I noticed you're looking for a property around ** {{budget}}** in **Dubai**.
 
 I'd love to understand your needs better. Could we schedule a quick call?
 
@@ -82,7 +82,7 @@ Real Estate Advisor
 We have an **exclusive property match** for you:
 
 **Price:**  {{budget}}
-**Location:** {{region}}
+**Location:** Dubai
 **Type:** [Villa/Apartment/Penthouse]
 
 [View Full Details]
@@ -187,7 +187,7 @@ const SellerLeadDetail = ({
       .replace(/{{name}}/g, lead.name)
       .replace(/{{seller}}/g, sellerName)
       .replace(/{{budget}}/g, lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : 'your budget')
-      .replace(/{{region}}/g, lead.region || 'your area')
+      .replace(/Dubai/g, lead.region || 'your area')
       .replace(/{{company}}/g, companyName);
 
     const url = `https://wa.me/${lead.phoneNumber.replace(/[^\d]/g, '')}?text=${encodeURIComponent(msg)}`;
@@ -219,7 +219,7 @@ const SellerLeadDetail = ({
       .replace(/{{name}}/g, lead.name)
       .replace(/{{seller}}/g, sellerName)
       .replace(/{{budget}}/g, lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : '')
-      .replace(/{{region}}/g, lead.region || '')
+      .replace(/Dubai/g, lead.region || '')
       .replace(/{{sellerEmail}}/g, sellerEmail)
       .replace(/{{sellerPhone}}/g, sellerPhone)
       .replace(/{{company}}/g, companyName);
@@ -368,7 +368,7 @@ const SellerLeadDetail = ({
           {h.type === 'note' && <Text>{h.message}</Text>}
           {h.type === 'call' && (
             <Text>
-              Call ({h.duration}s) –{' '}
+              Call ({h.duration}Min) –{' '}
               <Tag color={h.outcome === 'answered' ? 'green' : 'red'}>{h.outcome}</Tag>
             </Text>
           )}
@@ -567,7 +567,7 @@ const SellerLeadDetail = ({
         destroyOnClose
       >
         <Form form={callForm} onFinish={logCall} layout="vertical">
-          <Form.Item name="duration" label="Duration (seconds)" initialValue={60}>
+          <Form.Item name="duration" label="Duration (minutes)" initialValue={2}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="outcome" label="Outcome" initialValue="answered">
