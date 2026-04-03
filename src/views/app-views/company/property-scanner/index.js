@@ -16,7 +16,6 @@ import {
 import { useSelector } from 'react-redux';
 import {
   BuildOutlined,
-  SearchOutlined,
   BarChartOutlined,
   ArrowUpOutlined,
   LoadingOutlined,
@@ -30,6 +29,66 @@ import SearchForm from './components/SearchForm';
 const { Title, Paragraph } = Typography;
 const { Search } = Input;
 
+// ─── RapidAPI config ──────────────────────────────────────────────────────────
+const RAPIDAPI_KEY = '880ad61b47msh81af58585b3a6e2p17a770jsnab8d05748843';
+const RAPIDAPI_HOST = 'propertyfinder-uae-data.p.rapidapi.com';
+const RAPIDAPI_HEADERS = {
+  'Content-Type': 'application/json',
+  'x-rapidapi-host': RAPIDAPI_HOST,
+  'x-rapidapi-key': RAPIDAPI_KEY,
+};
+
+// ─── Adapt listing ────────────────────────────────────────────────────────────
+const adaptListing = (p) => {
+  const priceValue = p.price?.value ? Number(p.price.value) : 0;
+  const currency = p.price?.currency || 'AED';
+  const priceText = priceValue
+    ? `${priceValue.toLocaleString()} ${currency}`
+    : 'Price on request';
+
+  const locationFull =
+    p.address?.full_name ||
+    (p.location_tree?.map((l) => l.name).join(', ') ?? 'Location not specified');
+
+  const city = p.location_tree?.[0]?.name || '';
+
+  const images = Array.isArray(p.images) ? p.images : [];
+
+  return {
+    id: p.property_id || `pf-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    title: p.title || 'No title',
+    price: priceText,
+    priceNumeric: priceValue,
+    location: {
+      full_name: locationFull,
+      path_name: p.location_tree?.map((l) => l.name).join(', ') || '',
+      city,
+    },
+    rooms: p.bedrooms || '–',
+    bathrooms: p.bathrooms || '–',
+    size: p.size?.value ? `${p.size.value} ${p.size.unit || 'sqft'}` : '–',
+    media: {
+      cover_photo: images[0] || 'https://placehold.co/400x260?text=No+Image',
+      gallery: images,
+    },
+    description: p.description || '',
+    amenities: p.amenity_names || p.amenities || [],
+    completion_status: p.completion_status || '–',
+    furnished: p.furnishing || '–',
+    is_verified: p.is_verified || false,
+    rera: p.rera || null,
+    reference: p.reference_number || '–',
+    listed_date: p.listed_date || null,
+    share_url: p.property_url || '#',
+    agent: p.agent_details || null,
+    type: {
+      sub: p.property_type || 'Property',
+    },
+    raw: p,
+  };
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
 const PropertyScannerPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -40,8 +99,6 @@ const PropertyScannerPage = () => {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [keyword, setKeyword] = useState('');
-
-  const user = useSelector((state) => state.auth.user);
 
   // Progress animation
   useEffect(() => {
@@ -57,35 +114,27 @@ const PropertyScannerPage = () => {
     return () => clearInterval(interval);
   }, [loading]);
 
-  // Scroll to top button visibility
+  // Scroll-to-top
   useEffect(() => {
     const handleScroll = () => setShowScrollTop(window.scrollY > 300);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Apply keyword filter in real-time
+  // Real-time keyword filter
   useEffect(() => {
     if (!allScrapedResults.length) return;
-
-    let filtered = [...allScrapedResults];
-
-    if (keyword.trim()) {
-      const term = keyword.toLowerCase().trim();
-      filtered = filtered.filter((p) =>
-        [
-          p.title,
-          p.description,
-          p.location?.full_name,
-          p.location?.city,
-          p.reference,
-        ].some((str) => str?.toLowerCase()?.includes(term))
-      );
-    }
-
+    const term = keyword.toLowerCase().trim();
+    const filtered = term
+      ? allScrapedResults.filter((p) =>
+          [p.title, p.description, p.location?.full_name, p.location?.city, p.reference]
+            .some((s) => s?.toLowerCase().includes(term))
+        )
+      : [...allScrapedResults];
     setDisplayedResults(filtered);
   }, [allScrapedResults, keyword]);
 
+  // ── Main search handler (using correct /search-buy and /search-rent endpoints) ──
   const handleSearch = async (values) => {
     setLoading(true);
     setError(null);
@@ -96,92 +145,64 @@ const PropertyScannerPage = () => {
     try {
       message.loading({ content: 'Scanning properties...', key: 'scan', duration: 0 });
 
-      const params = {
-        location: values.location,
-        maxPages: values.maxPages || 3,
+      const isRent = values.listingType === 'rent';
+      const endpoint = `https://${RAPIDAPI_HOST}/${isRent ? 'search-rent' : 'search-buy'}`;
+      const maxPages = values.maxPages || 3;
+
+      const baseParams = {
+        sort: 'newest',
+        location_id: values.location,
+        page: 1, // will be overridden in loop
       };
 
-      if (values.transactionType) params.transactionType = values.transactionType;
-      if (values.property_type) params.category = values.property_type;
+      // Shared filters
+      if (values.property_type) baseParams.property_type = values.property_type;
+      if (values.bedrooms?.length) baseParams.bedrooms = values.bedrooms.join(',');
+      if (values.bathrooms?.length) baseParams.bathrooms = values.bathrooms.join(',');
+      if (values.minPrice) baseParams.price_min = values.minPrice;
+      if (values.maxPrice) baseParams.price_max = values.maxPrice;
+      if (values.minArea) baseParams.area_min = values.minArea;
+      if (values.maxArea) baseParams.area_max = values.maxArea;
+      if (values.furnishing) baseParams.furnishing = values.furnishing;
+      if (values.amenities?.length) baseParams.amenities = values.amenities.join(',');
 
-      // Handle bedrooms
-      if (values.bedrooms) {
-        if (values.bedrooms === 'studio') {
-          params.bedrooms = 'studio';
-        } else if (values.bedrooms === '5+') {
-          params.bedrooms = '5,6,7,8,9,10'; // backend should split it
-        } else {
-          params.bedrooms = values.bedrooms;
-        }
+      // Rent-specific
+      if (isRent && values.rent_frequency) baseParams.rent_frequency = values.rent_frequency;
 
-        // Ajout des prix
-    if (values.minPrice) params.minPrice = values.minPrice;
-    if (values.maxPrice) params.maxPrice = values.maxPrice;
-    
+      // Buy-specific
+      if (!isRent && values.completion_status) baseParams.completion_status = values.completion_status;
+
+      let allListings = [];
+
+      for (let page = 1; page <= maxPages; page++) {
+        const res = await axios.get(endpoint, {
+          params: { ...baseParams, page },
+          headers: RAPIDAPI_HEADERS,
+          timeout: 30000,
+        });
+
+        // Most responses from this API put listings under .data
+        const pageListings = res.data?.data || res.data?.listings || [];
+        if (!pageListings.length) break;
+
+        allListings = allListings.concat(pageListings);
       }
 
-      const res = await axios.get('https://property-scraper-duw1.onrender.com/api/scrape', { // ← CHANGE TO YOUR REAL BACKEND URL
-        params,
-        timeout: 240000,
-      });
-
-      const { listings } = res.data;
-
-      const adapted = listings.map((item) => {
-        const p = item.property || item;
-
-        const priceValue = p.price?.value
-          ? Number(p.price.value)
-          : parseFloat(String(p.price || '0').replace(/[^0-9.]/g, '')) || 0;
-
-        const priceText = p.price?.value
-          ? `${priceValue.toLocaleString()} ${p.price.currency || 'AED'}`
-          : 'Price on request';
-
-        return {
-          id: p.id || `pf-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-          title: p.title || 'No title',
-          price: priceText,
-          priceNumeric: priceValue,
-          location: {
-            full_name: p.location?.full_name || 'Location not specified',
-            path_name: p.location?.path_name || '',
-            city: p.location?.path_name?.split(',')[0]?.trim() || '',
-          },
-          rooms: p.bedrooms || '–',
-          bathrooms: p.bathrooms || '–',
-          media: {
-            cover_photo:
-              p.images?.[0]?.medium ||
-              p.images?.[0]?.small ||
-              'https://placehold.co/400x260?text=No+Image',
-            gallery: p.images?.map((img) => img.medium || img.small) || [],
-          },
-          description: p.description || '',
-          amenities: p.amenity_names || p.amenities || [],
-          completion_status: p.completion_status || '–',
-          furnished: p.furnished || '–',
-          rera: p.rera || null,
-          reference: p.reference || '–',
-          listed_date: p.listed_date || null,
-          share_url: p.share_url || '#',
-          type: {
-            sub: p.property_type || 'Property',
-          },
-          raw: p,
-        };
-      });
-
+      const adapted = allListings.map(adaptListing);
       setAllScrapedResults(adapted);
 
       if (adapted.length > 0) {
         message.success(`Found ${adapted.length} properties`, 5);
       } else {
-        message.info('No properties found in this search', 4);
+        message.info('No properties found for this search', 4);
       }
     } catch (err) {
-      console.error(err);
-      const msg = err.response?.data?.message || err.message || 'Failed to scrape properties';
+      console.error('Search error:', err);
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'Failed to fetch properties';
       setError(msg);
       message.error(msg, 6);
     } finally {
@@ -195,16 +216,8 @@ const PropertyScannerPage = () => {
     setDrawerVisible(true);
   };
 
-  const handleDrawerClose = () => {
-    setDrawerVisible(false);
-  };
-
-  const handleScrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   return (
-    <div className="property-scanner-container" style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
       <Card
         className="shadow-lg mb-5"
@@ -212,7 +225,6 @@ const PropertyScannerPage = () => {
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           border: 'none',
           borderRadius: '16px',
-          color: 'white',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
@@ -247,15 +259,7 @@ const PropertyScannerPage = () => {
         </Card>
       )}
 
-      {error && (
-        <Alert
-          message="Error"
-          description={error}
-          type="error"
-          showIcon
-          className="mb-4"
-        />
-      )}
+      {error && <Alert message="Error" description={error} type="error" showIcon className="mb-4" />}
 
       {allScrapedResults.length > 0 && (
         <Card className="shadow-sm">
@@ -278,18 +282,18 @@ const PropertyScannerPage = () => {
           {displayedResults.length > 0 ? (
             <Row gutter={[16, 24]}>
               {displayedResults.map((property, index) => (
-                <Col xs={24} sm={12} md={8} lg={6} key={property.id + '-' + index}>
+                <Col xs={24} sm={12} md={8} lg={6} key={`${property.id}-${index}`}>
                   <AnimatedCard index={index}>
-                    <PropertyCard property={property} onClick={() => handlePropertyClick(property)} />
+                    <PropertyCard
+                      property={property}
+                      onClick={() => handlePropertyClick(property)}
+                    />
                   </AnimatedCard>
                 </Col>
               ))}
             </Row>
           ) : (
-            <Empty
-              description="No properties match your current filters"
-              style={{ margin: '60px 0' }}
-            />
+            <Empty description="No properties match your current filters" style={{ margin: '60px 0' }} />
           )}
         </Card>
       )}
@@ -297,16 +301,23 @@ const PropertyScannerPage = () => {
       <PropertyDetail
         property={selectedProperty}
         visible={drawerVisible}
-        onClose={handleDrawerClose}
+        onClose={() => setDrawerVisible(false)}
       />
 
-      <Affix style={{ position: 'fixed', right: 24, bottom: 24, display: showScrollTop ? 'block' : 'none' }}>
+      <Affix
+        style={{
+          position: 'fixed',
+          right: 24,
+          bottom: 24,
+          display: showScrollTop ? 'block' : 'none',
+        }}
+      >
         <Button
           type="primary"
           shape="circle"
           icon={<ArrowUpOutlined />}
           size="large"
-          onClick={handleScrollToTop}
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         />
       </Affix>
     </div>
