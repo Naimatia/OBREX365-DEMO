@@ -24,6 +24,7 @@ import {
   ExclamationCircleOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
+import { UserRoles } from 'models/UserModel';   // ← Import for role checking
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -45,18 +46,35 @@ const JobPositions = [
   'Admin', 'Support', 'Accountant', 'HR', 'Other'
 ];
 
+const AllStatuses = ['Pending', 'Reviewed', 'Interviewed', 'Hired', 'Rejected'];
+
 const ApplicationTable = ({ 
   applications, 
   loading, 
   onEdit, 
   onDelete, 
   onStatusChange, 
-  onViewDetails 
+  onViewDetails ,
+  userRole
 }) => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [jobFilter, setJobFilter] = useState('all');
   const [dateRange, setDateRange] = useState(null);
+
+  // Determine visible statuses based on role
+  const getVisibleStatuses = () => {
+    const fullAccessRoles = [UserRoles.SUPER_ADMIN, UserRoles.CEO];
+    
+    if (fullAccessRoles.includes(userRole)) {
+      return AllStatuses;
+    }
+    // HR and other roles
+    return ['Pending', 'Reviewed', 'Interviewed'];
+  };
+
+  const visibleStatuses = getVisibleStatuses();
+
 
   // Filter applications based on search criteria
   const filteredApplications = applications.filter(application => {
@@ -154,64 +172,43 @@ const ApplicationTable = ({
       ),
     },
  {
-    title: 'Status',
-    dataIndex: 'Status',
-    key: 'status',
-    width: 120,
-    render: (status, record) => (
-      <Select
-        value={status}
-        size="small"
-        bordered={false}
-        dropdownStyle={{ padding: 0 }}
-        style={{
-          width: '100%',
-          height: 32,
-          backgroundColor: statusColors[status],
-          color: 'white',
-          fontWeight: '500',
-          textAlign: 'center',
-          borderRadius: 6,
-        }}
-        onChange={(newStatus) => handleStatusChange(record.id, newStatus)}
-        optionLabelProp="label"
-      >
-        {Object.keys(statusColors).map((key) => (
-          <Option
-            key={key}
-            value={key}
-            label={
+      title: 'Status',
+      dataIndex: 'Status',
+      key: 'status',
+      width: 140,
+      render: (status, record) => (
+        <Select
+          value={status}
+          size="small"
+          bordered={false}
+          style={{
+            width: '100%',
+            backgroundColor: statusColors[status],
+            color: 'white',
+            fontWeight: '500',
+            borderRadius: 6,
+          }}
+          onChange={(newStatus) => handleStatusChange(record.id, newStatus)}
+        >
+          {visibleStatuses.map((key) => (
+            <Option key={key} value={key}>
               <div
                 style={{
                   backgroundColor: statusColors[key],
                   color: 'white',
                   fontWeight: 500,
                   textAlign: 'center',
-                  padding: '4px 0',
+                  padding: '6px 12px',
                   borderRadius: 6,
                 }}
               >
                 {key}
               </div>
-            }
-          >
-            <div
-              style={{
-                backgroundColor: statusColors[key],
-                color: 'white',
-                fontWeight: 500,
-                textAlign: 'center',
-                padding: '6px 0',
-                borderRadius: 6,
-              }}
-            >
-              {key}
-            </div>
-          </Option>
-        ))}
-      </Select>
-    ),
-  },
+            </Option>
+          ))}
+        </Select>
+      ),
+    },
     {
       title: 'Application Date',
       dataIndex: 'ApplicantDate',
@@ -307,7 +304,7 @@ const ApplicationTable = ({
               allowClear
             />
           </Col>
-          <Col xs={24} sm={8} md={4}>
+         <Col xs={24} sm={8} md={4}>
             <Select
               placeholder="Filter by Status"
               value={statusFilter}
@@ -315,11 +312,9 @@ const ApplicationTable = ({
               style={{ width: '100%' }}
             >
               <Option value="all">All Statuses</Option>
-              <Option value="Pending">Pending</Option>
-              <Option value="Reviewed">Reviewed</Option>
-              <Option value="Interviewed">Interviewed</Option>
-              <Option value="Hired">Hired</Option>
-              <Option value="Rejected">Rejected</Option>
+              {visibleStatuses.map(status => (
+                <Option key={status} value={status}>{status}</Option>
+              ))}
             </Select>
           </Col>
           <Col xs={24} sm={8} md={5}>

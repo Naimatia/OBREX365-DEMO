@@ -23,6 +23,7 @@ import {
 } from '@ant-design/icons';
 import moment from 'moment';
 import cloudinaryService from 'services/CloudinaryService'; // Import the updated CloudinaryService
+import { UserRoles } from 'models/UserModel';   // ← Import UserRoles
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -33,7 +34,8 @@ const JobPositions = [
   'Admin', 'Support', 'Accountant', 'HR', 'Other'
 ];
 
-const ApplicationStatuses = [
+// Full list of statuses
+const AllApplicationStatuses = [
   { value: 'Pending', label: 'Pending', color: '#faad14' },
   { value: 'Reviewed', label: 'Reviewed', color: '#1890ff' },
   { value: 'Interviewed', label: 'Interviewed', color: '#722ed1' },
@@ -41,13 +43,25 @@ const ApplicationStatuses = [
   { value: 'Rejected', label: 'Rejected', color: '#f5222d' }
 ];
 
-const ApplicationForm = ({ initialValues, onSubmit, onCancel, loading }) => {
+const ApplicationForm = ({ initialValues, onSubmit, onCancel, loading ,userRole}) => {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [fileList, setFileList] = useState([]);
   const [uploadedFileUrl, setUploadedFileUrl] = useState(initialValues?.CVUrl || '');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Determine visible statuses based on role
+  const getVisibleStatuses = () => {
+const fullAccessRoles = [UserRoles.SUPER_ADMIN, UserRoles.CEO];
+    if (fullAccessRoles.includes(userRole)) {
+      return AllApplicationStatuses;
+    }
+    // HR and others can only see these three
+    return AllApplicationStatuses.slice(0, 3);
+  };
+
+  const visibleStatuses = getVisibleStatuses();
 
   // Initialize fileList for edit mode
   useEffect(() => {
@@ -317,13 +331,13 @@ const ApplicationForm = ({ initialValues, onSubmit, onCancel, loading }) => {
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item
+         <Form.Item
                 label="Application Status"
                 name="Status"
                 rules={[{ required: true, message: 'Please select application status' }]}
               >
                 <Select placeholder="Select status" size="large">
-                  {ApplicationStatuses.map(status => (
+                  {visibleStatuses.map(status => (
                     <Option key={status.value} value={status.value}>
                       <span style={{ color: status.color }}>● {status.label}</span>
                     </Option>

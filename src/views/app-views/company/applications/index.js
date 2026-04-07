@@ -359,6 +359,7 @@ const Applications = () => {
             onDelete={handleDeleteApplication}
             onStatusChange={handleStatusChange}
             onViewDetails={handleViewDetails}
+            userRole={user?.Role}
           />
         </Card>
       </motion.div>
@@ -388,6 +389,7 @@ const Applications = () => {
             setEditingApplication(null);
           }}
           loading={loading}
+          userRole={user?.Role}           // ← FIXED: Passing user role
         />
       </Modal>
 
