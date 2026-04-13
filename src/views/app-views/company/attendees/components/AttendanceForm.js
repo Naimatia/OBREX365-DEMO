@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useEffect } from 'react';
 import { Modal, Form, Input, DatePicker, message } from 'antd';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const AttendanceForm = ({ visible, onCancel, onSubmit, isEditing, initialValues }) => {
   const [form] = Form.useForm();
@@ -12,8 +12,8 @@ const AttendanceForm = ({ visible, onCancel, onSubmit, isEditing, initialValues 
       if (isEditing && initialValues) {
         // Ensure month_year is parsed correctly
         const monthYear = initialValues.month_year
-          ? moment(initialValues.month_year, 'YYYY-MM', true).isValid()
-            ? moment(initialValues.month_year, 'YYYY-MM')
+          ? dayjs(initialValues.month_year, 'YYYY-MM', true).isValid()
+            ? dayjs(initialValues.month_year, 'YYYY-MM')
             : null
           : null;
         form.setFieldsValue({
@@ -24,7 +24,7 @@ const AttendanceForm = ({ visible, onCancel, onSubmit, isEditing, initialValues 
         });
       } else {
         // Default to current month (October 2025) for new records
-        form.setFieldsValue({ month_year: moment('2025-10', 'YYYY-MM') });
+        form.setFieldsValue({ month_year: dayjs('2025-10', 'YYYY-MM') });
       }
     }
   }, [visible, isEditing, initialValues, form]);

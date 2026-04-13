@@ -19,7 +19,7 @@ import {
   FileTextOutlined
 } from '@ant-design/icons';
 import { InvoiceStatus } from 'models/InvoiceModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 /**
  * @typedef {Object} InvoiceData
@@ -49,24 +49,28 @@ const InvoiceForm = ({ onSubmit, onCancel, loading, initialValues = {} }) => {
   const [form] = Form.useForm();
   const isEditMode = !!initialValues?.id;
 
+// Add this helper at the top of the component
+const todayjs = (value) => {
+  if (!value) return null;
+  if (value?.toDate) return dayjs(value.toDate()); // Firestore Timestamp
+  if (value instanceof Date) return dayjs(value);
+  return dayjs(value);
+};
+
 useEffect(() => {
   if (initialValues?.id) {
-    // Edit mode
     form.setFieldsValue({
       Title: initialValues.Title || '',
       amount: initialValues.amount || 0,
-      DateLimit: initialValues.DateLimit
-        ? moment(initialValues.DateLimit.toDate?.() || initialValues.DateLimit)
-        : moment().add(30, 'days'),
+      DateLimit: todayjs(initialValues.DateLimit) || dayjs().add(30, 'days'),
       paymentUrl: initialValues.paymentUrl || '',
       description: initialValues.description || '',
       Notes: initialValues.Notes || '',
     });
   } else {
-    // Create mode - fully reset
     form.resetFields();
     form.setFieldsValue({
-      DateLimit: moment().add(30, 'days'),
+      DateLimit: dayjs().add(30, 'days'),
     });
   }
 }, [initialValues, form]);
@@ -79,9 +83,7 @@ useEffect(() => {
         CreationDate: values.CreationDate
           ? values.CreationDate.toDate?.() || values.CreationDate.toDate()
           : new Date(),
-        DateLimit: values.DateLimit
-          ? values.DateLimit.toDate?.() || values.DateLimit.toDate()
-          : new Date(),
+              DateLimit: values.DateLimit ? values.DateLimit.toDate() : new Date(),
         Status: InvoiceStatus.PENDING,
         Notes: values.Notes || '',
         Title: values.Title || '',
@@ -96,8 +98,8 @@ useEffect(() => {
     }
   };
 
-  const today = moment();
-  const defaultDueDate = moment().add(30, 'days');
+  const today = dayjs();
+  const defaultDueDate = dayjs().add(30, 'days');
 
   return (
     <Card>
@@ -153,7 +155,7 @@ useEffect(() => {
                 style={{ width: '100%' }}
                 format="YYYY-MM-DD"
                 disabledDate={(current) =>
-                  current && current < moment().startOf('day')
+                  current && current < dayjs().startOf('day')
                 }
                 suffixIcon={<CalendarOutlined />}
               />

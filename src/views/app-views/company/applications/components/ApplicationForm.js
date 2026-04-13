@@ -21,7 +21,7 @@ import {
   UploadOutlined,
   BankOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import cloudinaryService from 'services/CloudinaryService'; // Import the updated CloudinaryService
 import { UserRoles } from 'models/UserModel';   // ← Import UserRoles
 
@@ -216,7 +216,7 @@ const fullAccessRoles = [UserRoles.SUPER_ADMIN, UserRoles.CEO];
         layout="vertical"
         initialValues={{
           ...initialValues,
-          ApplicantDate: initialValues?.ApplicantDate ? moment(initialValues.ApplicantDate) : moment(),
+          ApplicantDate: initialValues?.ApplicantDate ? dayjs(initialValues.ApplicantDate) : dayjs(),
           Status: initialValues?.Status || 'Pending'
         }}
         onFinish={handleSubmit}
