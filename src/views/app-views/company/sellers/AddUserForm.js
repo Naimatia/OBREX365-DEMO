@@ -149,6 +149,7 @@ const AddUserForm = ({ onFinish, onCancel }) => {
             onChange={(value) => console.log('AddUserForm - Selected role:', value)}
             placeholder="Select a role"
           >
+            <Option value={UserRoles.CEO}>CEO</Option>
             <Option value={UserRoles.HR}>HR</Option>
             <Option value={UserRoles.SELLER}>Sales Representative</Option>
             <Option value={UserRoles.SALES_EXECUTIVE}>Sales Executive</Option>
