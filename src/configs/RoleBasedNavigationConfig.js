@@ -15,7 +15,10 @@ import {
   SettingOutlined,
   SolutionOutlined,
   ClockCircleOutlined,
-  DollarOutlined
+  DollarOutlined,
+  FacebookOutlined,
+  GlobalOutlined,
+  InstagramOutlined
 } from '@ant-design/icons';
 import { APP_PREFIX_PATH } from 'configs/AppConfig';
 import { UserRoles } from 'models/UserModel';
@@ -215,6 +218,39 @@ const ceoNavigation = [
       },
     ]
   },
+
+  {
+  key: 'social-media',
+  title: 'Social Media',
+  icon: GlobalOutlined, // import it
+  breadcrumb: true,
+  submenu: [
+    {
+      key: 'facebook',
+      path: `${APP_PREFIX_PATH}/social/facebook`,
+      title: 'Facebook',
+      icon: FacebookOutlined, // import
+      breadcrumb: true,
+      submenu: []
+    },
+     {
+      key: 'instagram',
+      path: `${APP_PREFIX_PATH}/social/instagram`,
+      title: 'instagram',
+      icon: InstagramOutlined, // import
+      breadcrumb: true,
+      submenu: []
+    },
+    {
+      key: 'scheduler',
+      path: `${APP_PREFIX_PATH}/social/Post-Scheduler`,
+      title: 'Post Scheduler',
+      icon: ClockCircleOutlined,
+      breadcrumb: true,
+      submenu: []
+    }
+  ]
+},
 
   // Tools
   {

@@ -131,6 +131,25 @@ export const protectedRoutes = [
         component: React.lazy(() => import('views/app-views/company/payroll')),
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
     },
+
+    {
+        key: 'facebook',
+        path: `${APP_PREFIX_PATH}/social/facebook`,
+        component: React.lazy(() => import('views/app-views/social/facebook')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO]
+    },
+     {
+        key: 'instagram',
+        path: `${APP_PREFIX_PATH}/social/instagram`,
+        component: React.lazy(() => import('views/app-views/social/instagram')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO]
+    },
+    {
+        key: 'scheduler',
+        path: `${APP_PREFIX_PATH}/social/Post-Scheduler`,
+        component: React.lazy(() => import('views/app-views/social/Post-Scheduler')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO]
+    },
     
    // Seller Role Routes
 {
