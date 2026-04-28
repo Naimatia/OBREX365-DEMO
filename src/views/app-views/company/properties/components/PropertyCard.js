@@ -10,35 +10,45 @@ import {
   Tooltip, 
   Image, 
   Divider,
-  Button
+  Button,
+  Checkbox
 } from 'antd';
 import { 
   HomeOutlined, 
   DollarOutlined, 
   BankOutlined, 
   EnvironmentOutlined, 
-  InfoCircleOutlined, 
   CalendarOutlined, 
   AppstoreOutlined,
   TagOutlined,
   EditOutlined,
   DeleteOutlined,
-  EyeOutlined
+  EyeOutlined,
+  WhatsAppOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
 
 const { Title, Text, Paragraph } = Typography;
-const { Meta } = Card;
 
 /**
- * PropertyCard component for displaying property in card format
+ * PropertyCard component with Checkbox support for multi-select
  */
-const PropertyCard = ({ property, onClick, onEdit, onDelete, currentUser }) => {
-  // Check if current user is the creator or has permission
+const PropertyCard = ({ 
+  property, 
+  onClick, 
+  onEdit, 
+  onDelete, 
+  currentUser,
+  isMultiSelectMode = false,
+  isSelected = false,
+  onSelect,
+  onShareWhatsApp
+}) => {
+  
   const canManageProperty = property.creator_id === currentUser?.uid || 
-                          currentUser?.Role === 'CEO' || 
-                          currentUser?.Role === 'HR';
-  // Format price with commas
+                           currentUser?.Role === 'CEO' || 
+                           currentUser?.Role === 'HR';
+
   const formatPrice = (price) => {
     return new Intl.NumberFormat('en-AE', {
       style: 'currency',
@@ -47,327 +57,213 @@ const PropertyCard = ({ property, onClick, onEdit, onDelete, currentUser }) => {
     }).format(price);
   };
 
-  // Get status color with better contrast
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
-      case 'sold':
-        return '#f5222d'; // Strong red
-      case 'rented':
-        return '#722ed1'; // Strong purple
-      case 'pending':
-        return '#fa8c16'; // Strong orange
+      case 'sold': return '#f5222d';
+      case 'rented': return '#722ed1';
+      case 'pending': return '#fa8c16';
       case 'available':
-      default:
-        return '#52c41a'; // Strong green
+      default: return '#52c41a';
     }
   };
 
-  // Get category color with better contrast
-  const getCategoryColor = (category) => {
-    switch (category) {
-      case 'OffPlan':
-        return '#1890ff'; // Strong blue
-      case 'Rent':
-        return '#722ed1'; // Strong purple
-      case 'Buy':
-      default:
-        return '#13c2c2'; // Strong cyan
-    }
-  };
-
-  // Get type color for better distinction
   const getTypeColor = (type) => {
- if (!type) return '#595959'; // fallback for null/undefined
-
-  switch (type.toLowerCase()) {
-    // Residential
-    case 'studio':
-      return '#722ed1';     // Purple
-    case 'apartment':
-      return '#fa541c';     // Strong orange
-    case 'villa':
-      return '#52c41a';     // Fresh green
-    case 'townhouse':
-      return '#1890ff';     // Bright blue
-    case 'penthouse':
-      return '#eb2f96';     // Vibrant pink/magenta
-    case 'duplex':
-      return '#13c2c2';     // Cyan / teal (distinct from others)
-
-    // Commercial / Business
-    case 'office':
-      return '#2f54eb';     // Deep indigo / corporate blue
-    case 'retail':
-      return '#fadb14';     // Bright yellow / gold (eye-catching for shops)
-    case 'commercial':
-      return '#d48806';     // Warm amber / business orange
-
-    // Land / Plot
-    case 'land':
-      return '#8c8c8c';     // Neutral dark gray (land feels more "raw")
-
-    // Fallback
-    default:
-      return '#595959';
-  }
+    if (!type) return '#595959';
+    switch (type.toLowerCase()) {
+      case 'studio': return '#722ed1';
+      case 'apartment': return '#fa541c';
+      case 'villa': return '#52c41a';
+      case 'townhouse': return '#1890ff';
+      case 'penthouse': return '#eb2f96';
+      case 'duplex': return '#13c2c2';
+      case 'office': return '#2f54eb';
+      case 'retail': return '#fadb14';
+      case 'commercial': return '#d48806';
+      case 'land': return '#8c8c8c';
+      default: return '#595959';
+    }
   };
 
-  // Get placeholder image if no images
   const coverImage = property.Images && property.Images.length > 0 
     ? property.Images[0] 
     : 'https://res.cloudinary.com/dop2pji6u/image/upload/v1708523400/properties/property-placeholder_gmcvxd.jpg';
 
-  // Format creation date
   const formattedDate = property.CreationDate 
     ? moment(property.CreationDate).format('MMM DD, YYYY') 
     : 'N/A';
 
+  // Handle checkbox change
+  const handleCheckboxChange = (e) => {
+    e.stopPropagation();
+    if (onSelect) onSelect(property);
+  };
+
+  // Handle card click (only when not in multi-select mode)
+  const handleCardClick = () => {
+    if (isMultiSelectMode) return; // Prevent opening detail when selecting
+    if (onClick) onClick(property);
+  };
+
   return (
     <Card
-      hoverable
+      hoverable={!isMultiSelectMode}
       className="property-card"
       style={{ 
         borderRadius: '10px',
         overflow: 'hidden',
         boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
         transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-        margin: '10px 0',
-        height: '100%', /* Ensure all cards have the same height */
+        height: '100%',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        position: 'relative'
       }}
       cover={
         <div className="property-image-container" style={{ position: 'relative', height: '240px', overflow: 'hidden' }}>
           <Image 
             alt={property.title}
             src={coverImage}
-            style={{
-              height: '240px',
-              width: '100%',
-              objectFit: 'cover',
-              background: '#f0f2f5'
-            }}            
-            preview={false} 
+            style={{ height: '240px', width: '100%', objectFit: 'cover' }}
+            preview={false}
             fallback="https://res.cloudinary.com/dop2pji6u/image/upload/v1708523400/properties/property-placeholder_gmcvxd.jpg"
           />
-          <div style={{ 
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '5px'
-          }}>
-            <Badge.Ribbon 
-              text={property.Status} 
-              color={getStatusColor(property.Status)}
-            />
-          </div>
+
+          {/* Status Ribbon */}
+          <Badge.Ribbon 
+            text={property.Status} 
+            color={getStatusColor(property.Status)}
+            style={{ top: '10px', right: '-2px' }}
+          />
+
+          {/* Multi-Select Checkbox */}
+          {isMultiSelectMode && (
+            <div style={{ 
+              position: 'absolute', 
+              top: '12px', 
+              left: '12px',
+              zIndex: 10 
+            }}>
+              <Checkbox 
+                checked={isSelected}
+                onChange={handleCheckboxChange}
+                style={{ 
+                  background: 'white', 
+                  borderRadius: '4px',
+                  padding: '4px'
+                }}
+              />
+            </div>
+          )}
+
+          {/* Type & Category Tags */}
           <div style={{
             position: 'absolute',
             bottom: '0',
             left: '0',
             width: '100%',
-            background: 'linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.7))',
-            padding: '30px 15px 10px 15px'
+            background: 'linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.75))',
+            padding: '30px 15px 12px 15px'
           }}>
             <Tag 
-              style={{
-                backgroundColor: getCategoryColor(property.Category),
-                color: '#fff',
-                border: 'none',
-                fontWeight: '600',
-                fontSize: '11px',
-                padding: '4px 8px',
-                borderRadius: '6px',
-                marginRight: '8px'
-              }} 
-              icon={<TagOutlined style={{ color: '#fff' }} />}
+              style={{ backgroundColor: '#1890ff', color: '#fff', border: 'none', fontWeight: '600' }}
             >
               {property.Category}
             </Tag>
             <Tag 
-              style={{
-                backgroundColor: getTypeColor(property.Type),
-                color: '#fff',
-                border: 'none',
+              style={{ 
+                backgroundColor: getTypeColor(property.Type), 
+                color: '#fff', 
+                border: 'none', 
                 fontWeight: '600',
-                fontSize: '11px',
-                padding: '4px 8px',
-                borderRadius: '6px'
-              }} 
-              icon={<HomeOutlined style={{ color: '#fff' }} />}
+                marginLeft: '6px'
+              }}
             >
               {property.Type}
             </Tag>
           </div>
         </div>
       }
-      onClick={() => onClick(property)}
-      bodyStyle={{ padding: '20px', minHeight: '280px', background: '#f9fafb', display: 'flex', flexDirection: 'column' }}
+      onClick={handleCardClick}
+      bodyStyle={{ 
+        padding: '20px', 
+        minHeight: '280px', 
+        background: '#f9fafb', 
+        display: 'flex', 
+        flexDirection: 'column',
+        flex: 1
+      }}
     >
-      <Title level={5} ellipsis={{ tooltip: true }} style={{ marginBottom: '12px', marginTop: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#1a3353' }}>
+      <Title level={5} ellipsis={{ tooltip: true }} style={{ marginBottom: '12px', color: '#1a3353' }}>
         {property.title}
       </Title>
-      
-      <Space direction="horizontal" style={{ marginBottom: '12px' }}>
+
+      <Space style={{ marginBottom: '16px' }}>
         <EnvironmentOutlined style={{ color: '#1890ff' }} /> 
-        <Text type="secondary" ellipsis={{ tooltip: true }} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {property.Location}, {property.address}
+        <Text type="secondary" ellipsis>
+          {property.Location || property.address}
         </Text>
       </Space>
 
-      {/* Enhanced Price Display Section */}
+      {/* Price Section */}
       <div style={{ 
-        background: 'linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%)',
-        borderRadius: '12px',
-        padding: '16px',
+        background: '#fff', 
+        borderRadius: '12px', 
+        padding: '14px', 
         marginBottom: '16px',
-        border: '1px solid #e8e8e8',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+        border: '1px solid #e8e8e8'
       }}>
-        <Row gutter={[16, 12]}>
-          {/* Original Price */}
-          <Col span={24}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '8px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: '#ff7875'
-                }} />
-                <Text type="secondary" style={{ fontSize: '11px', fontWeight: '500' }}>ORIGINAL PRICE</Text>
-              </div>
-              <Text style={{ 
-                fontSize: '13px', 
-                color: '#ff7875',
-                fontWeight: '600',
-                textDecoration: 'line-through'
-              }}>
-                {formatPrice(property.OriginalPrice)}
-              </Text>
-            </div>
-          </Col>
-          
-          {/* Sell/Rent Price */}
-          <Col span={24}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '8px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: '#faad14'
-                }} />
-                <Text type="secondary" style={{ fontSize: '11px', fontWeight: '500' }}>SELLING PRICE</Text>
-              </div>
-              <Text style={{ 
-                fontSize: '16px', 
-                color: '#faad14',
-                fontWeight: 'bold'
-              }}>
-                {formatPrice(property.SellPrice)}
-              </Text>
-            </div>
-          </Col>
-          
-          {/* Gain/Loss Amount */}
-          <Col span={24}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              padding: '8px 12px',
-              borderRadius: '8px',
-              backgroundColor: property.SellPrice > property.OriginalPrice ? 'rgba(82, 196, 26, 0.1)' : 'rgba(245, 34, 45, 0.1)',
-              border: `1px solid ${property.SellPrice > property.OriginalPrice ? 'rgba(82, 196, 26, 0.2)' : 'rgba(245, 34, 45, 0.2)'}`
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: property.SellPrice > property.OriginalPrice ? '#52c41a' : '#f5222d'
-                }} />
-                <Text type="secondary" style={{ fontSize: '11px', fontWeight: '500' }}>
-                  {property.SellPrice > property.OriginalPrice ? 'PROFIT' : 'LOSS'}
-                </Text>
-              </div>
-              <Text style={{ 
-                fontSize: '14px', 
-                fontWeight: 'bold',
-                color: property.SellPrice > property.OriginalPrice ? '#52c41a' : '#f5222d'
-              }}>
-                {property.SellPrice > property.OriginalPrice ? '+' : ''}
-                {formatPrice(property.SellPrice - property.OriginalPrice)}
-              </Text>
-            </div>
-          </Col>
-        </Row>
+        <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#faad14' }}>
+          {formatPrice(property.SellPrice)}
+        </div>
+        {property.OriginalPrice && (
+          <div style={{ textDecoration: 'line-through', color: '#ff7875', fontSize: '13px' }}>
+            {formatPrice(property.OriginalPrice)}
+          </div>
+        )}
       </div>
 
-      <Divider style={{ margin: '10px 0', background: '#e8e8e8' }} />
-      
-      {/* Action buttons */}
-      {canManageProperty && (
-        <Row gutter={[8, 0]} style={{ marginBottom: '10px' }}>
-          <Col span={24} style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Button 
-              type="primary" 
-              size="small" 
-              icon={<EyeOutlined />} 
-              onClick={(e) => {
-                e.stopPropagation();
-                onClick(property);
-              }}
-            >
-              View
-            </Button>
-            <Space>
+      {/* Action Buttons */}
+      {canManageProperty && !isMultiSelectMode && (
+        <Row gutter={[8, 8]} style={{ marginBottom: '12px' }}>
+          <Col span={24}>
+            <Space style={{ width: '100%', justifyContent: 'space-between' }}>
               <Button 
-                type="default" 
+                type="primary" 
                 size="small" 
-                icon={<EditOutlined />} 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(property);
-                }}
+                icon={<EyeOutlined />} 
+                onClick={(e) => { e.stopPropagation(); onClick(property); }}
               >
-                Edit
+                View
               </Button>
-              <Button 
-                danger 
-                size="small" 
-                icon={<DeleteOutlined />} 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(property.id);
-                }}
-              >
-                Delete
-              </Button>
+              <Space>
+                <Button 
+                  size="small" 
+                  icon={<EditOutlined />} 
+                  onClick={(e) => { e.stopPropagation(); onEdit(property); }}
+                >
+                  Edit
+                </Button>
+                <Button 
+                  danger 
+                  size="small" 
+                  icon={<DeleteOutlined />} 
+                  onClick={(e) => { e.stopPropagation(); onDelete(property.id); }}
+                >
+                  Delete
+                </Button>
+              </Space>
             </Space>
           </Col>
         </Row>
       )}
-      
-      <Row gutter={[16, 8]} style={{ background: '#f0f7ff', padding: '10px 0', borderRadius: '8px', marginTop: 'auto' }}>
+
+      {/* Bottom Info */}
+      <Row gutter={[16, 8]} style={{ marginTop: 'auto' }}>
         <Col span={8}>
           <Tooltip title="Bedrooms">
             <div style={{ textAlign: 'center' }}>
               <AppstoreOutlined style={{ fontSize: '18px', color: '#1890ff' }} />
-              <div style={{ fontSize: '14px', fontWeight: '500', marginTop: '4px' }}>{property.NbrBedRooms || 0}</div>
+              <div style={{ fontSize: '14px', fontWeight: '500' }}>{property.NbrBedRooms || 0}</div>
             </div>
           </Tooltip>
         </Col>
@@ -375,7 +271,7 @@ const PropertyCard = ({ property, onClick, onEdit, onDelete, currentUser }) => {
           <Tooltip title="Bathrooms">
             <div style={{ textAlign: 'center' }}>
               <BankOutlined style={{ fontSize: '18px', color: '#1890ff' }} />
-              <div style={{ fontSize: '14px', fontWeight: '500', marginTop: '4px' }}>{property.NbrBathRooms || 0}</div>
+              <div style={{ fontSize: '14px', fontWeight: '500' }}>{property.NbrBathRooms || 0}</div>
             </div>
           </Tooltip>
         </Col>
@@ -383,17 +279,25 @@ const PropertyCard = ({ property, onClick, onEdit, onDelete, currentUser }) => {
           <Tooltip title="Added Date">
             <div style={{ textAlign: 'center' }}>
               <CalendarOutlined style={{ fontSize: '18px', color: '#1890ff' }} />
-              <div style={{ fontSize: '12px', fontWeight: '500', marginTop: '4px' }}>{formattedDate}</div>
+              <div style={{ fontSize: '12px' }}>{formattedDate}</div>
             </div>
           </Tooltip>
         </Col>
       </Row>
 
-      <Divider style={{ margin: '12px 0' }} />
-
-      <Paragraph ellipsis={{ rows: 2, tooltip: true }} style={{ fontSize: '12px' }}>
-        {property.description}
-      </Paragraph>
+      {onShareWhatsApp && !isMultiSelectMode && (
+        <Button 
+          type="link" 
+          icon={<WhatsAppOutlined />} 
+          onClick={(e) => { 
+            e.stopPropagation(); 
+            onShareWhatsApp(property); 
+          }}
+          style={{ marginTop: '12px' }}
+        >
+          Share on WhatsApp
+        </Button>
+      )}
     </Card>
   );
 };

@@ -1,53 +1,54 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Row, 
-  Col, 
-  Card, 
-  Button, 
-  Typography, 
-  Space, 
-  Spin, 
-  Empty, 
-  Modal, 
+import {
+  Row,
+  Col,
+  Card,
+  Button,
+  Typography,
+  Space,
+  Spin,
+  Empty,
+  Modal,
   Input,
   Select,
-  Divider,
   Alert,
   Statistic,
   Tooltip,
   message
 } from 'antd';
-import { 
-  PlusOutlined, 
-  HomeOutlined, 
+import {
+  PlusOutlined,
+  HomeOutlined,
   ExclamationCircleOutlined,
-  SearchOutlined,
-  FilterOutlined,
   SortAscendingOutlined,
   SortDescendingOutlined,
   DollarOutlined,
-  CheckCircleOutlined
+  CheckCircleOutlined,
+  ShareAltOutlined,
+  WhatsAppOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 
-// Import components
+// Import components & utils
 import PropertyCard from './components/PropertyCard';
 import PropertyDetail from './components/PropertyDetail';
 import PropertyForm from './components/PropertyForm';
 import PropertyService from './services/PropertyService';
+import {
+  generateWhatsAppPropertyMessage,
+  generateWhatsAppMultiplePropertiesMessage,
+  openWhatsApp
+} from '../../../../utils/whatsappShare';
+import companyService from 'services/CompanyService';
 
 const { Title, Text, Paragraph } = Typography;
 const { Search } = Input;
 const { Option } = Select;
 
-/**
- * Properties management page component
- */
 const PropertiesPage = () => {
-  // Get current user from Redux store
   const user = useSelector(state => state.auth.user);
   const userRole = user?.Role || 'User';
-  
+
   // State variables
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -63,88 +64,41 @@ const PropertiesPage = () => {
   const [sortDirection, setSortDirection] = useState('desc');
   const [currentProperty, setCurrentProperty] = useState(null);
 
-  // Check if user has permission to add/edit/delete (CEO or HR)
+  // Multi-select states
+  const [selectedPropertiesForShare, setSelectedPropertiesForShare] = useState([]);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+
   const hasManagePermission = userRole === 'CEO' || userRole === 'HR';
+const [company, setCompany] = useState(null);
+  // ====================== FUNCTIONS ======================
 
-  // Load properties on component mount
   useEffect(() => {
-    fetchProperties();
-  }, []);
+  const fetchData = async () => {
+    if (!user?.company_id) return;
 
-  // Filter and sort properties based on current filters
-  const filteredAndSortedProperties = React.useMemo(() => {
-    return properties
-      .filter(property => {
-        // Apply search text filter
-        const searchLower = searchText.toLowerCase();
-        const matchesSearch = searchText === '' || 
-          property.title.toLowerCase().includes(searchLower) || 
-          property.description.toLowerCase().includes(searchLower) ||
-          property.Location.toLowerCase().includes(searchLower) ||
-          property.address.toLowerCase().includes(searchLower);
-
-        // Apply type filter
-        const matchesType = filterType === 'All' || property.Type === filterType;
-
-        // Apply status filter
-        const matchesStatus = filterStatus === 'All' || property.Status === filterStatus;
-
-        return matchesSearch && matchesType && matchesStatus;
-      })
-      .sort((a, b) => {
-        // Sort by selected field
-        let comparison = 0;
-        switch (sortBy) {
-          case 'title':
-            comparison = a.title.localeCompare(b.title);
-            break;
-          case 'SellPrice':
-            comparison = Number(a.SellPrice || 0) - Number(b.SellPrice || 0);
-            break;
-          case 'OriginalPrice':
-            comparison = Number(a.OriginalPrice || 0) - Number(b.OriginalPrice || 0);
-            break;
-          case 'CreationDate':
-          default:
-            comparison = new Date(a.CreationDate || new Date()).getTime() - new Date(b.CreationDate || new Date()).getTime();
-            break;
-        }
-        // Apply sort direction
-        return sortDirection === 'asc' ? comparison : -comparison;
-      });
-  }, [properties, searchText, filterType, filterStatus, sortBy, sortDirection]);
-
-  // Get statistics
-  const getStats = () => {
-    const totalCount = properties.length;
-    const availableCount = properties.filter(p => p.Status === 'Available').length;
-    const soldCount = properties.filter(p => p.Status === 'Sold').length;
-    const pendingCount = properties.filter(p => p.Status === 'Pending').length;
-    
-    // Calculate average price
-    let totalSellPrice = 0;
-    properties.forEach(p => {
-      totalSellPrice += Number(p.SellPrice) || 0;
-    });
-    const avgPrice = totalCount > 0 ? totalSellPrice / totalCount : 0;
-
-    return { totalCount, availableCount, soldCount, pendingCount, avgPrice };
+    try {
+      const companyData = await companyService.getCompanyById(user.company_id);
+      setCompany(companyData);
+    } catch (err) {
+      console.error("Error loading company:", err);
+    }
   };
 
-  const stats = getStats();
+  fetchData();
+}, [user]);
 
-  // Fetch properties from Firebase
+  // Fetch properties
   const fetchProperties = async () => {
     if (!user?.company_id) {
       setError('User does not have a company ID');
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     try {
       const fetchedProperties = await PropertyService.fetchProperties(user.company_id);
-      setProperties(fetchedProperties);
+      setProperties(fetchedProperties || []);
       setError(null);
     } catch (err) {
       console.error('Error fetching properties:', err);
@@ -154,21 +108,18 @@ const PropertiesPage = () => {
     }
   };
 
-  // Handle property form submission
+  // Handle form submit (moved UP - this fixes the error)
   const handleFormSubmit = async (propertyData) => {
     setFormLoading(true);
     try {
       if (currentProperty) {
-        // Update existing property
         await PropertyService.updateProperty(currentProperty.id, propertyData);
         message.success('Property updated successfully');
       } else {
-        // Create new property
         await PropertyService.createProperty(propertyData);
         message.success('Property added successfully');
       }
-      
-      // Reset form and fetch updated properties
+
       setFormVisible(false);
       setCurrentProperty(null);
       fetchProperties();
@@ -180,7 +131,53 @@ const PropertiesPage = () => {
     }
   };
 
-  // Handle property deletion
+  // Multi-select handlers
+  const toggleMultiSelectMode = () => {
+    setIsMultiSelectMode(prev => !prev);
+    if (isMultiSelectMode) {
+      setSelectedPropertiesForShare([]); // Clear when turning off
+    }
+  };
+
+  const handleSelectProperty = (property) => {
+    setSelectedPropertiesForShare(prev => {
+      const isAlreadySelected = prev.some(p => p.id === property.id);
+      return isAlreadySelected
+        ? prev.filter(p => p.id !== property.id)
+        : [...prev, property];
+    });
+  };
+
+  const handleShareSelected = () => {
+    if (selectedPropertiesForShare.length === 0) return;
+
+    const message = generateWhatsAppMultiplePropertiesMessage(
+      selectedPropertiesForShare,
+      company || {}
+    );
+    openWhatsApp(message);
+  };
+
+  const handlePropertyClick = (property) => {
+    if (isMultiSelectMode) {
+      handleSelectProperty(property);
+    } else {
+      setSelectedProperty(property);
+      setDetailVisible(true);
+    }
+  };
+
+  const handleEditProperty = (property) => {
+    setCurrentProperty(property);
+    setDetailVisible(false);
+    setFormVisible(true);
+  };
+
+  const handleAddProperty = () => {
+    setCurrentProperty(null);
+    setFormVisible(true);
+  };
+
   const handleDeleteProperty = (propertyId) => {
     Modal.confirm({
       title: 'Are you sure you want to delete this property?',
@@ -188,50 +185,77 @@ const PropertiesPage = () => {
       content: 'This action cannot be undone.',
       okText: 'Yes, Delete',
       okType: 'danger',
-      cancelText: 'Cancel',
       onOk: async () => {
         try {
           await PropertyService.deleteProperty(propertyId);
-          
-          // Close detail drawer if the deleted property was selected
           if (selectedProperty?.id === propertyId) {
             setDetailVisible(false);
             setSelectedProperty(null);
           }
-          
           message.success('Property deleted successfully');
           fetchProperties();
         } catch (err) {
           console.error('Error deleting property:', err);
-          message.error('Failed to delete property. Please try again.');
+          message.error('Failed to delete property.');
         }
       }
     });
   };
 
-  // Handle property card click
-  const handlePropertyClick = (property) => {
-    setSelectedProperty(property);
-    setDetailVisible(true);
-  };
+  // Load properties on mount
+  useEffect(() => {
+    fetchProperties();
+  }, []);
 
-  // Handle edit button click
-  const handleEditProperty = (property) => {
-    setCurrentProperty(property);
-    setDetailVisible(false);
-    setFormVisible(true);
-  };
+  // Filtered & Sorted Properties
+  const filteredAndSortedProperties = React.useMemo(() => {
+    return properties
+      .filter(property => {
+        const searchLower = searchText.toLowerCase();
+        const matchesSearch = searchText === '' ||
+          property.title?.toLowerCase().includes(searchLower) ||
+          property.description?.toLowerCase().includes(searchLower) ||
+          property.Location?.toLowerCase().includes(searchLower) ||
+          property.address?.toLowerCase().includes(searchLower);
 
-  // Handle add property button click
-  const handleAddProperty = () => {
-    setCurrentProperty(null);
-    setFormVisible(true);
-  };
+        const matchesType = filterType === 'All' || property.Type === filterType;
+        const matchesStatus = filterStatus === 'All' || property.Status === filterStatus;
 
-  // Get available property types for filter
- // const propertyTypes = Array.from(new Set(properties.map(p => p.Type || ''))).filter(Boolean);
-  
-  // Format currency for statistics
+        return matchesSearch && matchesType && matchesStatus;
+      })
+      .sort((a, b) => {
+        let comparison = 0;
+        switch (sortBy) {
+          case 'title':
+            comparison = (a.title || '').localeCompare(b.title || '');
+            break;
+          case 'SellPrice':
+            comparison = Number(a.SellPrice || 0) - Number(b.SellPrice || 0);
+            break;
+          case 'OriginalPrice':
+            comparison = Number(a.OriginalPrice || 0) - Number(b.OriginalPrice || 0);
+            break;
+          default:
+            comparison = new Date(a.CreationDate || 0).getTime() - new Date(b.CreationDate || 0).getTime();
+            break;
+        }
+        return sortDirection === 'asc' ? comparison : -comparison;
+      });
+  }, [properties, searchText, filterType, filterStatus, sortBy, sortDirection]);
+
+  // Stats
+  const stats = React.useMemo(() => {
+    const totalCount = properties.length;
+    const availableCount = properties.filter(p => p.Status === 'Available').length;
+    const soldCount = properties.filter(p => p.Status === 'Sold').length;
+    const pendingCount = properties.filter(p => p.Status === 'Pending').length;
+
+    const totalSellPrice = properties.reduce((sum, p) => sum + Number(p.SellPrice || 0), 0);
+    const avgPrice = totalCount > 0 ? totalSellPrice / totalCount : 0;
+
+    return { totalCount, availableCount, soldCount, pendingCount, avgPrice };
+  }, [properties]);
+
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-AE', {
       style: 'currency',
@@ -254,15 +278,10 @@ const PropertiesPage = () => {
               Manage all properties for {user?.company_name || 'your company'}
             </Paragraph>
           </Col>
-          
+
           {hasManagePermission && (
             <Col>
-              <Button 
-                type='primary' 
-                icon={<PlusOutlined />} 
-                size='large'
-                onClick={handleAddProperty}
-              >
+              <Button type='primary' icon={<PlusOutlined />} size='large' onClick={handleAddProperty}>
                 Add Property
               </Button>
             </Col>
@@ -274,40 +293,22 @@ const PropertiesPage = () => {
       <Row gutter={16} style={{ marginBottom: '24px' }}>
         <Col xs={24} sm={12} md={6}>
           <Card>
-            <Statistic 
-              title='Total Properties' 
-              value={stats.totalCount} 
-              prefix={<HomeOutlined />} 
-            />
+            <Statistic title="Total Properties" value={stats.totalCount} prefix={<HomeOutlined />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
           <Card>
-            <Statistic 
-              title='Available' 
-              value={stats.availableCount} 
-              valueStyle={{ color: '#3f8600' }}
-              prefix={<CheckCircleOutlined />}
-            />
+            <Statistic title="Available" value={stats.availableCount} valueStyle={{ color: '#3f8600' }} prefix={<CheckCircleOutlined />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
           <Card>
-            <Statistic 
-              title='Sold/Rented' 
-              value={stats.soldCount} 
-              valueStyle={{ color: '#cf1322' }}
-              prefix={<CheckCircleOutlined />}
-            />
+            <Statistic title="Sold/Rented" value={stats.soldCount} valueStyle={{ color: '#cf1322' }} prefix={<CheckCircleOutlined />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
           <Card>
-            <Statistic 
-              title='Average Price' 
-              value={formatCurrency(stats.avgPrice)} 
-              prefix={<DollarOutlined />}
-            />
+            <Statistic title="Average Price" value={formatCurrency(stats.avgPrice)} prefix={<DollarOutlined />} />
           </Card>
         </Col>
       </Row>
@@ -317,71 +318,53 @@ const PropertiesPage = () => {
         <Row gutter={16} align='middle'>
           <Col xs={24} md={8}>
             <Search
-              placeholder='Search properties...'
+              placeholder="Search properties..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              style={{ width: '100%' }}
               allowClear
             />
           </Col>
-          
-        <Col xs={12} md={4}>
-  <Select
-    placeholder="Filter by property type"
-    style={{ width: '100%' }}
-    value={filterType}           // ← assume you have this state
-    onChange={setFilterType}     // ← assume you have this setter
-    allowClear
-  >
-    <Option value="All">All Types</Option>
-    <Option value="Studio">Studio</Option>
-    <Option value="Apartment">Apartment</Option>
-    <Option value="Villa">Villa</Option>
-    <Option value="Penthouse">Penthouse</Option>
-    <Option value="Retail">Retail</Option>
-    <Option value="Hotel">Hotel</Option>
-    <Option value="Building">Building</Option>
-    <Option value="Tower">Tower</Option>
-    <Option value="Land">Land</Option>
-    <Option value="Hotel Room">Hotel Room</Option>
-    <Option value="Store">Store</Option>
-    <Option value="Mall">Mall</Option>
-  </Select>
-</Col>
-          
+
           <Col xs={12} md={4}>
-            <Select
-              placeholder='Filter by status'
-              style={{ width: '100%' }}
-              value={filterStatus}
-              onChange={setFilterStatus}
-              allowClear
-            >
-              <Option value='All'>All Statuses</Option>
-              <Option value='Available'>Available</Option>
-              <Option value='Pending'>Pending</Option>
-              <Option value='Sold'>Sold</Option>
-              <Option value='Rented'>Rented</Option>
+            <Select value={filterType} onChange={setFilterType} style={{ width: '100%' }} allowClear>
+              <Option value="All">All Types</Option>
+              <Option value="Studio">Studio</Option>
+              <Option value="Apartment">Apartment</Option>
+              <Option value="Villa">Villa</Option>
+              <Option value="Penthouse">Penthouse</Option>
+              <Option value="Retail">Retail</Option>
+              <Option value="Hotel">Hotel</Option>
+              <Option value="Building">Building</Option>
+              <Option value="Tower">Tower</Option>
+              <Option value="Land">Land</Option>
+              <Option value="Hotel Room">Hotel Room</Option>
+              <Option value="Store">Store</Option>
+              <Option value="Mall">Mall</Option>
             </Select>
           </Col>
-          
+
           <Col xs={12} md={4}>
-            <Select
-              placeholder='Sort by'
-              style={{ width: '100%' }}
-              value={sortBy}
-              onChange={setSortBy}
-            >
-              <Option value='CreationDate'>Date Added</Option>
-              <Option value='title'>Title</Option>
-              <Option value='SellPrice'>Sell Price</Option>
+            <Select value={filterStatus} onChange={setFilterStatus} style={{ width: '100%' }} allowClear>
+              <Option value="All">All Statuses</Option>
+              <Option value="Available">Available</Option>
+              <Option value="Pending">Pending</Option>
+              <Option value="Sold">Sold</Option>
+              <Option value="Rented">Rented</Option>
             </Select>
           </Col>
-          
+
+          <Col xs={12} md={4}>
+            <Select value={sortBy} onChange={setSortBy} style={{ width: '100%' }}>
+              <Option value="CreationDate">Date Added</Option>
+              <Option value="title">Title</Option>
+              <Option value="SellPrice">Sell Price</Option>
+            </Select>
+          </Col>
+
           <Col xs={12} md={4}>
             <Tooltip title={sortDirection === 'asc' ? 'Sort Ascending' : 'Sort Descending'}>
-              <Button 
-                icon={sortDirection === 'asc' ? <SortAscendingOutlined /> : <SortDescendingOutlined />} 
+              <Button
+                icon={sortDirection === 'asc' ? <SortAscendingOutlined /> : <SortDescendingOutlined />}
                 onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
                 style={{ width: '100%' }}
               >
@@ -392,15 +375,48 @@ const PropertiesPage = () => {
         </Row>
       </Card>
 
+      {/* Multi-Select & Bulk Share Bar */}
+      {hasManagePermission && (
+        <Card style={{ marginBottom: '16px' }}>
+          <Row align="middle" justify="space-between">
+            <Col>
+              <Space>
+                <Button
+                  icon={<ShareAltOutlined />}
+                  onClick={toggleMultiSelectMode}
+                  type={isMultiSelectMode ? 'primary' : 'default'}
+                >
+                  {isMultiSelectMode ? 'Cancel Multi-Select' : 'Select Multiple'}
+                </Button>
+
+                {isMultiSelectMode && (
+                  <>
+                    <Text strong>{selectedPropertiesForShare.length} selected</Text>
+                    <Button
+                      type="primary"
+                      icon={<WhatsAppOutlined />}
+                      disabled={selectedPropertiesForShare.length === 0}
+                      onClick={handleShareSelected}
+                    >
+                      Share Selected on WhatsApp
+                    </Button>
+                  </>
+                )}
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+      )}
+
       {/* Error Alert */}
       {error && (
-        <Alert 
-          message='Error' 
-          description={error} 
-          type='error' 
-          showIcon 
-          closable 
-          style={{ marginBottom: '24px' }} 
+        <Alert
+          message="Error"
+          description={error}
+          type="error"
+          showIcon
+          closable
+          style={{ marginBottom: '24px' }}
         />
       )}
 
@@ -408,16 +424,9 @@ const PropertiesPage = () => {
       <Spin spinning={loading}>
         {properties.length === 0 && !loading ? (
           <Card>
-            <Empty 
-              description='No properties found' 
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-            >
+            <Empty description="No properties found" image={Empty.PRESENTED_IMAGE_SIMPLE}>
               {hasManagePermission && (
-                <Button 
-                  type='primary' 
-                  icon={<PlusOutlined />}
-                  onClick={handleAddProperty}
-                >
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleAddProperty}>
                   Add Property
                 </Button>
               )}
@@ -425,21 +434,28 @@ const PropertiesPage = () => {
           </Card>
         ) : (
           <Row gutter={[16, 16]}>
-            {filteredAndSortedProperties.map(property => (
+            {filteredAndSortedProperties.map((property) => (
               <Col xs={24} sm={12} lg={8} xl={6} key={property.id}>
-                <PropertyCard 
-                  property={property} 
+                <PropertyCard
+                  property={property}
                   onClick={handlePropertyClick}
                   onEdit={handleEditProperty}
                   onDelete={handleDeleteProperty}
                   currentUser={user}
+                  isMultiSelectMode={isMultiSelectMode}
+                  isSelected={selectedPropertiesForShare.some(p => p.id === property.id)}
+                  onSelect={handleSelectProperty}
+                  onShareWhatsApp={(prop) => {
+                    const message = generateWhatsAppPropertyMessage(prop, company || {});
+                    openWhatsApp(message);
+                  }}
                 />
               </Col>
             ))}
-            
+
             {filteredAndSortedProperties.length === 0 && properties.length > 0 && (
               <Col span={24}>
-                <Empty description='No properties match your filters' />
+                <Empty description="No properties match your filters" />
               </Col>
             )}
           </Row>
@@ -464,7 +480,7 @@ const PropertiesPage = () => {
         />
       </Modal>
 
-      {/* Property Detail Drawer */}
+      {/* Property Detail */}
       {selectedProperty && (
         <PropertyDetail
           property={selectedProperty}
