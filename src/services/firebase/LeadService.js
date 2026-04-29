@@ -369,6 +369,7 @@ async assignTo(leadId, user) {
     throw error;
   }
 }
+
 }
 
 // Create and export a singleton instance

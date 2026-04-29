@@ -17,6 +17,7 @@ import { db } from 'configs/FirebaseConfig';
 import { message } from 'antd';
 import { DealStatus, DealSource } from 'models/DealModel';
 import { LeadStatus } from 'models/LeadModel';
+import LeadHistoryService from './firebase/LeadHistoryService';
 
 /**
  * Service for managing leads in Firestore
@@ -280,8 +281,84 @@ const LeadsService = {
       console.error('Error bulk updating leads:', error);
       throw error;
     }
-  }
+  },
 
+  /**
+   * Bulk transfer leads from one seller to another
+   */
+  async bulkTransferLeads({ fromSellerId, toSellerId, companyId, transferType = 'all' }) {
+    try {
+      const q = query(
+        collection(db, 'leads'),
+        where('company_id', '==', companyId),
+        where('seller_id', '==', fromSellerId)
+      );
+
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      let transferredCount = 0;
+
+      for (const docSnap of snapshot.docs) {
+        const leadData = docSnap.data();
+
+        let shouldTransfer = true;
+
+        if (transferType !== 'all') {
+          const hasBeenContacted = await LeadHistoryService.hasSellerContactedLead(docSnap.id, fromSellerId);
+
+          if (transferType === 'uncontacted' && hasBeenContacted) shouldTransfer = false;
+          if (transferType === 'contacted' && !hasBeenContacted) shouldTransfer = false;
+        }
+
+        if (shouldTransfer) {
+          batch.update(docSnap.ref, {
+            seller_id: toSellerId,
+            seller_name: null,
+            lastTransferredAt: serverTimestamp(),
+            transferredFrom: fromSellerId,
+            LastUpdateDate: serverTimestamp(),
+          });
+          transferredCount++;
+        }
+      }
+
+      if (transferredCount > 0) {
+        await batch.commit();
+      }
+
+      return transferredCount;
+    } catch (error) {
+      console.error('Bulk transfer error:', error);
+      throw error;
+    }
+  },
+ 
+  /**
+   * Bulk transfer specific leads by their IDs
+   */
+  async bulkTransferSpecificLeads(leadIds, toSellerId) {
+    try {
+      const batch = writeBatch(db);
+      let count = 0;
+
+      for (const leadId of leadIds) {
+        const leadRef = doc(db, 'leads', leadId);
+        batch.update(leadRef, {
+          seller_id: toSellerId,
+          seller_name: null,
+          lastTransferredAt: serverTimestamp(),
+          LastUpdateDate: serverTimestamp(),
+        });
+        count++;
+      }
+
+      if (count > 0) await batch.commit();
+      return count;
+    } catch (error) {
+      console.error('Error in bulkTransferSpecificLeads:', error);
+      throw error;
+    }
+  },
   
 };
 

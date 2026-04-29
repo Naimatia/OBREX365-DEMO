@@ -34,7 +34,8 @@ import {
   MailOutlined,
   TrophyOutlined,
   CalendarOutlined,
-  LineChartOutlined
+  LineChartOutlined,
+  SwapOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import UserService from 'services/firebase/UserService';
@@ -51,8 +52,7 @@ import AddUserForm from './AddUserForm';
 import EditUserForm from './EditUserForm';
 import LeadHistoryService from 'services/firebase/LeadHistoryService';
 import { DealStatus } from 'models/DealModel';
-
-
+import BulkLeadTransferModal from '../../components/BulkLeadTransfer/BulkLeadTransferModal'
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -80,6 +80,9 @@ const SellersPage = () => {
   const [analyticsData, setAnalyticsData] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(dayjs());
   const [dateRange, setDateRange] = useState([dayjs().startOf('month'), dayjs().endOf('month')]);
+  // Add this state near other modals
+  const [transferModalVisible, setTransferModalVisible] = useState(false);
+  const [transferFromSeller, setTransferFromSeller] = useState(null);
 
   const salesRoles = [
     UserRoles.SELLER,
@@ -103,46 +106,46 @@ const SellersPage = () => {
       }
 
       // Fetch leads count per seller
-// Fetch leads count per seller – focused only on leads table
-const usersWithLeads = await Promise.all(
-  fetchedUsers.map(async (u) => {
-    try {
-      // 1. Get all leads assigned to this seller (or ever assigned)
-      const allLeads = await LeadsService.getSellerLeadsByDateRange(
-        companyId,
-        u.id,
-      );
+      // Fetch leads count per seller – focused only on leads table
+      const usersWithLeads = await Promise.all(
+        fetchedUsers.map(async (u) => {
+          try {
+            // 1. Get all leads assigned to this seller (or ever assigned)
+            const allLeads = await LeadsService.getSellerLeadsByDateRange(
+              companyId,
+              u.id,
+            );
 
-      
 
-      // 2. For each lead → check if this seller has at least one contact action in history
-      const contactedLeadsCount = await Promise.all(
-        allLeads.map(async (lead) => {
-          // We need to check the leadHistory subcollection for this lead
-          // → see if there is at least one entry with sellerId === u.id
-          //    and type in ['whatsapp', 'email', 'call']
 
-const hasContacted = await LeadHistoryService.hasSellerContactedLead(lead.id, u.id);
+            // 2. For each lead → check if this seller has at least one contact action in history
+            const contactedLeadsCount = await Promise.all(
+              allLeads.map(async (lead) => {
+                // We need to check the leadHistory subcollection for this lead
+                // → see if there is at least one entry with sellerId === u.id
+                //    and type in ['whatsapp', 'email', 'call']
 
-          return hasContacted ? 1 : 0;
+                const hasContacted = await LeadHistoryService.hasSellerContactedLead(lead.id, u.id);
+
+                return hasContacted ? 1 : 0;
+              })
+            ).then(counts => counts.reduce((sum, v) => sum + v, 0));
+
+            return {
+              ...u,
+              totalLeads: allLeads.length,
+              contactedLeads: contactedLeadsCount,
+            };
+          } catch (err) {
+            console.error(`Error processing seller ${u.id}:`, err);
+            return {
+              ...u,
+              totalLeads: 0,
+              contactedLeads: 0,
+            };
+          }
         })
-      ).then(counts => counts.reduce((sum, v) => sum + v, 0));
-
-      return {
-        ...u,
-        totalLeads: allLeads.length,
-        contactedLeads: contactedLeadsCount,
-      };
-    } catch (err) {
-      console.error(`Error processing seller ${u.id}:`, err);
-      return {
-        ...u,
-        totalLeads: 0,
-        contactedLeads: 0,
-      };
-    }
-  })
-);
+      );
 
       setUsers(usersWithLeads);
       setFilteredUsers(usersWithLeads);
@@ -196,7 +199,7 @@ const hasContacted = await LeadHistoryService.hasSellerContactedLead(lead.id, u.
         ContactsService.getSellerContactsByDateRange(sellerId, startDate, endDate),
         DealsService.getSellerDealsByDateRange(sellerId, startDate, endDate),
         LeadsService.getSellerLeadsByDateRange(companyId, sellerId),
-        
+
         InvoicesService.getSellerInvoicesByDateRange(sellerId, startDate, endDate)
       ]);
 
@@ -208,35 +211,35 @@ const hasContacted = await LeadHistoryService.hasSellerContactedLead(lead.id, u.
         loss: contacts.filter(c => c.status === 'Loss').length
       };
 
-   // ─── IMPROVED Deals stats ───
-    const dealStats = {
-      total: deals.length,
-      opened: deals.filter(d => d.Status === DealStatus.OPENED).length,
-      gain: deals.filter(d => d.Status === DealStatus.GAIN).length,
-      loss: deals.filter(d => d.Status === DealStatus.LOSS).length,
-      totalValue: deals.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0),
-      gainValue: deals
-        .filter(d => d.Status === DealStatus.GAIN)
-        .reduce((sum, d) => sum + (Number(d.Amount) || 0), 0),
-      avgDealValue: deals.length > 0 ? 
-        deals.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0) / deals.length : 0
-    };
+      // ─── IMPROVED Deals stats ───
+      const dealStats = {
+        total: deals.length,
+        opened: deals.filter(d => d.Status === DealStatus.OPENED).length,
+        gain: deals.filter(d => d.Status === DealStatus.GAIN).length,
+        loss: deals.filter(d => d.Status === DealStatus.LOSS).length,
+        totalValue: deals.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0),
+        gainValue: deals
+          .filter(d => d.Status === DealStatus.GAIN)
+          .reduce((sum, d) => sum + (Number(d.Amount) || 0), 0),
+        avgDealValue: deals.length > 0 ?
+          deals.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0) / deals.length : 0
+      };
 
-const leadStats = {
-  total: leads.length,
-  hot: leads.filter(l => {
-    const level = (l.InterestLevel || '').toUpperCase();
-    return ['HIGH', 'HOT'].includes(level);
-  }).length,
-  warm: leads.filter(l => {
-    const level = (l.InterestLevel || '').toUpperCase();
-    return ['MEDIUM', 'WARM'].includes(level);
-  }).length,
-  cold: leads.filter(l => {
-    const level = (l.InterestLevel || '').toUpperCase();
-    return ['LOW', 'COLD'].includes(level);
-  }).length
-};
+      const leadStats = {
+        total: leads.length,
+        hot: leads.filter(l => {
+          const level = (l.InterestLevel || '').toUpperCase();
+          return ['HIGH', 'HOT'].includes(level);
+        }).length,
+        warm: leads.filter(l => {
+          const level = (l.InterestLevel || '').toUpperCase();
+          return ['MEDIUM', 'WARM'].includes(level);
+        }).length,
+        cold: leads.filter(l => {
+          const level = (l.InterestLevel || '').toUpperCase();
+          return ['LOW', 'COLD'].includes(level);
+        }).length
+      };
 
       const invoiceStats = {
         total: invoices.length,
@@ -271,6 +274,17 @@ const leadStats = {
       setAnalyticsLoading(false);
     }
   };
+
+  const handleOpenTransferModal = (seller) => {
+    setTransferFromSeller(seller);
+    setTransferModalVisible(true);
+  };
+
+ const handleTransferSuccess = () => {
+  message.success("Leads transferred successfully. Refreshing stats...");
+  fetchUsers();        // This will recalculate totalLeads + contactedLeads for everyone
+};
+
 
   const handleSellerClick = async (seller) => {
     setSelectedSeller(seller);
@@ -491,71 +505,71 @@ const leadStats = {
       dataIndex: 'country',
       key: 'country'
     },
-{
-  title: 'Leads',
-  key: 'leads',
-  width: 160,
-  // Only render this column if the user has one of the allowed sales roles
-  render: (_, record) => {
-    const allowedRoles = [
-        UserRoles.SELLER,
-      UserRoles.SALES_EXECUTIVE,
-      UserRoles.AGENT,
-      UserRoles.TEAM_LEADER,
-      UserRoles.SALES_MANAGER,
-      UserRoles.OFF_PLAN_SALES,
-      UserRoles.READY_TO_MOVE_SALES
-    ];
+    {
+      title: 'Leads',
+      key: 'leads',
+      width: 160,
+      // Only render this column if the user has one of the allowed sales roles
+      render: (_, record) => {
+        const allowedRoles = [
+          UserRoles.SELLER,
+          UserRoles.SALES_EXECUTIVE,
+          UserRoles.AGENT,
+          UserRoles.TEAM_LEADER,
+          UserRoles.SALES_MANAGER,
+          UserRoles.OFF_PLAN_SALES,
+          UserRoles.READY_TO_MOVE_SALES
+        ];
 
 
-    // Check if this row's user has one of the allowed roles
-    const userRole = record.Role || record.role; // handle both casing possibilities
-    if (!allowedRoles.includes(userRole)) {
-      return null; // ← hides the cell content for non-sales roles
-    }
+        // Check if this row's user has one of the allowed roles
+        const userRole = record.Role || record.role; // handle both casing possibilities
+        if (!allowedRoles.includes(userRole)) {
+          return null; // ← hides the cell content for non-sales roles
+        }
 
-    return (
-      <div style={{ textAlign: 'center' }}>
-        <Text
-          type="secondary"
-          style={{ fontSize: 12, display: 'block', marginBottom: 4 }}
-        >
-          Total Leads | Contacted
-        </Text>
-        <Space size={8}>
-          <div
-            style={{
-              backgroundColor: '#ff4d4f',
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: 16,
-              padding: '4px 8px',
-              borderRadius: 6,
-              minWidth: 36,
-              textAlign: 'center'
-            }}
-          >
-            {record.totalLeads || 0}
+        return (
+          <div style={{ textAlign: 'center' }}>
+            <Text
+              type="secondary"
+              style={{ fontSize: 12, display: 'block', marginBottom: 4 }}
+            >
+              Total Leads | Contacted
+            </Text>
+            <Space size={8}>
+              <div
+                style={{
+                  backgroundColor: '#ff4d4f',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: 16,
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  minWidth: 36,
+                  textAlign: 'center'
+                }}
+              >
+                {record.totalLeads || 0}
+              </div>
+              <div
+                style={{
+                  backgroundColor: '#52c41a',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: 16,
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  minWidth: 36,
+                  textAlign: 'center'
+                }}
+              >
+                {record.contactedLeads || 0}
+              </div>
+            </Space>
           </div>
-          <div
-            style={{
-              backgroundColor: '#52c41a',
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: 16,
-              padding: '4px 8px',
-              borderRadius: 6,
-              minWidth: 36,
-              textAlign: 'center'
-            }}
-          >
-            {record.contactedLeads || 0}
-          </div>
-        </Space>
-      </div>
-    );
-  }
-},
+        );
+      }
+    },
     {
       title: 'Status',
       key: 'status',
@@ -585,42 +599,48 @@ const leadStats = {
   if (canManageUsers) {
     columns.push({
       title: 'Actions',
-      key: 'action',
-      render: (_, record) => (
-        <Space size="small">
-          {(salesRoles.includes(record.Role) || salesRoles.includes(record.role)) && (
-            <Tooltip title="View Analytics">
-              <Button
-                type="default"
-                icon={<EyeOutlined />}
-                size="small"
-                onClick={() => handleSellerClick(record)}
-                style={{ color: '#722ed1', borderColor: '#722ed1' }}
-              />
+      key: 'actions',
+      render: (_, record) => {
+        const isSalesPerson = salesRoles.includes(record.Role);
+
+        return (
+          <Space size="small">
+            {isSalesPerson && (
+              <>
+                <Tooltip title="View Analytics">
+                  <Button icon={<EyeOutlined />} size="small" onClick={() => handleSellerClick(record)} />
+                </Tooltip>
+
+                <Tooltip title="Transfer Leads">
+                  <Button
+                    icon={<SwapOutlined />}
+                    size="small"
+                    onClick={() => handleOpenTransferModal(record)}
+                    style={{ color: '#fa8c16', borderColor: '#fa8c16' }}
+                  />
+                </Tooltip>
+              </>
+            )}
+
+            <Tooltip title="Edit">
+              <Button icon={<EditOutlined />} size="small" onClick={() => {
+                setCurrentUser(record);
+                setIsEditModalVisible(true);
+              }} />
             </Tooltip>
-          )}
-          <Tooltip title="Edit">
-            <Button
-              type="primary"
-              icon={<EditOutlined />}
-              size="small"
-              onClick={() => showEditModal(record)}
-            />
-          </Tooltip>
-          <Tooltip title="Delete">
+
             <Popconfirm
-              title="Are you sure you want to delete this user?"
+              title="Delete this user?"
               onConfirm={() => handleDeleteUser(record.id)}
               okText="Yes"
               cancelText="No"
-              icon={<ExclamationCircleOutlined style={{ color: 'red' }} />}
             >
               <Button danger icon={<DeleteOutlined />} size="small" />
             </Popconfirm>
-          </Tooltip>
-        </Space>
-      )
-    });
+          </Space>
+        );
+      }
+    },);
   }
 
   return (
@@ -651,7 +671,7 @@ const leadStats = {
             onChange={setRoleFilter}
             allowClear
           >
-                        <Option value={UserRoles.HR}>HR</Option>
+            <Option value={UserRoles.HR}>HR</Option>
             <Option value={UserRoles.SELLER}>Sales Representative</Option>
             <Option value={UserRoles.SALES_EXECUTIVE}>Sales Executive</Option>
             <Option value={UserRoles.AGENT}>Agent</Option>
@@ -739,7 +759,7 @@ const leadStats = {
         destroyOnClose
       >
         {/* Analytics content unchanged */}
-                <div style={{ padding: '0 8px' }}>
+        <div style={{ padding: '0 8px' }}>
           {/* Date Range Filters */}
           <Card
             style={{
@@ -834,7 +854,7 @@ const leadStats = {
                     </Card>
                   </Col>
 
-                                    {/* Leads Analytics */}
+                  {/* Leads Analytics */}
                   <Col span={12}>
                     <Card
                       title="🎯 Leads Quality"
@@ -1032,84 +1052,84 @@ const leadStats = {
                     />
                   </TabPane>
 
-               <TabPane tab={`Deals (${analyticsData.deals.total})`} key="deals">
-  <List
-    size="small"
-    header={<Text strong>All deals in selected period</Text>}
-    dataSource={analyticsData.rawData.deals.slice(0, 20)}
-    locale={{ emptyText: 'No deals found in this period' }}
-    renderItem={(deal) => {
-      // Use correct field names from your DealModel
-      const status = deal.Status || 'Unknown';
-      const amount = Number(deal.Amount || 0);
-      const description = deal.Description || 'No description available';
-      const creationDate = deal.CreationDate 
-        ? moment(deal.CreationDate).format('MMM DD, YYYY') 
-        : '—';
+                  <TabPane tab={`Deals (${analyticsData.deals.total})`} key="deals">
+                    <List
+                      size="small"
+                      header={<Text strong>All deals in selected period</Text>}
+                      dataSource={analyticsData.rawData.deals.slice(0, 20)}
+                      locale={{ emptyText: 'No deals found in this period' }}
+                      renderItem={(deal) => {
+                        // Use correct field names from your DealModel
+                        const status = deal.Status || 'Unknown';
+                        const amount = Number(deal.Amount || 0);
+                        const description = deal.Description || 'No description available';
+                        const creationDate = deal.CreationDate
+                          ? moment(deal.CreationDate).format('MMM DD, YYYY')
+                          : '—';
 
-      // Determine avatar color based on status
-      let avatarColor = '#faad14'; // default (opened/pending)
-      if (status === DealStatus.GAIN) avatarColor = '#52c41a';
-      if (status === DealStatus.LOSS) avatarColor = '#ff4d4f';
+                        // Determine avatar color based on status
+                        let avatarColor = '#faad14'; // default (opened/pending)
+                        if (status === DealStatus.GAIN) avatarColor = '#52c41a';
+                        if (status === DealStatus.LOSS) avatarColor = '#ff4d4f';
 
-      return (
-        <List.Item>
-          <List.Item.Meta
-            avatar={
-              <Avatar 
-                style={{ backgroundColor: avatarColor }}
-              >
-                {deal.Description?.charAt(0)?.toUpperCase() || 'D'}
-              </Avatar>
-            }
-            title={
-              <Space>
-                <Text strong>
-                  {description.substring(0, 60)}
-                  {description.length > 60 ? '...' : ''}
-                </Text>
-                {amount > 0 && (
-                  <Tag color={status === DealStatus.GAIN ? 'green' : 'default'}>
-                    AED {amount.toLocaleString('en-AE')}
-                  </Tag>
-                )}
-              </Space>
-            }
-            description={
-              <Space direction="vertical" size={2}>
-                <Text type="secondary">
-                  Status: <Tag color={
-                    status === DealStatus.GAIN ? 'green' :
-                    status === DealStatus.LOSS ? 'red' : 
-                    'orange'
-                  }>
-                    {status}
-                  </Tag>
-                </Text>
-                <Text type="secondary">
-                  Created: {creationDate}
-                </Text>
-              </Space>
-            }
-          />
-          {/* Optional: quick actions */}
-          <Space>
-            {status !== DealStatus.GAIN && status !== DealStatus.LOSS && (
-              <Tooltip title="View deal details">
-                <Button 
-                  type="text" 
-                  icon={<EyeOutlined />} 
-                  size="small"
-                  // onClick={() => handleViewDeal(deal)}  ← add if needed
-                />
-              </Tooltip>
-            )}
-          </Space>
-        </List.Item>
-      );
-    }}
-  />
-</TabPane>
+                        return (
+                          <List.Item>
+                            <List.Item.Meta
+                              avatar={
+                                <Avatar
+                                  style={{ backgroundColor: avatarColor }}
+                                >
+                                  {deal.Description?.charAt(0)?.toUpperCase() || 'D'}
+                                </Avatar>
+                              }
+                              title={
+                                <Space>
+                                  <Text strong>
+                                    {description.substring(0, 60)}
+                                    {description.length > 60 ? '...' : ''}
+                                  </Text>
+                                  {amount > 0 && (
+                                    <Tag color={status === DealStatus.GAIN ? 'green' : 'default'}>
+                                      AED {amount.toLocaleString('en-AE')}
+                                    </Tag>
+                                  )}
+                                </Space>
+                              }
+                              description={
+                                <Space direction="vertical" size={2}>
+                                  <Text type="secondary">
+                                    Status: <Tag color={
+                                      status === DealStatus.GAIN ? 'green' :
+                                        status === DealStatus.LOSS ? 'red' :
+                                          'orange'
+                                    }>
+                                      {status}
+                                    </Tag>
+                                  </Text>
+                                  <Text type="secondary">
+                                    Created: {creationDate}
+                                  </Text>
+                                </Space>
+                              }
+                            />
+                            {/* Optional: quick actions */}
+                            <Space>
+                              {status !== DealStatus.GAIN && status !== DealStatus.LOSS && (
+                                <Tooltip title="View deal details">
+                                  <Button
+                                    type="text"
+                                    icon={<EyeOutlined />}
+                                    size="small"
+                                  // onClick={() => handleViewDeal(deal)}  ← add if needed
+                                  />
+                                </Tooltip>
+                              )}
+                            </Space>
+                          </List.Item>
+                        );
+                      }}
+                    />
+                  </TabPane>
 
                   <TabPane tab={`Leads (${analyticsData.leads.total})`} key="leads">
                     <List
@@ -1129,7 +1149,7 @@ const leadStats = {
                     />
                   </TabPane>
 
-{/* 
+                  {/* 
                   <TabPane tab={`Invoices (${analyticsData.invoices.total})`} key="invoices">
                     <List
                       size="small"
@@ -1151,7 +1171,7 @@ const leadStats = {
                 </Tabs>
               </TabPane>
             </Tabs>
-            
+
           ) : (
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <Text type="secondary">Select a date range to view analytics</Text>
@@ -1159,6 +1179,18 @@ const leadStats = {
           )}
         </div>
       </Drawer>
+      {/* Bulk Lead Transfer Modal */}
+<BulkLeadTransferModal
+  visible={transferModalVisible}
+  onCancel={() => {
+    setTransferModalVisible(false);
+    setTransferFromSeller(null);
+  }}
+  fromSeller={transferFromSeller}
+  sellers={users}                    // or filteredUsers
+  companyId={companyId}
+  onSuccess={handleTransferSuccess}
+/>
     </div>
   );
 };
