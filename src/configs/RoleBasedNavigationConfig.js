@@ -37,6 +37,39 @@ const hrNavigation = [
     breadcrumb: false,
     submenu: []
   },
+    // Company Management
+  {
+    key: 'company',
+    title: 'Company',
+    icon: ApartmentOutlined,
+    breadcrumb: true,
+    submenu: [
+      {
+        key: 'sellers',
+        path: `${APP_PREFIX_PATH}/sellers`,
+        title: 'Sales Team Members',
+        icon: ShopOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'employees',
+        path: `${APP_PREFIX_PATH}/company/employees`,
+        title: 'Employees',
+        icon: TeamOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'meetings',
+        path: `${APP_PREFIX_PATH}/company/meetings`,
+        title: 'Meetings',
+        icon: FileTextOutlined,
+        breadcrumb: true,
+        submenu: []
+      }
+    ]
+  },
   {
     key: 'hr',
     title: 'HR',
