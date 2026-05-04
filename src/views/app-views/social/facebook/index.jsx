@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { 
   Card, Button, message, Row, Col, Statistic, Typography, 
-  Avatar, Spin, Modal, Divider 
+  Avatar, Spin, Modal, Divider, Result
 } from "antd";
 import { 
   EyeOutlined, LikeOutlined, HeartOutlined, DeleteOutlined, 
