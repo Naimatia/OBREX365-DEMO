@@ -1,18 +1,3 @@
-/**
- * PropertyFinancePage.jsx
- *
- * Features:
- *  1. Dubai property payment calculator (down payment, monthly mortgage, amortisation)
- *  2. Live currency converter  (AED → any world currency via open.er-api.com)
- *  3. PDF invoice / quote generator  (jsPDF + jspdf-autotable)
- *
- * Dependencies to install:
- *   npm install jspdf jspdf-autotable
- *
- * The component is self-contained and works alongside your existing
- * Ant Design + Redux stack.
- */
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Typography, InputNumber, Slider, Select, Button,
@@ -604,7 +589,7 @@ const PropertyFinancePage = () => {
                             </Col>
                           ))}
                         </Row>
-                      </div>
+                      </div> 
                     </Space>
                   </Card>
                 </Col>

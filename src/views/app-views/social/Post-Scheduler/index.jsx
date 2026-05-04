@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   Card, Button, Input, message, Typography, Upload,
-  Modal, DatePicker, Table, Tooltip, Space, Popconfirm, Result, Avatar
+  Modal, DatePicker, Table, Tooltip, Space, Popconfirm, Avatar
 } from "antd";
 import {
   PictureOutlined, VideoCameraOutlined, CalendarOutlined,
