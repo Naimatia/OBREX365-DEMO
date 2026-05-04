@@ -18,7 +18,8 @@ import {
   DollarOutlined,
   FacebookOutlined,
   GlobalOutlined,
-  InstagramOutlined
+  InstagramOutlined,
+  
 } from '@ant-design/icons';
 import { APP_PREFIX_PATH } from 'configs/AppConfig';
 import { UserRoles } from 'models/UserModel';
@@ -37,7 +38,7 @@ const hrNavigation = [
     breadcrumb: false,
     submenu: []
   },
-    // Company Management
+  // Company Management
   {
     key: 'company',
     title: 'Company',
@@ -169,7 +170,7 @@ const ceoNavigation = [
   },
 
   // HR Management (CEO can see it too)
-   {
+  {
     key: 'hr',
     title: 'HR',
     icon: TeamOutlined,
@@ -253,37 +254,37 @@ const ceoNavigation = [
   },
 
   {
-  key: 'social-media',
-  title: 'Social Media',
-  icon: GlobalOutlined, // import it
-  breadcrumb: true,
-  submenu: [
-    {
-      key: 'facebook',
-      path: `${APP_PREFIX_PATH}/social/facebook`,
-      title: 'Facebook',
-      icon: FacebookOutlined, // import
-      breadcrumb: true,
-      submenu: []
-    },
-     {
-      key: 'instagram',
-      path: `${APP_PREFIX_PATH}/social/instagram`,
-      title: 'instagram',
-      icon: InstagramOutlined, // import
-      breadcrumb: true,
-      submenu: []
-    },
-    {
-      key: 'scheduler',
-      path: `${APP_PREFIX_PATH}/social/Post-Scheduler`,
-      title: 'Post Scheduler',
-      icon: ClockCircleOutlined,
-      breadcrumb: true,
-      submenu: []
-    }
-  ]
-},
+    key: 'social-media',
+    title: 'Social Media',
+    icon: GlobalOutlined, // import it
+    breadcrumb: true,
+    submenu: [
+      {
+        key: 'facebook',
+        path: `${APP_PREFIX_PATH}/social/facebook`,
+        title: 'Facebook',
+        icon: FacebookOutlined, // import
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'instagram',
+        path: `${APP_PREFIX_PATH}/social/instagram`,
+        title: 'instagram',
+        icon: InstagramOutlined, // import
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'scheduler',
+        path: `${APP_PREFIX_PATH}/social/Post-Scheduler`,
+        title: 'Post Scheduler',
+        icon: ClockCircleOutlined,
+        breadcrumb: true,
+        submenu: []
+      }
+    ]
+  },
 
   // Tools
   {
@@ -292,6 +293,14 @@ const ceoNavigation = [
     icon: SettingOutlined,
     breadcrumb: true,
     submenu: [
+      {
+        key: 'property-finance',
+        path: `${APP_PREFIX_PATH}/property-finance`,
+        title: 'Property Finance',
+        icon: DollarOutlined,           
+        breadcrumb: true,
+        submenu: []
+      },
       {
         key: 'property-scanner',
         path: `${APP_PREFIX_PATH}/property-scanner`,

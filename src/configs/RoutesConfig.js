@@ -150,6 +150,12 @@ export const protectedRoutes = [
         component: React.lazy(() => import('views/app-views/social/Post-Scheduler')),
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO]
     },
+    {
+        key: 'property-finance',
+        path: `${APP_PREFIX_PATH}/property-finance`,
+        component: React.lazy(() => import('views/app-views/company/property-finance')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO]
+    },
     
    // Seller Role Routes
 {

@@ -8,11 +8,16 @@ import {
   ReloadOutlined 
 } from "@ant-design/icons";
 import axios from "axios";
+import { useSelector } from "react-redux";
+
 import API_BASE_URL from "../../../../constants/ApiConstant";
+import companyService from 'services/CompanyService';   // ← Same service as MyCompanyPage
+
 const { Title, Text } = Typography;
 
 const FacebookDashboard = () => {
   const [posts, setPosts] = useState([]);
+  const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -26,88 +31,107 @@ const FacebookDashboard = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
 
+  const user = useSelector((state) => state.auth.user);
+  const companyId = user?.company_id;
+
+  // Fetch Company Data (same pattern as MyCompanyPage)
   useEffect(() => {
-    fetchInitialPosts();
-  }, []);
+    const fetchCompanyAndPosts = async () => {
+      if (!companyId) {
+        message.warning("No company associated with your account");
+        return;
+      }
 
-  // Fetch first page
-  const fetchInitialPosts = async () => {
-    try {
       setLoading(true);
-      const res = await axios.get(`${API_BASE_URL}/api/facebook/posts?limit=20`);
-      
-      setPosts(res.data.data || []);
-      setNextCursor(res.data.pagination?.nextCursor || null);
-      setHasMore(res.data.pagination?.hasNextPage || false);
-    } catch (err) {
-      message.error("Failed to load posts");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load More Posts
-  const loadMorePosts = async () => {
-    if (!nextCursor || loadingMore) return;
-
-    try {
-      setLoadingMore(true);
-      const res = await axios.get(
-        `${API_BASE_URL}/api/facebook/posts?limit=20&after=${nextCursor}`
-      );
-
-      setPosts(prevPosts => [...prevPosts, ...res.data.data]);
-      setNextCursor(res.data.pagination?.nextCursor || null);
-      setHasMore(res.data.pagination?.hasNextPage || false);
-
-    } catch (err) {
-      message.error("Failed to load more posts");
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  // ==================== DELETE FUNCTION ====================
- const deletePost = async (post) => {
-  Modal.confirm({
-    title: 'Permanently Delete Post',
-    content: 'This will permanently delete the post from Facebook, Instagram, and your database. This action cannot be undone.',
-    okText: 'Yes, Delete Permanently',
-    okType: 'danger',
-    onOk: async () => {
       try {
-        setDeletingId(post.id);
+        // Fetch full company details
+        const companyData = await companyService.getCompanyById(companyId);
+        setCompany(companyData);
 
-        await axios.delete(`${API_BASE_URL}/api/delete-post`, {
-          data: {
-            facebookPostId: post.id,
-            instagramPostId: null,
-            scheduledPostId: post.scheduledPostId || null   // Send scheduled ID if available
-          }
-        });
-
-        message.success("✅ Post permanently deleted from everywhere");
-
-        // Refresh the list
-        fetchInitialPosts();
-
+        // Fetch Facebook posts for this company
+        await fetchPosts(companyId);
       } catch (err) {
         console.error(err);
-        message.error(err.response?.data?.error || "Failed to delete post");
+        message.error("Failed to load company or posts");
       } finally {
-        setDeletingId(null);
+        setLoading(false);
       }
+    };
+
+    fetchCompanyAndPosts();
+  }, [companyId]);
+
+  // Fetch Posts
+  const fetchPosts = async (cid, after = null) => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/facebook/posts`, {
+        params: {
+          limit: 20,
+          after: after,
+          company_id: cid
+        }
+      });
+
+      if (after) {
+        setPosts(prev => [...prev, ...res.data.data]);
+      } else {
+        setPosts(res.data.data || []);
+      }
+
+      setNextCursor(res.data.pagination?.nextCursor || null);
+      setHasMore(res.data.pagination?.hasNextPage || false);
+    } catch (err) {
+      message.error("Failed to load Facebook posts");
+      console.error(err);
     }
-  });
-};
+  };
+
+  const loadMorePosts = () => {
+    if (nextCursor && companyId) {
+      setLoadingMore(true);
+      fetchPosts(companyId, nextCursor).finally(() => setLoadingMore(false));
+    }
+  };
+
+  const deletePost = async (post) => {
+    Modal.confirm({
+      title: 'Permanently Delete Post',
+      content: 'This action cannot be undone.',
+      okText: 'Delete Permanently',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          setDeletingId(post.id);
+          await axios.delete(`${API_BASE_URL}/api/delete-post`, {
+            data: {
+              facebookPostId: post.id,
+              instagramPostId: null,
+              scheduledPostId: post.scheduledPostId || null,
+              company_id: companyId
+            }
+          });
+
+          message.success("Post deleted successfully");
+          fetchPosts(companyId); // Refresh
+        } catch (err) {
+          message.error(err.response?.data?.error || "Delete failed");
+        } finally {
+          setDeletingId(null);
+        }
+      }
+    });
+  };
+
   const showPostAnalytics = async (post) => {
     setSelectedPost(post);
     setIsModalVisible(true);
     setModalLoading(true);
-    setInsights(null);
 
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/facebook/posts/${post.id}/insights`);
+      const res = await axios.get(
+        `${API_BASE_URL}/api/facebook/posts/${post.id}/insights`,
+        { params: { company_id: companyId } }
+      );
       setInsights(res.data.insights);
     } catch (err) {
       message.error("Failed to load analytics");
@@ -120,11 +144,11 @@ const FacebookDashboard = () => {
   const renderMedia = (post) => {
     const imageUrl = post.full_picture;
     const attachment = post.attachments?.data?.[0];
-    const isVideo = attachment?.type?.includes("video") || post.permalink_url?.includes("reel");
+    const isVideo = attachment?.type?.includes("video");
 
     if (isVideo && attachment?.media?.source) {
       return (
-        <video controls style={{ width: "100%", borderRadius: "8px", maxHeight: "320px", background: "#000" }}>
+        <video controls style={{ width: "100%", borderRadius: "8px", maxHeight: "320px" }}>
           <source src={attachment.media.source} type="video/mp4" />
         </video>
       );
@@ -142,32 +166,45 @@ const FacebookDashboard = () => {
     return null;
   };
 
+  if (!companyId) {
+    return (
+      <Result
+        status="warning"
+        title="No Company Found"
+        subTitle="Please create or join a company first."
+      />
+    );
+  }
+
   return (
     <div style={{ padding: "24px", background: "#f5f5f5", minHeight: "100vh" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-        <Title level={3} style={{ margin: 0 }}>Facebook Posts</Title>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Avatar 
+            src={company?.logo} 
+            size={48} 
+            shape="square"
+          />
+          <Title level={3} style={{ margin: 0 }}>
+            {company?.name || "My Company"} - Facebook
+          </Title>
+        </div>
         <Button 
           icon={<ReloadOutlined />} 
-          onClick={fetchInitialPosts}
+          onClick={() => fetchPosts(companyId)}
           loading={loading}
         >
           Refresh
         </Button>
       </div>
 
+      {/* Statistics */}
       <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
         <Col xs={12} sm={8} lg={6}>
-          <Card>
-            <Statistic title="Total Posts" value={posts.length} />
-          </Card>
+          <Card><Statistic title="Total Posts" value={posts.length} /></Card>
         </Col>
         <Col xs={12} sm={8} lg={6}>
-          <Card>
-            <Statistic 
-              title="Published" 
-              value={posts.filter(p => p.is_published).length} 
-            />
-          </Card>
+          <Card><Statistic title="Published" value={posts.filter(p => p.is_published).length} /></Card>
         </Col>
       </Row>
 
@@ -175,12 +212,12 @@ const FacebookDashboard = () => {
       <Row gutter={[16, 16]}>
         {loading ? (
           <Col span={24}>
-            <Spin size="large" style={{ display: "block", padding: "80px 0" }} tip="Loading posts..." />
+            <Spin size="large" tip="Loading posts..." style={{ display: 'block', padding: '80px 0' }} />
           </Col>
         ) : posts.length === 0 ? (
           <Col span={24}>
             <Card style={{ textAlign: "center", padding: "60px 20px" }}>
-              <Text type="secondary">No posts found</Text>
+              <Text type="secondary">No posts found for this company</Text>
             </Card>
           </Col>
         ) : (
@@ -191,12 +228,7 @@ const FacebookDashboard = () => {
                 style={{ height: "100%", borderRadius: "12px", overflow: "hidden" }}
                 cover={renderMedia(post)}
                 actions={[
-                  <Button 
-                    key="analytics" 
-                    type="link" 
-                    icon={<EyeOutlined />} 
-                    onClick={() => showPostAnalytics(post)}
-                  >
+                  <Button key="analytics" type="link" icon={<EyeOutlined />} onClick={() => showPostAnalytics(post)}>
                     Analytics
                   </Button>,
                   <Button 
@@ -211,8 +243,8 @@ const FacebookDashboard = () => {
                 ]}
               >
                 <Card.Meta
-                  avatar={<Avatar src="https://via.placeholder.com/48" />}
-                  title="Bardawil Luxury Properties"
+                  avatar={<Avatar src={company?.logo} />}
+                  title={company?.name}
                   description={new Date(post.created_time).toLocaleDateString('en-GB', {
                     day: 'numeric', month: 'short', year: 'numeric'
                   })}
@@ -220,19 +252,12 @@ const FacebookDashboard = () => {
 
                 {post.message && (
                   <div style={{ marginTop: 12, fontSize: "14px", lineHeight: "1.5" }}>
-                    {post.message.length > 120 
-                      ? post.message.substring(0, 120) + "..." 
-                      : post.message}
+                    {post.message.length > 120 ? post.message.substring(0, 120) + "..." : post.message}
                   </div>
                 )}
 
                 {post.permalink_url && (
-                  <a 
-                    href={post.permalink_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    style={{ display: "block", marginTop: 8, fontSize: "12px" }}
-                  >
+                  <a href={post.permalink_url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 8, display: 'block', fontSize: '12px' }}>
                     View on Facebook →
                   </a>
                 )}

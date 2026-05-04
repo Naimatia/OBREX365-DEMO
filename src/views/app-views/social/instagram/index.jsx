@@ -1,19 +1,23 @@
 import React, { useEffect, useState } from "react";
 import { 
   Card, Button, message, Row, Col, Statistic, Typography, 
-  Avatar, Spin, Modal, Divider 
+  Avatar, Spin, Modal, Divider, Result 
 } from "antd";
 import { 
   EyeOutlined, LikeOutlined, DeleteOutlined, 
   ReloadOutlined, PlayCircleOutlined 
 } from "@ant-design/icons";
 import axios from "axios";
+import { useSelector } from "react-redux";
+
 import API_BASE_URL from "../../../../constants/ApiConstant";
+import companyService from 'services/CompanyService';
 
 const { Title, Text } = Typography;
 
 const InstagramDashboard = () => {
   const [posts, setPosts] = useState([]);
+  const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -21,76 +25,93 @@ const InstagramDashboard = () => {
   const [nextCursor, setNextCursor] = useState(null);
   const [hasMore, setHasMore] = useState(true);
 
+  // Modal states
   const [selectedPost, setSelectedPost] = useState(null);
   const [insights, setInsights] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
 
-  useEffect(() => {
-    fetchInitialPosts();
-  }, []);
+  const user = useSelector((state) => state.auth.user);
+  const companyId = user?.company_id;
 
-  // Fetch first page
-  const fetchInitialPosts = async () => {
-    try {
+  // Fetch Company + Instagram Posts
+  useEffect(() => {
+    const fetchCompanyAndPosts = async () => {
+      if (!companyId) {
+        message.warning("No company associated with your account");
+        return;
+      }
+
       setLoading(true);
-      const res = await axios.get(`${API_BASE_URL}/api/instagram/posts?limit=20`);
-      
-      setPosts(res.data.data || []);
+      try {
+        const companyData = await companyService.getCompanyById(companyId);
+        setCompany(companyData);
+
+        await fetchPosts(companyId);
+      } catch (err) {
+        console.error(err);
+        message.error("Failed to load company or Instagram posts");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCompanyAndPosts();
+  }, [companyId]);
+
+  // Fetch Posts
+  const fetchPosts = async (cid, after = null) => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/instagram/posts`, {
+        params: {
+          limit: 20,
+          after: after,
+          company_id: cid
+        }
+      });
+
+      if (after) {
+        setPosts(prev => [...prev, ...res.data.data]);
+      } else {
+        setPosts(res.data.data || []);
+      }
+
       setNextCursor(res.data.pagination?.nextCursor || null);
       setHasMore(res.data.pagination?.hasNextPage || false);
     } catch (err) {
       message.error("Failed to load Instagram posts");
-    } finally {
-      setLoading(false);
+      console.error(err);
     }
   };
 
-  // Load More Posts
-  const loadMorePosts = async () => {
-    if (!nextCursor || loadingMore) return;
-
-    try {
+  const loadMorePosts = () => {
+    if (nextCursor && companyId) {
       setLoadingMore(true);
-      const res = await axios.get(
-        `${API_BASE_URL}/api/instagram/posts?limit=20&after=${nextCursor}`
-      );
-
-      setPosts(prevPosts => [...prevPosts, ...res.data.data]);
-      setNextCursor(res.data.pagination?.nextCursor || null);
-      setHasMore(res.data.pagination?.hasNextPage || false);
-
-    } catch (err) {
-      message.error("Failed to load more posts");
-    } finally {
-      setLoadingMore(false);
+      fetchPosts(companyId, nextCursor).finally(() => setLoadingMore(false));
     }
   };
 
-  // ==================== DELETE FUNCTION ====================
   const deletePost = async (post) => {
     Modal.confirm({
       title: 'Delete Instagram Post',
-      content: 'Are you sure you want to permanently delete this post/Reel from Instagram? This action cannot be undone.',
-      okText: 'Yes, Delete',
+      content: 'This will permanently delete the post/Reel from Instagram and your database.',
+      okText: 'Yes, Delete Permanently',
       okType: 'danger',
       onOk: async () => {
         try {
           setDeletingId(post.id);
-
           await axios.delete(`${API_BASE_URL}/api/delete-post`, {
             data: {
               facebookPostId: null,
               instagramPostId: post.id,
-              scheduledPostId: post.scheduledPostId || null
+              scheduledPostId: post.scheduledPostId || null,
+              company_id: companyId
             }
           });
 
           message.success("✅ Instagram post deleted successfully");
-          fetchInitialPosts();   // Refresh after delete
-
+          fetchPosts(companyId); // Refresh
         } catch (err) {
-          console.error(err);
           message.error(err.response?.data?.error || "Failed to delete post");
         } finally {
           setDeletingId(null);
@@ -106,7 +127,10 @@ const InstagramDashboard = () => {
     setInsights(null);
 
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/instagram/posts/${post.id}/insights`);
+      const res = await axios.get(
+        `${API_BASE_URL}/api/instagram/posts/${post.id}/insights`,
+        { params: { company_id: companyId } }
+      );
       setInsights(res.data.insights);
     } catch (err) {
       message.error("Failed to load analytics");
@@ -123,12 +147,7 @@ const InstagramDashboard = () => {
       return (
         <video
           controls
-          style={{ 
-            width: "100%", 
-            borderRadius: "8px", 
-            maxHeight: "320px", 
-            background: "#000" 
-          }}
+          style={{ width: "100%", borderRadius: "8px", maxHeight: "320px", background: "#000" }}
         >
           <source src={post.media_url} type="video/mp4" />
         </video>
@@ -140,27 +159,46 @@ const InstagramDashboard = () => {
         <img 
           src={post.media_url || post.thumbnail_url} 
           alt="post"
-          style={{ 
-            width: "100%", 
-            borderRadius: "8px", 
-            maxHeight: "320px", 
-            objectFit: "cover" 
-          }} 
+          style={{ width: "100%", borderRadius: "8px", maxHeight: "320px", objectFit: "cover" }} 
         />
       );
     }
     return null;
   };
 
+  if (!companyId) {
+    return (
+      <Result
+        status="warning"
+        title="No Company Found"
+        subTitle="Please create or join a company first."
+      />
+    );
+  }
+
   return (
     <div style={{ padding: "24px", background: "#f5f5f5", minHeight: "100vh" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-        <Title level={3} style={{ margin: 0 }}>Instagram Posts & Reels</Title>
-        <Button icon={<ReloadOutlined />} onClick={fetchInitialPosts} loading={loading}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Avatar 
+            src={company?.logo} 
+            size={48} 
+            shape="square"
+          />
+          <Title level={3} style={{ margin: 0 }}>
+            {company?.name || "My Company"} - Instagram
+          </Title>
+        </div>
+        <Button 
+          icon={<ReloadOutlined />} 
+          onClick={() => fetchPosts(companyId)}
+          loading={loading}
+        >
           Refresh
         </Button>
       </div>
 
+      {/* Statistics */}
       <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
         <Col xs={12} sm={8} lg={6}>
           <Card>
@@ -173,12 +211,12 @@ const InstagramDashboard = () => {
       <Row gutter={[16, 16]}>
         {loading ? (
           <Col span={24}>
-            <Spin size="large" style={{ padding: "80px 0", display: "block" }} tip="Loading Instagram posts..." />
+            <Spin size="large" tip="Loading Instagram posts..." style={{ display: 'block', padding: '80px 0' }} />
           </Col>
         ) : posts.length === 0 ? (
           <Col span={24}>
             <Card style={{ textAlign: "center", padding: "60px 20px" }}>
-              <Text type="secondary">No Instagram posts found</Text>
+              <Text type="secondary">No Instagram posts or Reels found for this company</Text>
             </Card>
           </Col>
         ) : (
@@ -197,7 +235,6 @@ const InstagramDashboard = () => {
                   >
                     Analytics
                   </Button>,
-
                   <Button 
                     key="delete"
                     danger 
@@ -210,20 +247,16 @@ const InstagramDashboard = () => {
                 ]}
               >
                 <Card.Meta
-                  avatar={<Avatar src="https://via.placeholder.com/48" />}
-                  title="Bardawil Luxury Properties"
+                  avatar={<Avatar src={company?.logo} />}
+                  title={company?.name}
                   description={new Date(post.timestamp).toLocaleDateString('en-GB', {
-                    day: 'numeric', 
-                    month: 'short', 
-                    year: 'numeric'
+                    day: 'numeric', month: 'short', year: 'numeric'
                   })}
                 />
 
                 {post.caption && (
                   <div style={{ marginTop: 12, fontSize: "14px", lineHeight: "1.5" }}>
-                    {post.caption.length > 120 
-                      ? post.caption.substring(0, 120) + "..." 
-                      : post.caption}
+                    {post.caption.length > 120 ? post.caption.substring(0, 120) + "..." : post.caption}
                   </div>
                 )}
 
@@ -243,7 +276,7 @@ const InstagramDashboard = () => {
         )}
       </Row>
 
-      {/* Load More Button */}
+      {/* Load More */}
       {hasMore && (
         <div style={{ textAlign: "center", margin: "40px 0" }}>
           <Button 
@@ -253,7 +286,7 @@ const InstagramDashboard = () => {
             loading={loadingMore}
             style={{ minWidth: 200 }}
           >
-            {loadingMore ? "Loading more..." : "Load More Posts"}
+            {loadingMore ? "Loading..." : "Load More Posts"}
           </Button>
         </div>
       )}
@@ -280,7 +313,7 @@ const InstagramDashboard = () => {
             <Divider />
 
             {modalLoading ? (
-              <Spin size="large" style={{ display: "block", padding: "80px 0" }} tip="Loading Instagram analytics..." />
+              <Spin size="large" style={{ display: "block", padding: "80px 0" }} tip="Loading analytics..." />
             ) : (
               <>
                 <Title level={5} style={{ marginBottom: 20 }}>Performance Analytics</Title>
