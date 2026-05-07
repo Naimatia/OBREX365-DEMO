@@ -11,7 +11,7 @@ import {
   EnvironmentOutlined, HomeOutlined, SafetyCertificateOutlined,
   ApartmentOutlined, CheckCircleOutlined, GiftOutlined, TrophyOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
 
@@ -104,9 +104,9 @@ const EmployeeDetail = ({ visible, onClose, employee, vacations, onEdit }) => {
 
   // Format vacation period
   const formatVacationPeriod = (vacation) => {
-    const startDate = moment(vacation.StartDate.toDate()).format('MMM DD, YYYY');
-    const endDate = moment(vacation.EndDate.toDate()).format('MMM DD, YYYY');
-    const diffDays = moment(vacation.EndDate.toDate()).diff(moment(vacation.StartDate.toDate()), 'days') + 1;
+    const startDate = dayjs(vacation.StartDate.toDate()).format('MMM DD, YYYY');
+    const endDate = dayjs(vacation.EndDate.toDate()).format('MMM DD, YYYY');
+    const diffDays = dayjs(vacation.EndDate.toDate()).diff(dayjs(vacation.StartDate.toDate()), 'days') + 1;
     
     return `${startDate} - ${endDate} (${diffDays} days)`;
   };
@@ -294,7 +294,7 @@ const EmployeeDetail = ({ visible, onClose, employee, vacations, onEdit }) => {
                   <div className="info-title">Joining Date</div>
                   <div className="info-content">
                     {employee.JoiningDate ? 
-                      moment(employee.JoiningDate.toDate()).format('MMM DD, YYYY') : 
+                      dayjs(employee.JoiningDate.toDate()).format('MMM DD, YYYY') : 
                       'Not set'}
                   </div>
                 </Col>
@@ -360,7 +360,7 @@ const EmployeeDetail = ({ visible, onClose, employee, vacations, onEdit }) => {
                   <div className="info-title">Last Updated</div>
                   <div className="info-content">
                     {employee.LastUpdate ? 
-                      moment(employee.LastUpdate.toDate()).format('MMM DD, YYYY') : 
+                      dayjs(employee.LastUpdate.toDate()).format('MMM DD, YYYY') : 
                       'Not available'}
                   </div>
                 </Col>

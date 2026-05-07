@@ -10,7 +10,7 @@ import {
   ExclamationCircleOutlined, PrinterOutlined, LinkOutlined,
   WarningOutlined, InfoCircleOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { InvoiceStatus } from 'models/InvoiceModel';
 import InvoiceService from 'services/firebase/InvoiceService';
 import UserService from 'services/firebase/UserService';
@@ -66,7 +66,7 @@ const InvoiceDetail = ({
   const formatDate = (date) => {
     if (!date) return 'N/A';
     const dateObj = date?.toDate?.() || new Date(date);
-    return moment(dateObj).format('MMMM DD, YYYY HH:mm');
+    return dayjs(dateObj).format('MMMM DD, YYYY HH:mm');
   };
 
   // Get status configuration

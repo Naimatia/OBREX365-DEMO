@@ -11,7 +11,8 @@ import {
   Divider,
   message 
 } from 'antd';
-import moment from 'moment';
+import dayjs from 'dayjs';
+
 import { ContactStatus } from 'models/ContactModel';
 import { PhoneOutlined, MailOutlined, UserOutlined, GlobalOutlined, CommentOutlined } from '@ant-design/icons';
 // Import country list from constants
@@ -38,7 +39,7 @@ const ContactForm = ({
     if (contact) {
       const formData = {
         ...contact,
-        AffectingDate: contact.AffectingDate ? moment(contact.AffectingDate) : null,
+        AffectingDate: contact.AffectingDate ? dayjs(contact.AffectingDate) : null,
       };
       form.setFieldsValue(formData);
     } else {
@@ -50,7 +51,7 @@ const ContactForm = ({
   const handleSubmit = () => {
     form.validateFields()
       .then(values => {
-        // Format dates from moment objects to Date objects
+        // Format dates from dayjs objects to Date objects
         const formattedValues = {
           ...values,
           // Always set status to PENDING

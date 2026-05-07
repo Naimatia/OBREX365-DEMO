@@ -1,67 +1,54 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Row, Col, Button, Modal, Statistic, Typography, Space, message } from 'antd';
-import { PlusOutlined, CheckSquareOutlined, ClockCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { 
+  Card, Row, Col, Button, Modal, Statistic, Typography, Space, 
+  Input, Select, Tabs, Badge, message, Avatar 
+} from 'antd';
+import { 
+  PlusOutlined, SearchOutlined, FilterOutlined, 
+  UserOutlined, TeamOutlined 
+} from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import KanbanBoard from '../../seller/todo/components/KanbanBoard';
 import TodoForm from '../../seller/todo/components/TodoForm';
 import TodoService from 'services/TodoService';
-import { TodoStatus, TodoPriority } from 'models/TodoModel';
-import './index.css';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
+const { TabPane } = Tabs;
+const { Option } = Select;
 
-/**
- * CEO/HR Todo Management Page
- * Reuses seller todo functionality with appropriate permissions
- */
 const ToDoPage = () => {
   const [todos, setTodos] = useState([]);
+  const [sellers, setSellers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingTodo, setEditingTodo] = useState(null);
-  const [sellers, setSellers] = useState([]);
+  const [searchText, setSearchText] = useState('');
+  const [filterAssignee, setFilterAssignee] = useState('all');
+  const [activeTab, setActiveTab] = useState('kanban');
+
   const user = useSelector(state => state.auth.user);
 
-  // Calculate statistics
-  const todoStats = {
-    total: todos.length,
-    pending: todos.filter(todo => todo.Status === 'ToDo').length,
-    inProgress: todos.filter(todo => todo.Status === 'InProgress').length,
-    done: todos.filter(todo => todo.Status === 'Done').length,
-    overdue: todos.filter(todo => {
-      if (todo.Status === 'Done') return false;
-      const dueDate = new Date(todo.DateLimit);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return dueDate < today;
-    }).length
-  };
-
-  // Fetch todos for company-wide access (CEO/HR can see all todos)
+  // Fetch Data
   const fetchTodos = useCallback(async () => {
     if (!user?.company_id) return;
-    
     setLoading(true);
     try {
-      // CEO and HR can see all company todos
-      const companyTodos = await TodoService.getCompanyTodos(user.company_id);
-      setTodos(companyTodos || []);
-    } catch (error) {
-      console.error('Error fetching todos:', error);
+      const data = await TodoService.getCompanyTodos(user.company_id);
+      setTodos(data || []);
+    } catch (err) {
       message.error('Failed to load todos');
     } finally {
       setLoading(false);
     }
   }, [user?.company_id]);
 
-  // Fetch company users for assignment
   const fetchSellers = useCallback(async () => {
     if (!user?.company_id) return;
     try {
-      const companyUsers = await TodoService.getCompanyUsers(user.company_id);
-      setSellers(companyUsers || []);
-    } catch (error) {
-      console.error('Error fetching sellers:', error);
+      const users = await TodoService.getCompanyUsers(user.company_id);
+      setSellers(users);
+    } catch (err) {
+      console.error(err);
     }
   }, [user?.company_id]);
 
@@ -70,203 +57,157 @@ const ToDoPage = () => {
     fetchSellers();
   }, [fetchTodos, fetchSellers]);
 
-  // Handle creating new todo
-  const handleCreateTodo = async (todoData) => {
-    try {
-      await TodoService.createTodo(todoData);
-      message.success('Todo created successfully');
-      setIsModalVisible(false);
-      // Refresh todos list
-      fetchTodos();
-    } catch (error) {
-      console.error('Error creating todo:', error);
-      message.error('Failed to create todo');
-    }
-  };
+  // Filtered Todos
+  const filteredTodos = todos
+    .filter(todo => {
+      const matchesSearch = todo.ToDo?.toLowerCase().includes(searchText.toLowerCase()) ||
+                           todo.Description?.toLowerCase().includes(searchText.toLowerCase());
+      const matchesAssignee = filterAssignee === 'all' || 
+                             (todo.assignee || todo.AssignedTo) === filterAssignee;
+      return matchesSearch && matchesAssignee;
+    });
 
-  // Handle updating todo with real-time UI update
-  const handleUpdateTodo = async (todoId, updates) => {
-    try {
-      // Optimistically update UI first
-      setTodos(prevTodos => 
-        prevTodos.map(todo => 
-          todo.id === todoId 
-            ? { ...todo, ...updates, LastEdit: new Date() }
-            : todo
-        )
-      );
-      
-      // Then update Firebase
-      await TodoService.updateTodo(todoId, updates);
-      message.success('Todo updated successfully');
-    } catch (error) {
-      console.error('Error updating todo:', error);
-      message.error('Failed to update todo');
-      // Revert optimistic update on error
-      fetchTodos();
-    }
-  };
-
-  // Handle editing todo
-  const handleEditTodo = (todo) => {
-    setEditingTodo(todo);
-    setIsModalVisible(true);
-  };
-
-  // Handle deleting todo
-  const handleDeleteTodo = async (todoId) => {
-    try {
-      await TodoService.deleteTodo(todoId);
-      message.success('Todo deleted successfully');
-      fetchTodos();
-    } catch (error) {
-      console.error('Error deleting todo:', error);
-      message.error('Failed to delete todo');
-    }
-  };
-
-  // Handle modal close
-  const handleModalClose = () => {
+  const handleFormSuccess = () => {
+    fetchTodos();
     setIsModalVisible(false);
     setEditingTodo(null);
   };
 
-  // Handle updating todo from form
-  const handleUpdateTodoFromForm = async (todoData) => {
-    try {
-      const updateData = {
-        ToDo: todoData.title || todoData.ToDo || editingTodo.ToDo,
-        assignee: todoData.assignee || editingTodo.assignee,
-        DateLimit: todoData.dueDate || editingTodo.DateLimit
-      };
-      
-      await TodoService.updateTodo(editingTodo.id, updateData);
-      message.success('Todo updated successfully');
-      setIsModalVisible(false);
-      setEditingTodo(null);
-      // Refresh todos list
-      fetchTodos();
-    } catch (error) {
-      console.error('Error updating todo:', error);
-      message.error('Failed to update todo');
-    }
-  };
-
   return (
-    <div className="todo-page">
-      <div style={{ 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: '32px',
-        borderRadius: '16px',
-        marginBottom: '24px',
-        color: 'white'
-      }}>
-        <Row align="middle" justify="space-between">
+    <div style={{ padding: '20px 24px' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <Row justify="space-between" align="middle">
           <Col>
-            <Space direction="vertical" size={0}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  padding: '12px',
-                  borderRadius: '50%',
-                  backdropFilter: 'blur(10px)'
-                }}>
-                  <CheckSquareOutlined style={{ fontSize: '24px', color: 'white' }} />
-                </div>
-                <Title level={2} style={{ color: 'white', margin: 0 }}>
-                  Todo Management
-                </Title>
-              </div>
-              <Typography.Text style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '16px' }}>
-                Manage tasks and projects across your organization
-              </Typography.Text>
-            </Space>
+            <Title level={2} style={{ margin: 0 }}>
+              <TeamOutlined style={{ marginRight: 12, color: '#1890ff' }} />
+              Team Task Management
+            </Title>
+            <Text type="secondary">Manage and track tasks across your entire team</Text>
           </Col>
           <Col>
-            <Button
-              type="primary"
-              size="large"
+            <Button 
+              type="primary" 
+              size="large" 
               icon={<PlusOutlined />}
-              onClick={() => setIsModalVisible(true)}
-              style={{
-                background: 'rgba(255, 255, 255, 0.2)',
-                border: 'none',
-                backdropFilter: 'blur(10px)',
-                fontWeight: 'bold'
-              }}
+              onClick={() => { setEditingTodo(null); setIsModalVisible(true); }}
             >
-              Add Todo
+              Assign New Task
             </Button>
           </Col>
         </Row>
       </div>
 
-      {/* Statistics Cards */}
-      <Row gutter={[24, 24]} style={{ marginBottom: '24px' }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Total Tasks"
-              value={todoStats.total}
-              prefix={<CheckSquareOutlined style={{ color: '#1890ff' }} />}
+      {/* Filters */}
+      <Card style={{ marginBottom: 20 }}>
+        <Row gutter={16} align="middle">
+          <Col xs={24} md={8}>
+            <Input
+              placeholder="Search tasks..."
+              prefix={<SearchOutlined />}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              allowClear
             />
+          </Col>
+          <Col xs={24} md={8}>
+            <Select 
+              style={{ width: '100%' }} 
+              value={filterAssignee} 
+              onChange={setFilterAssignee}
+            >
+              <Option value="all">All Assignees</Option>
+              {sellers.map(s => (
+                <Option key={s.id} value={s.id}>
+                  {s.name}
+                </Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} md={8} style={{ textAlign: 'right' }}>
+            <Button icon={<FilterOutlined />}>More Filters</Button>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* Stats */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={6}>
+          <Card>
+            <Statistic title="Total Tasks" value={todos.length} />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={6}>
+        <Col span={6}>
           <Card>
-            <Statistic
-              title="In Progress"
-              value={todoStats.inProgress}
-              prefix={<ClockCircleOutlined style={{ color: '#faad14' }} />}
-            />
+            <Statistic title="In Progress" value={todos.filter(t => t.Status === 'InProgress').length} />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={6}>
+        <Col span={6}>
           <Card>
-            <Statistic
-              title="Completed"
-              value={todoStats.done}
-              prefix={<CheckSquareOutlined style={{ color: '#52c41a' }} />}
-            />
+            <Statistic title="Completed" value={todos.filter(t => t.Status === 'Done').length} />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={6}>
+        <Col span={6}>
           <Card>
-            <Statistic
-              title="Overdue"
-              value={todoStats.overdue}
-              prefix={<ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />}
-              valueStyle={{ color: todoStats.overdue > 0 ? '#ff4d4f' : undefined }}
+            <Statistic 
+              title="Overdue" 
+              value={todos.filter(t => t.DateLimit && new Date(t.DateLimit) < new Date() && t.Status !== 'Done').length} 
+              valueStyle={{ color: '#ff4d4f' }}
             />
           </Card>
         </Col>
       </Row>
 
-      {/* Kanban Board */}
-      <Card style={{ minHeight: '500px' }}>
-        <KanbanBoard
-          todos={todos}
-          onTodoUpdate={handleUpdateTodo}
-          onTodoEdit={handleEditTodo}
-          onTodoDelete={handleDeleteTodo}
-          sellers={sellers}
-          currentUser={user}
-        />
+      {/* Tabs: Kanban / List */}
+      <Card>
+        <Tabs activeKey={activeTab} onChange={setActiveTab}>
+          <TabPane tab="Kanban Board" key="kanban">
+            <KanbanBoard
+              todos={filteredTodos}
+              onTodoUpdate={(id, updates) => {
+                setTodos(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+              }}
+              onTodoEdit={(todo) => {
+                setEditingTodo(todo);
+                setIsModalVisible(true);
+              }}
+              onTodoDelete={async (id) => {
+                await TodoService.deleteTodo(id);
+                fetchTodos();
+              }}
+              sellers={sellers}
+              currentUser={user}
+            />
+          </TabPane>
+
+          <TabPane tab="List View" key="list">
+            {/* You can add a Table view here later */}
+            <div style={{ padding: 40, textAlign: 'center' }}>
+              <Text type="secondary">List View Coming Soon...</Text>
+            </div>
+          </TabPane>
+        </Tabs>
       </Card>
 
       {/* Todo Form Modal */}
       <Modal
-        title={editingTodo ? 'Edit Todo' : 'Create New Todo'}
+        title={editingTodo ? "Edit Task" : "Assign New Task"}
         open={isModalVisible}
-        onCancel={handleModalClose}
+        onCancel={() => {
+          setIsModalVisible(false);
+          setEditingTodo(null);
+        }}
         footer={null}
-        width={600}
+        width={780}
         destroyOnClose
       >
         <TodoForm
           todo={editingTodo}
-          onSubmit={editingTodo ? handleUpdateTodoFromForm : handleCreateTodo}
-          onCancel={handleModalClose}
+          onSuccess={handleFormSuccess}
+          onCancel={() => {
+            setIsModalVisible(false);
+            setEditingTodo(null);
+          }}
           sellers={sellers}
           currentUser={user}
           userRole={user?.Role}

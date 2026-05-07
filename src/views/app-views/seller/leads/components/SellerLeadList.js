@@ -24,7 +24,9 @@ import {
   DollarOutlined,
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+dayjs.extend(isBetween);
 
 const { Search } = Input;
 const { Option } = Select;
@@ -74,7 +76,7 @@ const SellerLeadList = ({
     if (dateRange && dateRange.length === 2) {
       filtered = filtered.filter((lead) => {
         if (!lead.CreationDate) return false;
-        const leadDate = moment(lead.CreationDate);
+        const leadDate = dayjs(lead.CreationDate);
         return leadDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
       });
     }
@@ -225,9 +227,9 @@ const SellerLeadList = ({
       key: 'created',
       sorter: (a, b) => {
         if (!a.CreationDate || !b.CreationDate) return 0;
-        return moment(a.CreationDate).unix() - moment(b.CreationDate).unix();
+        return dayjs(a.CreationDate).unix() - dayjs(b.CreationDate).unix();
       },
-      render: (date) => (date ? moment(date).format('MMM DD, YYYY') : '-'),
+      render: (date) => (date ? dayjs(date).format('MMM DD, YYYY') : '-'),
     },
     {
       title: 'Actions',

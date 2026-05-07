@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import { UserOutlined, PhoneOutlined, MailOutlined, DollarOutlined, TeamOutlined } from '@ant-design/icons';
 import { db, collection, getDocs } from 'configs/FirebaseConfig';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 
@@ -43,8 +43,8 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
       if (isEditing && initialValues) {
         const formattedValues = {
           ...initialValues,
-          JoiningDate: initialValues.JoiningDate ? moment(initialValues.JoiningDate.toDate()) : null,
-          CreationDate: initialValues.CreationDate ? moment(initialValues.CreationDate.toDate()) : null,
+          JoiningDate: initialValues.JoiningDate ? dayjs(initialValues.JoiningDate.toDate()) : null,
+          CreationDate: initialValues.CreationDate ? dayjs(initialValues.CreationDate.toDate()) : null,
         };
         form.setFieldsValue(formattedValues);
       }

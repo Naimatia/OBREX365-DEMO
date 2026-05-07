@@ -25,7 +25,7 @@ import {
   EnvironmentOutlined
 } from '@ant-design/icons';
 import cloudinaryService from 'services/CloudinaryService';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { Title, Text } = Typography;

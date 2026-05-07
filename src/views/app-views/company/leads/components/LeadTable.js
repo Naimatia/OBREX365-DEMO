@@ -9,7 +9,7 @@ import {
   GlobalOutlined
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 /**
  * Component for displaying leads in a table
@@ -126,7 +126,7 @@ const LeadTable = ({
       title: 'Created',
       dataIndex: 'CreationDate',
       key: 'CreationDate',
-      render: date => date ? moment(date.toDate?.() || date).format('MMM DD, YYYY') : '-',
+      render: date => date ? dayjs(date.toDate?.() || date).format('MMM DD, YYYY') : '-',
       sorter: (a, b) => {
         if (!a.CreationDate) return -1;
         if (!b.CreationDate) return 1;

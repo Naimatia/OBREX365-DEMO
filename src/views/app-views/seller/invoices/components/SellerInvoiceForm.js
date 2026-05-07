@@ -24,7 +24,7 @@ import {
   SaveOutlined,
   CloseOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -58,7 +58,7 @@ const SellerInvoiceForm = ({
           description: invoice.description,
           amount: invoice.amount,
           Status: invoice.Status,
-          DateLimit: invoice.DateLimit ? moment(invoice.DateLimit) : null,
+          DateLimit: invoice.DateLimit ? dayjs(invoice.DateLimit) : null,
           paymentUrl: invoice.paymentUrl
         });
       } else {
@@ -306,7 +306,7 @@ const SellerInvoiceForm = ({
                 <DatePicker
                   style={{ width: '100%', borderRadius: '8px' }}
                   placeholder="Select due date"
-                  disabledDate={(current) => current && current < moment().startOf('day')}
+                  disabledDate={(current) => current && current < dayjs().startOf('day')}
                 />
               </Form.Item>
             </Col>

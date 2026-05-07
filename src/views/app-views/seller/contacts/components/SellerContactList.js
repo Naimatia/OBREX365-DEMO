@@ -28,7 +28,9 @@ import {
   PhoneOutlined
 } from '@ant-design/icons';
 import { ContactStatus } from 'models/ContactModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+dayjs.extend(isBetween);
 
 const { Search } = Input;
 const { Option } = Select;
@@ -73,7 +75,7 @@ const SellerContactList = ({
     if (dateRange && dateRange.length === 2) {
       filtered = filtered.filter(contact => {
         if (!contact.AffectingDate) return false;
-        const contactDate = moment(contact.AffectingDate);
+        const contactDate = dayjs(contact.AffectingDate);
         return contactDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
       });
     }
@@ -248,9 +250,9 @@ const SellerContactList = ({
       key: 'AffectingDate',
       sorter: (a, b) => {
         if (!a.AffectingDate || !b.AffectingDate) return 0;
-        return moment(a.AffectingDate).unix() - moment(b.AffectingDate).unix();
+        return dayjs(a.AffectingDate).unix() - dayjs(b.AffectingDate).unix();
       },
-      render: (date) => date ? moment(date).format('YYYY-MM-DD') : '-',
+      render: (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-',
     },
     {
       title: 'Actions',

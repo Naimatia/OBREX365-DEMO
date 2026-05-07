@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import { db, collection, getDocs, doc, addDoc, deleteDoc, updateDoc, serverTimestamp } from 'configs/FirebaseConfig';
 import { useSelector } from 'react-redux';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import PayrollForm from './PayrollForm';
 import './employees.css';
 

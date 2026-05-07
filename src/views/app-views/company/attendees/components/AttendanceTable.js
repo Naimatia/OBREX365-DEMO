@@ -30,7 +30,7 @@ import {
   CalendarOutlined
 } from '@ant-design/icons';
 import { AttendanceStatus } from 'services/firebase/AttendanceService';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -392,7 +392,7 @@ const AttendanceTable = ({
           gap: '16px'
         }}>
           <h3 style={{ margin: 0, color: '#1890ff' }}>
-            📊 SALARY SHEET - {moment(dateRange[0]).format('MMMM YYYY')}
+            📊 SALARY SHEET - {dayjs(dateRange[0]).format('MMMM YYYY')}
           </h3>
           <Space>
             <Button 

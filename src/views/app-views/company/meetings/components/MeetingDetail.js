@@ -24,7 +24,7 @@ import {
   EnvironmentOutlined,
   ScheduleOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
 
@@ -43,10 +43,10 @@ const MeetingDetail = ({
   if (!meeting) return null;
 
   // Format meeting time
-  const meetingTime = moment(meeting.DateTime).format('YYYY-MM-DD HH:mm');
+  const meetingTime = dayjs(meeting.DateTime).format('YYYY-MM-DD HH:mm');
   
   // Calculate end time based on duration
-  const endTime = moment(meeting.DateTime)
+  const endTime = dayjs(meeting.DateTime)
     .add(meeting.Duration, 'minutes')
     .format('HH:mm');
 

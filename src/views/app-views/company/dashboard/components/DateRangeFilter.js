@@ -1,6 +1,6 @@
 import React from 'react';
 import { DatePicker, Radio, Space, Card, Typography } from 'antd';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
 const { Title } = Typography;
@@ -22,32 +22,32 @@ const DateRangeFilter = ({
     let start, end;
     switch (type) {
       case 'today':
-        start = moment().startOf('day');
-        end = moment().endOf('day');
+        start = dayjs().startOf('day');
+        end = dayjs().endOf('day');
         break;
       case 'yesterday':
-        start = moment().subtract(1, 'day').startOf('day');
-        end = moment().subtract(1, 'day').endOf('day');
+        start = dayjs().subtract(1, 'day').startOf('day');
+        end = dayjs().subtract(1, 'day').endOf('day');
         break;
       case 'week':
-        start = moment().startOf('week');
-        end = moment().endOf('day');
+        start = dayjs().startOf('week');
+        end = dayjs().endOf('day');
         break;
       case 'month':
-        start = moment().startOf('month');
-        end = moment().endOf('day');
+        start = dayjs().startOf('month');
+        end = dayjs().endOf('day');
         break;
       case 'quarter':
-        start = moment().startOf('quarter');
-        end = moment().endOf('day');
+        start = dayjs().startOf('quarter');
+        end = dayjs().endOf('day');
         break;
       case 'year':
-        start = moment().startOf('year');
-        end = moment().endOf('day');
+        start = dayjs().startOf('year');
+        end = dayjs().endOf('day');
         break;
       default:
-        start = moment().subtract(30, 'days');
-        end = moment();
+        start = dayjs().subtract(30, 'days');
+        end = dayjs();
     }
 
     const newRange = [start, end];

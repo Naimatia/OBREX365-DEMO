@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import RegiondataWidget from 'components/shared-components/RegiondataWidget';
 import DonutChartWidget from 'components/shared-components/DonutChartWidget';
 import ChartWidget from 'components/shared-components/ChartWidget';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { COLORS } from 'constants/ChartConstant';
 import { auth, db as firestore } from 'configs/FirebaseConfig';
 import { getDoc, doc } from 'firebase/firestore';
@@ -74,8 +74,8 @@ const CompanyDashboard = () => {
   const [dealsStatusData, setDealsStatusData] = useState(companyData);
   const [employeesRoleData, setEmployeesRoleData] = useState(teamPerformanceData);
   const [dateRange, setDateRange] = useState({
-    startDate: moment().startOf('month').toDate(),
-    endDate: moment().endOf('month').toDate(),
+    startDate: dayjs().startOf('month').toDate(),
+    endDate: dayjs().endOf('month').toDate(),
     selectedPreset: 'month',
   });
 
@@ -96,7 +96,7 @@ const CompanyDashboard = () => {
         setLoading(false);
         return;
       }
-      if (!startDate || !endDate || moment(endDate).isBefore(startDate)) {
+      if (!startDate || !endDate || dayjs(endDate).isBefore(startDate)) {
         console.warn('fetchDashboardData: Invalid date range', { startDate, endDate });
         message.error('Invalid date range selected. Please choose a valid range.');
         setLoading(false);
@@ -228,15 +228,15 @@ const CompanyDashboard = () => {
   }, [dateRange.startDate, dateRange.endDate, fetchDashboardData]);
 
   const handleDateRangeChange = (range) => {
-    if (range && range.startDate && range.endDate && !moment(range.endDate).isBefore(range.startDate)) {
+    if (range && range.startDate && range.endDate && !dayjs(range.endDate).isBefore(range.startDate)) {
       console.log('handleDateRangeChange: Setting dateRange:', {
         startDate: range.startDate.toISOString(),
         endDate: range.endDate.toISOString(),
         selectedPreset: range.selectedPreset,
       });
       setDateRange({
-        startDate: moment(range.startDate).startOf('day').toDate(),
-        endDate: moment(range.endDate).endOf('day').toDate(),
+        startDate: dayjs(range.startDate).startOf('day').toDate(),
+        endDate: dayjs(range.endDate).endOf('day').toDate(),
         selectedPreset: range.selectedPreset || 'custom',
       });
       if (userId && companyId) {
@@ -247,8 +247,8 @@ const CompanyDashboard = () => {
       console.warn('handleDateRangeChange: Invalid date range, resetting to default');
       message.warning('Please select a valid date range.');
       setDateRange({
-        startDate: moment().startOf('month').toDate(),
-        endDate: moment().endOf('month').toDate(),
+        startDate: dayjs().startOf('month').toDate(),
+        endDate: dayjs().endOf('month').toDate(),
         selectedPreset: 'month',
       });
     }
@@ -420,8 +420,8 @@ const CompanyDashboard = () => {
               <div>
                 {loading && <Spin size="small" className="mr-2" />}
                 <Text type="secondary">
-                  Data from {moment(dateRange.startDate).format('MMM DD')} -{' '}
-                  {moment(dateRange.endDate).format('MMM DD, YYYY')}
+                  Data from {dayjs(dateRange.startDate).format('MMM DD')} -{' '}
+                  {dayjs(dateRange.endDate).format('MMM DD, YYYY')}
                 </Text>
               </div>
             }

@@ -26,7 +26,7 @@ import {
   EyeOutlined,
   WhatsAppOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -89,7 +89,7 @@ const PropertyCard = ({
     : 'https://res.cloudinary.com/dop2pji6u/image/upload/v1708523400/properties/property-placeholder_gmcvxd.jpg';
 
   const formattedDate = property.CreationDate 
-    ? moment(property.CreationDate).format('MMM DD, YYYY') 
+    ? dayjs(property.CreationDate).format('MMM DD, YYYY') 
     : 'N/A';
 
   // Handle checkbox change

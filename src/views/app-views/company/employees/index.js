@@ -13,7 +13,7 @@ import {
 } from '@ant-design/icons';
 import { db, collection, getDocs, doc, addDoc, deleteDoc, updateDoc, serverTimestamp } from 'configs/FirebaseConfig';
 import { useSelector } from 'react-redux';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import EmployeeForm from './EmployeeForm';
 import VacationForm from './VacationForm';
 import EmployeeDetail from './EmployeeDetail';
@@ -413,7 +413,7 @@ const EmployeesPage = () => {
       key: 'joined',
       render: (_, record) => (
         <div>
-          {record.JoiningDate ? moment(record.JoiningDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
+          {record.JoiningDate ? dayjs(record.JoiningDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
         </div>
       ),
     },

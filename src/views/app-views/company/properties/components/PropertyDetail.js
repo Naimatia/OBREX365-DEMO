@@ -29,7 +29,7 @@ import {
   FileTextOutlined,
   MessageOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -57,7 +57,7 @@ const PropertyDetail = ({
 
   // Format date
   const formatDate = (date) => {
-    return date ? moment(date).format('MMMM DD, YYYY HH:mm') : 'N/A';
+    return date ? dayjs(date).format('MMMM DD, YYYY HH:mm') : 'N/A';
   };
 
   // Get status color with better contrast
@@ -610,7 +610,7 @@ const PropertyDetail = ({
                   <Text>{note.note}</Text>
                   <Text type="secondary" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <CalendarOutlined style={{ color: '#1890ff' }} />
-                    {note.CreationDate ? moment(note.CreationDate).format('MMMM DD, YYYY HH:mm') : 'N/A'}
+                    {note.CreationDate ? dayjs(note.CreationDate).format('MMMM DD, YYYY HH:mm') : 'N/A'}
                   </Text>
                 </Space>
               </List.Item>

@@ -13,9 +13,10 @@ import {
   Space,
   message 
 } from 'antd';
-import moment from 'moment';
+import dayjs from 'dayjs';
+
 import { ContactStatus } from 'models/ContactModel';
-import { 
+import {
   PhoneOutlined, 
   MailOutlined, 
   UserOutlined, 
@@ -47,14 +48,14 @@ const SellerContactForm = ({
     if (contact) {
       const formData = {
         ...contact,
-        AffectingDate: contact.AffectingDate ? moment(contact.AffectingDate) : moment(),
+        AffectingDate: contact.AffectingDate ? dayjs(contact.AffectingDate) : dayjs(),
       };
       form.setFieldsValue(formData);
     } else {
       form.resetFields();
       // Set default values for new contact
       form.setFieldsValue({
-        AffectingDate: moment(),
+        AffectingDate: dayjs(),
         status: ContactStatus.PENDING
       });
     }
@@ -64,7 +65,7 @@ const SellerContactForm = ({
   const handleSubmit = () => {
     form.validateFields()
       .then(values => {
-        // Format dates from moment objects to Date objects
+        // Format dates from dayjs objects to Date objects
         const formattedValues = {
           ...values,
           AffectingDate: values.AffectingDate ? values.AffectingDate.toDate() : new Date(),
@@ -162,7 +163,7 @@ const SellerContactForm = ({
               >
                 {countries.map(country => (
                   <Option key={country.code} value={country.name}>
-                    `${country.flag} ${country.name}`
+                    {country.name}
                   </Option>
                 ))}
               </Select>

@@ -8,8 +8,9 @@ import {
   EnvironmentOutlined,
   GlobalOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
-
+import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+dayjs.extend(isBetween);
 const { Text, Title } = Typography;
 
 /**
@@ -20,7 +21,7 @@ const MeetingCalendar = ({ meetings, onSelectMeeting, onAddMeeting }) => {
   const getListData = (value) => {
     const dateStr = value.format('YYYY-MM-DD');
     return meetings.filter(meeting => {
-      const meetingDate = moment(meeting.DateTime).format('YYYY-MM-DD');
+      const meetingDate = dayjs(meeting.DateTime).format('YYYY-MM-DD');
       return meetingDate === dateStr;
     });
   };
@@ -37,7 +38,7 @@ const MeetingCalendar = ({ meetings, onSelectMeeting, onAddMeeting }) => {
               title={
                 <>
                   <div><strong>{item.Title}</strong></div>
-                  <div>{moment(item.DateTime).format('HH:mm')} - {item.Duration} mins</div>
+                  <div>{dayjs(item.DateTime).format('HH:mm')} - {item.Duration} mins</div>
                   <div>Type: {item.Type === 'online' ? 'Online' : 'On-Site'}</div>
                   <div>Status: {item.Status}</div>
                   <div>Click to view details</div>
@@ -55,7 +56,7 @@ const MeetingCalendar = ({ meetings, onSelectMeeting, onAddMeeting }) => {
                   color={getMeetingStyles(item).badgeColor}
                   text={
                     <span style={{ fontSize: '12px', fontWeight: item.Type?.toLowerCase() === 'online' ? '500' : 'normal' }}>
-                      {moment(item.DateTime).format('HH:mm')} {item.Title}
+                      {dayjs(item.DateTime).format('HH:mm')} {item.Title}
                       {item.Type?.toLowerCase() === 'online' && 
                         <Tag 
                           color="purple" 
@@ -82,7 +83,7 @@ const MeetingCalendar = ({ meetings, onSelectMeeting, onAddMeeting }) => {
     
     // Count meetings for the month
     const monthMeetings = meetings.filter(meeting => {
-      const meetingDate = moment(meeting.DateTime);
+      const meetingDate = dayjs(meeting.DateTime);
       return meetingDate.isBetween(monthStart, monthEnd, null, '[]');
     });
     
@@ -164,7 +165,7 @@ const MeetingCalendar = ({ meetings, onSelectMeeting, onAddMeeting }) => {
     const end = 12;
     const monthOptions = [];
 
-    const months = moment.monthsShort();
+    const months = dayjs.monthsShort();
     for (let i = start; i < end; i++) {
       monthOptions.push(
         <Select.Option key={i} value={i} className="month-item">

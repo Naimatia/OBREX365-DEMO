@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { Modal, Table, Select, Button, message, Spin } from 'antd';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import '../AttendanceDetail.css'; // Import new CSS file for styling
 const { Option } = Select;
 
@@ -19,7 +19,7 @@ const AttendanceDetail = ({ visible, onClose, attendance, onUpdate }) => {
 
   useEffect(() => {
     if (attendance) {
-      const daysInMonth = moment(attendance.month_year, 'YYYY-MM').daysInMonth();
+      const daysInMonth = dayjs(attendance.month_year, 'YYYY-MM').daysInMonth();
       const data = [];
       for (let day = 1; day <= daysInMonth; day++) {
         data.push({ day, status: attendance.days[day] || '' });

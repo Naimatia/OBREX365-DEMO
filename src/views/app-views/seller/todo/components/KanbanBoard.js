@@ -1,21 +1,22 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
   Card, 
   Typography, 
   Tag, 
-  Avatar, 
   Tooltip, 
   Button, 
   Space,
   Popconfirm,
   Badge,
   Empty,
-  message
+  message,
+  Avatar,
+  Divider
 } from 'antd';
 import { 
   EditOutlined,
   DeleteOutlined,
-  CalendarOutlined,
+  ClockCircleOutlined,
   UserOutlined,
   MessageOutlined,
   ExclamationCircleOutlined
@@ -23,240 +24,267 @@ import {
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import TodoService from 'services/TodoService';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
+
+/* ====================== Design System ====================== */
+const T = {
+  border: '#E5E7EB',
+  shadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+  shadowDrag: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+  radius: '12px',
+  colors: {
+    ToDo: '#f59e0b',
+    InProgress: '#3b82f6',
+    Done: '#10b981',
+    Blocked: '#ef4444',
+  }
+};
 
 /**
- * Kanban Board Component for Todo Management
+ * Modern Kanban Board - Seller Restricted Version
  */
 const KanbanBoard = ({ 
-  todos, 
+  todos = [], 
   onTodoUpdate, 
   onTodoDelete, 
   onTodoEdit, 
   sellers = [], 
-  currentUser 
+  currentUser,
+  isSeller = false   // ← New prop
 }) => {
-  // Define Kanban columns
+
   const columns = [
-    { id: 'ToDo', title: 'To Do', color: '#faad14' },
-    { id: 'InProgress', title: 'In Progress', color: '#1890ff' },
-    { id: 'Done', title: 'Done', color: '#52c41a' },
-    { id: 'Blocked', title: 'Blocked', color: '#ff4d4f' }
+    { id: 'ToDo',       title: 'To Do',        color: T.colors.ToDo,       icon: '📋' },
+    { id: 'InProgress', title: 'In Progress',  color: T.colors.InProgress, icon: '🚀' },
+    { id: 'Done',       title: 'Done',         color: T.colors.Done,       icon: '✅' },
+    { id: 'Blocked',    title: 'Blocked',      color: T.colors.Blocked,    icon: '⛔' },
   ];
 
-  // Group todos by status
   const groupedTodos = todos.reduce((acc, todo) => {
     const status = todo.Status || 'ToDo';
-    if (!acc[status]) {
-      acc[status] = [];
-    }
+    if (!acc[status]) acc[status] = [];
     acc[status].push(todo);
     return acc;
   }, {});
 
-  // Handle drag end
   const handleDragEnd = async (result) => {
     const { destination, source, draggableId } = result;
+    if (!destination || 
+        (destination.droppableId === source.droppableId && destination.index === source.index)) return;
 
-    // Dropped outside the list
-    if (!destination) {
-      return;
-    }
-
-    // Dropped in the same position
-    if (
-      destination.droppableId === source.droppableId &&
-      destination.index === source.index
-    ) {
-      return;
-    }
-
-    // Update todo status
     try {
       await TodoService.updateTodoStatus(draggableId, destination.droppableId);
-      message.success('Todo status updated successfully');
-      // Call the parent update handler with proper parameters
+      message.success('Task moved successfully');
       onTodoUpdate?.(draggableId, { Status: destination.droppableId });
     } catch (error) {
-      console.error('Error updating todo status:', error);
-      message.error('Failed to update todo status');
+      message.error('Failed to update task status');
     }
   };
 
-  // Handle delete todo
-  const handleDeleteTodo = async (todoId) => {
-    try {
-      await TodoService.deleteTodo(todoId);
-      message.success('Todo deleted successfully');
-      onTodoDelete?.(todoId);
-    } catch (error) {
-      console.error('Error deleting todo:', error);
-      message.error('Failed to delete todo');
-    }
-  };
-
-  // Get assignee name
+// Improved Assignee Name Resolver
   const getAssigneeName = (assigneeId) => {
     if (!assigneeId) return 'Unassigned';
+
+    // Check in sellers list first
     const seller = sellers.find(s => s.id === assigneeId);
-    return seller ? seller.name : 'Unknown User';
+    if (seller?.name) return seller.name;
+
+    // Fallback: Check if it's the current user
+    if (assigneeId === currentUser?.id || assigneeId === currentUser?.uid) {
+      return currentUser?.name || 
+             `${currentUser?.firstname || ''} ${currentUser?.lastname || ''}`.trim() || 
+             'You';
+    }
+
+    return 'Unknown User';
   };
 
-  // Check if todo is overdue
-  const isOverdue = (dateLimit) => {
-    if (!dateLimit) return false;
-    return new Date(dateLimit) < new Date();
+  const isOverdue = (dateLimit) => dateLimit && new Date(dateLimit) < new Date();
+
+  const formatFullDateTime = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    return new Date(dateStr).toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
-  // Get todo priority color
-  const getTodoPriority = (dateLimit) => {
-    if (!dateLimit) return null;
-    
-    const now = new Date();
-    const limit = new Date(dateLimit);
-    const diffTime = limit.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 0) return 'error'; // Overdue
-    if (diffDays <= 1) return 'warning'; // Due today or tomorrow
-    if (diffDays <= 3) return 'processing'; // Due in 2-3 days
-    return 'default'; // More than 3 days
-  };
+  // ====================== Todo Card ======================
+  const TodoCard = ({ todo, index }) => {
+    const isTaskOverdue = isOverdue(todo.DateLimit);
+    const assigneeName = getAssigneeName(todo.AssignedTo || todo.assignee);
 
-  // Render individual todo card
-  const renderTodoCard = (todo, index) => (
-    <Draggable draggableId={todo.id} index={index} key={todo.id}>
-      {(provided, snapshot) => (
-        <div
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          style={{
-            ...provided.draggableProps.style,
-            marginBottom: 8
-          }}
-        >
-          <Card
-            size="small"
-            hoverable
-            style={{
-              backgroundColor: snapshot.isDragging ? '#f0f0f0' : 'white',
-              border: snapshot.isDragging ? '2px solid #1890ff' : '1px solid #d9d9d9',
-              borderRadius: 6
-            }}
-            bodyStyle={{ padding: '12px' }}
-            actions={[
-              <Tooltip title="Edit Todo" key="edit">
-                <Button 
-                  type="text" 
-                  icon={<EditOutlined />} 
-                  size="small"
-                  onClick={() => onTodoEdit?.(todo)}
-                />
-              </Tooltip>,
-              <Popconfirm
-                title="Delete Todo"
-                description="Are you sure you want to delete this todo?"
-                onConfirm={() => handleDeleteTodo(todo.id)}
-                okText="Yes"
-                cancelText="No"
-                key="delete"
-              >
-                <Tooltip title="Delete Todo">
-                  <Button 
-                    type="text" 
-                    icon={<DeleteOutlined />} 
-                    size="small"
-                    danger
-                  />
-                </Tooltip>
-              </Popconfirm>
-            ]}
+    return (
+      <Draggable draggableId={String(todo.id)} index={index} key={todo.id}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            {...provided.dragHandleProps}
+            style={{ ...provided.draggableProps.style, marginBottom: 16 }}
           >
-            <div style={{ marginBottom: 8 }}>
-              <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                <Text strong style={{ fontSize: '14px' }}>
-                  {todo.ToDo}
+            <Card
+              hoverable
+              style={{
+                borderRadius: T.radius,
+                border: snapshot.isDragging 
+                  ? `2px solid ${T.colors[todo.Status] || '#1890ff'}` 
+                  : '1px solid #e5e7eb',
+                boxShadow: snapshot.isDragging ? T.shadowDrag : T.shadow,
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+              bodyStyle={{ padding: '18px' }}
+              actions={isSeller ? [] : [  // ← Hide buttons for sellers
+                <Tooltip title="Edit" key="edit">
+                  <Button type="text" icon={<EditOutlined />} onClick={() => onTodoEdit?.(todo)} />
+                </Tooltip>,
+                <Popconfirm
+                  title="Delete Task?"
+                  description="This action cannot be undone."
+                  onConfirm={() => onTodoDelete?.(todo.id)}
+                  okText="Delete"
+                  okButtonProps={{ danger: true }}
+                  key="delete"
+                >
+                  <Button type="text" icon={<DeleteOutlined />} danger />
+                </Popconfirm>
+              ]}
+            >
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+
+                {/* Title */}
+                <Text strong style={{ fontSize: '16px', lineHeight: 1.4 }}>
+                  {todo.Title || todo.ToDo}
                 </Text>
-                
-                {/* Assignee */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <UserOutlined style={{ fontSize: '12px', color: '#8c8c8c' }} />
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {getAssigneeName(todo.assignee)}
-                  </Text>
-                </div>
 
-                {/* Date Limit */}
-                {todo.DateLimit && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <CalendarOutlined style={{ fontSize: '12px', color: '#8c8c8c' }} />
-                    <Badge
-                      status={getTodoPriority(todo.DateLimit)}
-                      text={
-                        <Text 
-                          style={{ 
-                            fontSize: '12px',
-                            color: isOverdue(todo.DateLimit) ? '#ff4d4f' : '#8c8c8c'
-                          }}
-                        >
-                          {new Date(todo.DateLimit).toLocaleDateString()}
-                          {isOverdue(todo.DateLimit) && ' (Overdue)'}
-                        </Text>
-                      }
-                    />
-                  </div>
+                {/* Description */}
+                {todo.Description && (
+                  <Paragraph style={{ fontSize: '13.5px', color: '#64748b', marginBottom: 8 }}>
+                    {todo.Description}
+                  </Paragraph>
                 )}
 
-                {/* Notes indicator */}
-                {todo.Notes && todo.Notes.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <MessageOutlined style={{ fontSize: '12px', color: '#8c8c8c' }} />
-                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                      {todo.Notes.length} note{todo.Notes.length !== 1 ? 's' : ''}
-                    </Text>
-                  </div>
-                )}
+                <Divider style={{ margin: '8px 0' }} />
 
-                {/* Priority indicator for overdue items */}
-                {isOverdue(todo.DateLimit) && (
-                  <Tag color="red" icon={<ExclamationCircleOutlined />}>
-                    OVERDUE
+                {/* Priority */}
+                {todo.Priority && (
+                  <Tag color={
+                    todo.Priority === 'High' ? 'red' :
+                    todo.Priority === 'Medium' ? 'orange' : 'green'
+                  }>
+                    {todo.Priority}
                   </Tag>
                 )}
-              </Space>
-            </div>
-          </Card>
-        </div>
-      )}
-    </Draggable>
-  );
 
-  // Render column
-  const renderColumn = (column) => {
+                {/* Assignee */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Avatar size={28} icon={<UserOutlined />} style={{ backgroundColor: '#f1f5f9' }} />
+                  <Text style={{ fontSize: '13.5px' }}>{assigneeName}</Text>
+                </div>
+
+                {/* Due Date */}
+                {todo.DateLimit && (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 8,
+                    padding: '8px 12px',
+                    background: isTaskOverdue ? '#fef2f2' : '#f8fafc',
+                    borderRadius: 8,
+                    border: isTaskOverdue ? '1px solid #fecaca' : '1px solid #e2e8f0'
+                  }}>
+                    <ClockCircleOutlined style={{ color: isTaskOverdue ? '#ef4444' : '#3b82f6' }} />
+                    <div>
+                      <Text strong style={{ fontSize: '13px', color: isTaskOverdue ? '#ef4444' : '#1e40af' }}>
+                        Due: {formatFullDateTime(todo.DateLimit)}
+                      </Text>
+                      {isTaskOverdue && <Text type="danger"> • Overdue</Text>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Creation & Last Edit */}
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                  <div>Created: {formatFullDateTime(todo.CreationDate)}</div>
+                  {todo.LastEdit && (
+                    <div>Last Edit: {formatFullDateTime(todo.LastEdit)}</div>
+                  )}
+                </div>
+
+                {/* Notes */}
+                {todo.Notes && todo.Notes.length > 0 && (
+                  <>
+                    <Divider style={{ margin: '8px 0' }} />
+                    <div>
+                      <Space align="center" style={{ marginBottom: 8 }}>
+                        <MessageOutlined />
+                        <Text strong>Notes ({todo.Notes.length})</Text>
+                      </Space>
+                      {todo.Notes.map((note, idx) => (
+                        <div key={idx} style={{
+                          background: '#f8fafc',
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          marginBottom: 6,
+                          borderLeft: '3px solid #3b82f6'
+                        }}>
+                          <Text style={{ fontSize: '13px', display: 'block' }}>
+                            {note.note || note.text || 'No content'}
+                          </Text>
+                          {note.CreationDate && (
+                            <Text type="secondary" style={{ fontSize: '11px' }}>
+                              {formatFullDateTime(note.CreationDate)}
+                            </Text>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {isTaskOverdue && (
+                  <Tag color="error" icon={<ExclamationCircleOutlined />} style={{ width: '100%', justifyContent: 'center' }}>
+                    OVERDUE TASK
+                  </Tag>
+                )}
+
+              </Space>
+            </Card>
+          </div>
+        )}
+      </Draggable>
+    );
+  };
+
+  // Column Component
+  const KanbanColumn = ({ column }) => {
     const columnTodos = groupedTodos[column.id] || [];
-    
+
     return (
       <Card
-        key={column.id}
-        style={{ 
-          minHeight: '500px', 
-          marginRight: 16, 
-          width: '300px',
-          flexShrink: 0
+        style={{
+          width: 340,
+          flexShrink: 0,
+          borderRadius: T.radius,
+          border: `1px solid ${T.border}`,
+          boxShadow: T.shadow,
+          minHeight: '620px',
         }}
-        bodyStyle={{ padding: '16px 12px' }}
+        bodyStyle={{ padding: 0 }}
         title={
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ 
+            padding: '16px 20px',
+            borderBottom: `1px solid ${T.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#fafafa'
+          }}>
             <Space>
-              <div 
-                style={{ 
-                  width: 12, 
-                  height: 12, 
-                  borderRadius: '50%', 
-                  backgroundColor: column.color 
-                }} 
-              />
+              <span style={{ fontSize: '19px' }}>{column.icon}</span>
               <Title level={5} style={{ margin: 0, color: column.color }}>
                 {column.title}
               </Title>
@@ -271,20 +299,17 @@ const KanbanBoard = ({
               ref={provided.innerRef}
               {...provided.droppableProps}
               style={{
-                minHeight: '400px',
-                backgroundColor: snapshot.isDraggingOver ? '#f6ffed' : 'transparent',
-                borderRadius: 4,
-                padding: 4
+                padding: '16px',
+                minHeight: '520px',
+                backgroundColor: snapshot.isDraggingOver ? '#f8fafc' : 'transparent',
               }}
             >
               {columnTodos.length === 0 ? (
-                <Empty 
-                  description={`No ${column.title.toLowerCase()} items`}
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  style={{ margin: '40px 0' }}
-                />
+                <Empty description={`No ${column.title.toLowerCase()} tasks`} style={{ marginTop: 80 }} />
               ) : (
-                columnTodos.map((todo, index) => renderTodoCard(todo, index))
+                columnTodos.map((todo, index) => (
+                  <TodoCard key={todo.id} todo={todo} index={index} />
+                ))
               )}
               {provided.placeholder}
             </div>
@@ -298,11 +323,13 @@ const KanbanBoard = ({
     <DragDropContext onDragEnd={handleDragEnd}>
       <div style={{ 
         display: 'flex', 
+        gap: 24, 
         overflowX: 'auto', 
-        padding: '16px 0',
-        minHeight: '600px'
+        padding: '10px 0 24px'
       }}>
-        {columns.map(column => renderColumn(column))}
+        {columns.map(column => (
+          <KanbanColumn key={column.id} column={column} />
+        ))}
       </div>
     </DragDropContext>
   );

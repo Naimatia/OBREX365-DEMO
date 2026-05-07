@@ -1,6 +1,6 @@
 import { db as firestore } from 'configs/FirebaseConfig';
 import { collection, query, where, getDocs, getDoc, doc, orderBy, limit, Timestamp } from 'firebase/firestore';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 class DashboardService {
   /**
@@ -21,13 +21,13 @@ static async fetchCompanyStats(companyId, dateRange) {
     // Validate and set date range
     const startDate = dateRange?.[0] instanceof Date 
       ? dateRange[0] 
-      : dateRange?.[0]?.toDate?.() || moment().subtract(30, 'days').toDate();
+      : dateRange?.[0]?.toDate?.() || dayjs().subtract(30, 'days').toDate();
 
     const endDate = dateRange?.[1] instanceof Date 
       ? dateRange[1] 
-      : dateRange?.[1]?.toDate?.() || moment().toDate();
+      : dateRange?.[1]?.toDate?.() || dayjs().toDate();
 
-    if (moment(endDate).isBefore(startDate)) {
+    if (dayjs(endDate).isBefore(startDate)) {
       console.error('Invalid date range: endDate is before startDate');
       return null;
     }
@@ -138,7 +138,7 @@ static async fetchCompanyStats(companyId, dateRange) {
         query(
           collection(firestore, 'meetings'),
           where('company_id', '==', companyId),
-          where('date', '>=', Timestamp.fromDate(moment().toDate())),
+          where('date', '>=', Timestamp.fromDate(dayjs().toDate())),
           orderBy('date', 'asc'),
           limit(10)
         )
@@ -273,7 +273,7 @@ static async fetchCompanyStats(companyId, dateRange) {
     // 11. Revenue chart data
     // -----------------------------------------------------------------
     try {
-      const durationDays = moment(endDate).diff(moment(startDate), 'days');
+      const durationDays = dayjs(endDate).diff(dayjs(startDate), 'days');
       const groupBy = durationDays > 90 ? 'month' : 'day';
       const revenueMap = new Map();
 
@@ -283,8 +283,8 @@ static async fetchCompanyStats(companyId, dateRange) {
           const date = invoiceData.CreationDate?.toDate();
           if (date) {
             const key = groupBy === 'month'
-              ? moment(date).format('MMM YYYY')
-              : moment(date).format('YYYY-MM-DD');
+              ? dayjs(date).format('MMM YYYY')
+              : dayjs(date).format('YYYY-MM-DD');
             revenueMap.set(key, (revenueMap.get(key) || 0) + invoiceData.amount);
           }
         }
@@ -292,8 +292,8 @@ static async fetchCompanyStats(companyId, dateRange) {
 
       stats.revenueData = Array.from(revenueMap.entries())
         .map(([date, value]) => ({ date, value }))
-        .sort((a, b) => moment(a.date, groupBy === 'month' ? 'MMM YYYY' : 'YYYY-MM-DD')
-          .valueOf() - moment(b.date, groupBy === 'month' ? 'MMM YYYY' : 'YYYY-MM-DD').valueOf());
+        .sort((a, b) => dayjs(a.date, groupBy === 'month' ? 'MMM YYYY' : 'YYYY-MM-DD')
+          .valueOf() - dayjs(b.date, groupBy === 'month' ? 'MMM YYYY' : 'YYYY-MM-DD').valueOf());
     } catch (error) {
       console.error('Error processing revenue data:', error);
       stats.revenueData = [];
@@ -323,9 +323,9 @@ const currentEnd = currentDateRange[1] instanceof Date
   ? currentDateRange[1] 
   : currentDateRange[1]?.toDate();
     // Calculate the previous period with the same duration
-    const duration = moment(currentEnd).diff(moment(currentStart), 'days');
-    const previousStart = moment(currentStart).subtract(duration, 'days').toDate();
-    const previousEnd = moment(currentStart).subtract(1, 'days').toDate();
+    const duration = dayjs(currentEnd).diff(dayjs(currentStart), 'days');
+    const previousStart = dayjs(currentStart).subtract(duration, 'days').toDate();
+    const previousEnd = dayjs(currentStart).subtract(1, 'days').toDate();
     
     // Convert to Firestore timestamps
     const prevStartTimestamp = Timestamp.fromDate(previousStart);

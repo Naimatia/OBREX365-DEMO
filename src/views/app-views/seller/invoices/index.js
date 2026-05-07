@@ -32,7 +32,7 @@ import SellerInvoiceList from './components/SellerInvoiceList';
 import SellerInvoiceForm from './components/SellerInvoiceForm';
 import SellerInvoiceDetail from './components/SellerInvoiceDetail';
 import { motion } from 'framer-motion';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
@@ -103,7 +103,7 @@ const SellerInvoicesPage = () => {
     
     const overdueCount = monthlyInvoices.filter(invoice => {
       if (!invoice.DateLimit || invoice.Status !== 'Pending') return false;
-      return moment().isAfter(moment(invoice.DateLimit));
+      return dayjs().isAfter(dayjs(invoice.DateLimit));
     }).length;
     
     const stats = {

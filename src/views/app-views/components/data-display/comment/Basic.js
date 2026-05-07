@@ -1,9 +1,12 @@
 /* eslint-disable jsx-a11y/anchor-is-valid */
 import React, { Component } from "react";
 import { Comment, Tooltip, Avatar } from 'antd';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { DislikeOutlined, LikeOutlined, DislikeFilled, LikeFilled } from '@ant-design/icons';
+import relativeTime from 'dayjs/plugin/relativeTime';   // ← Add this
 
+// Extend dayjs with relativeTime plugin
+dayjs.extend(relativeTime);
 export class Basic extends Component {
   state = {
     likes: 0,
@@ -68,8 +71,8 @@ export class Basic extends Component {
           </p>
         }
         datetime={
-          <Tooltip title={moment().format('YYYY-MM-DD HH:mm:ss')}>
-            <span>{moment().fromNow()}</span>
+          <Tooltip title={dayjs().format('YYYY-MM-DD HH:mm:ss')}>
+            <span>{dayjs().fromNow()}</span>
           </Tooltip>
         }
       />

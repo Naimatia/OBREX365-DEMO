@@ -45,7 +45,6 @@ import LeadsService from 'services/LeadsService';
 import InvoicesService from 'services/InvoicesService';
 import { UserRoles } from 'models/UserModel';
 import { auth } from 'configs/FirebaseConfig';
-import moment from 'moment';
 import dayjs from 'dayjs';
 
 import AddUserForm from './AddUserForm';
@@ -160,8 +159,8 @@ const SellersPage = () => {
 
   const calculateSellerProgress = async (sellerId) => {
     try {
-      const startOfMonth = moment().startOf('month').toDate();
-      const endOfMonth = moment().endOf('month').toDate();
+      const startOfMonth = dayjs().startOf('month').toDate();
+      const endOfMonth = dayjs().endOf('month').toDate();
       const contacts = await ContactsService.getSellerContactsByDateRange(sellerId, startOfMonth, endOfMonth);
       const pending = contacts.filter(c => c.status === 'Pending').length;
       const contacted = contacts.filter(c => c.status === 'Contacted').length;
@@ -245,7 +244,7 @@ const SellersPage = () => {
         total: invoices.length,
         paid: invoices.filter(i => i.status === 'Paid').length,
         pending: invoices.filter(i => i.status === 'Pending').length,
-        overdue: invoices.filter(i => i.status === 'Missed' || (i.DateLimit && moment(i.DateLimit).isBefore(moment()))).length,
+        overdue: invoices.filter(i => i.status === 'Missed' || (i.DateLimit && dayjs(i.DateLimit).isBefore(dayjs()))).length,
         totalValue: invoices.reduce((sum, invoice) => sum + (parseFloat(invoice.amount) || 0), 0),
         paidValue: invoices.filter(i => i.status === 'Paid').reduce((sum, invoice) => sum + (parseFloat(invoice.amount) || 0), 0)
       };
@@ -586,7 +585,7 @@ const SellersPage = () => {
       render: (date) => {
         if (!date) return '-';
         const dateObj = date.toDate ? date.toDate() : new Date(date);
-        return moment(dateObj).format('YYYY-MM-DD');
+        return dayjs(dateObj).format('YYYY-MM-DD');
       },
       sorter: (a, b) => {
         const dateA = a.CreationDate ? (a.CreationDate.toDate ? a.CreationDate.toDate() : new Date(a.CreationDate)) : new Date(0);
@@ -1046,7 +1045,7 @@ const SellersPage = () => {
                             title={contact.name || 'Unnamed Contact'}
                             description={`${contact.email || 'No email'} | ${contact.phoneNumber || 'No phone'} | Status: ${contact.status || 'Unknown'}`}
                           />
-                          <Text type="secondary">{moment(contact.CreationDate).format('MMM DD, YYYY')}</Text>
+                          <Text type="secondary">{dayjs(contact.CreationDate).format('MMM DD, YYYY')}</Text>
                         </List.Item>
                       )}
                     />
@@ -1064,7 +1063,7 @@ const SellersPage = () => {
                         const amount = Number(deal.Amount || 0);
                         const description = deal.Description || 'No description available';
                         const creationDate = deal.CreationDate
-                          ? moment(deal.CreationDate).format('MMM DD, YYYY')
+                          ? dayjs(deal.CreationDate).format('MMM DD, YYYY')
                           : '—';
 
                         // Determine avatar color based on status
@@ -1143,7 +1142,7 @@ const SellersPage = () => {
                             title={lead.name || 'Unnamed Lead'}
                             description={`${lead.email || 'No email'} | Interest: ${lead.InterestLevel || 'Unknown'} | Budget: AED ${Number(lead.Budget || 0).toLocaleString('en-AE')}`}
                           />
-                          <Text type="secondary">{moment(lead.CreationDate).format('MMM DD, YYYY')}</Text>
+                          <Text type="secondary">{dayjs(lead.CreationDate).format('MMM DD, YYYY')}</Text>
                         </List.Item>
                       )}
                     />
@@ -1162,7 +1161,7 @@ const SellersPage = () => {
                             title={invoice.title || 'Unnamed Invoice'}
                             description={`Amount: AED ${Number(invoice.amount || 0).toLocaleString('en-AE')} | Status: ${invoice.status || 'Unknown'}`}
                           />
-                          <Text type="secondary">{moment(invoice.CreationDate).format('MMM DD, YYYY')}</Text>
+                          <Text type="secondary">{dayjs(invoice.CreationDate).format('MMM DD, YYYY')}</Text>
                         </List.Item>
                       )}
                     />

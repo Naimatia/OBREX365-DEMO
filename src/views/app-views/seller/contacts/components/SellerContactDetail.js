@@ -30,7 +30,8 @@ import {
   SendOutlined
 } from '@ant-design/icons';
 import { ContactStatus } from 'models/ContactModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
+
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -227,7 +228,7 @@ const SellerContactDetail = ({
                   <Text strong>Assigned: </Text>
                   <Text>
                     {contact.AffectingDate ? 
-                      moment(contact.AffectingDate).format('MMM DD, YYYY') : 
+                      dayjs(contact.AffectingDate).format('MMM DD, YYYY') : 
                       <span style={{ color: '#8c8c8c' }}>Not assigned</span>
                     }
                   </Text>
@@ -236,7 +237,7 @@ const SellerContactDetail = ({
                   <Text strong>Created: </Text>
                   <Text>
                     {contact.CreationDate ? 
-                      moment(contact.CreationDate).format('MMM DD, YYYY HH:mm') : 
+                      dayjs(contact.CreationDate).format('MMM DD, YYYY HH:mm') : 
                       <span style={{ color: '#8c8c8c' }}>Unknown</span>
                     }
                   </Text>
@@ -291,7 +292,7 @@ const SellerContactDetail = ({
                 >
                   <div style={{ marginBottom: '8px' }}>
                     <Text type="secondary" style={{ fontSize: '12px' }}>
-                      {note.CreationDate ? moment(note.CreationDate).format('MMM DD, YYYY HH:mm') : 'Unknown date'}
+                      {note.CreationDate ? dayjs(note.CreationDate).format('MMM DD, YYYY HH:mm') : 'Unknown date'}
                     </Text>
                   </div>
                   <Paragraph style={{ margin: 0, fontSize: '14px' }}>

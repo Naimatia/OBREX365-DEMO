@@ -20,7 +20,7 @@ import {
   InstagramOutlined,
   VideoCameraOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { APP_NAME } from 'configs/AppConfig';
 
 const { Title, Text, Link } = Typography;
@@ -34,10 +34,10 @@ const CompanyView = ({ company }) => {
     
     // Handle both Firestore timestamp and date strings
     if (timestamp.toDate) {
-      return moment(timestamp.toDate()).format('MMMM D, YYYY');
+      return dayjs(timestamp.toDate()).format('MMMM D, YYYY');
     }
     
-    return moment(timestamp).format('MMMM D, YYYY');
+    return dayjs(timestamp).format('MMMM D, YYYY');
   };
   
   // Status color mapping

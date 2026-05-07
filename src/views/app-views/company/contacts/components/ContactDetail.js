@@ -25,7 +25,7 @@ import {
   ClockCircleOutlined
 } from '@ant-design/icons';
 import { ContactStatus } from 'models/ContactModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -147,7 +147,7 @@ const ContactDetail = ({
               <Descriptions.Item label="Created On">
                 <Space>
                   <CalendarOutlined />
-                  {contact.CreationDate ? moment(contact.CreationDate).format('YYYY-MM-DD') : 'Unknown'}
+                  {contact.CreationDate ? dayjs(contact.CreationDate).format('YYYY-MM-DD') : 'Unknown'}
                 </Space>
               </Descriptions.Item>
 
@@ -155,7 +155,7 @@ const ContactDetail = ({
                 <Descriptions.Item label="Assigned On">
                   <Space>
                     <CalendarOutlined />
-                    {moment(contact.AffectingDate).format('YYYY-MM-DD')}
+                    {dayjs(contact.AffectingDate).format('YYYY-MM-DD')}
                   </Space>
                 </Descriptions.Item>
               )}
@@ -163,7 +163,7 @@ const ContactDetail = ({
               <Descriptions.Item label="Last Updated">
                 <Space>
                   <CalendarOutlined />
-                  {contact.LastUpdateDate ? moment(contact.LastUpdateDate).format('YYYY-MM-DD') : 'Not updated'}
+                  {contact.LastUpdateDate ? dayjs(contact.LastUpdateDate).format('YYYY-MM-DD') : 'Not updated'}
                 </Space>
               </Descriptions.Item>
             </Descriptions>
@@ -192,7 +192,7 @@ const ContactDetail = ({
                     <Timeline.Item 
                       key={index} 
                       dot={<ClockCircleOutlined />}
-                      label={note.CreationDate ? moment(note.CreationDate).format('YYYY-MM-DD HH:mm') : 'No date'}
+                      label={note.CreationDate ? dayjs(note.CreationDate).format('YYYY-MM-DD HH:mm') : 'No date'}
                     >
                       <Paragraph>{note.note}</Paragraph>
                     </Timeline.Item>

@@ -1,7 +1,10 @@
 import React, { Component } from "react";
 import { Comment, Avatar, Form, Button, List, Input } from 'antd';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';   // ← Add this
 
+// Extend dayjs with relativeTime plugin
+dayjs.extend(relativeTime);
 const { TextArea } = Input;
 
 const CommentList = ({ comments }) => (
@@ -51,7 +54,7 @@ export class CommentEditor extends Component {
             author: 'Han Solo',
             avatar: 'https://zos.alipayobjects.com/rmsportal/ODTLcjxAfvqbxHnVXCYX.png',
             content: <p>{this.state.value}</p>,
-            datetime: moment().fromNow(),
+            datetime: dayjs().fromNow(),
           },
           ...this.state.comments,
         ],

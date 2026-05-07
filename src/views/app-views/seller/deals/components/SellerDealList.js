@@ -38,7 +38,9 @@ import {
   ShareAltOutlined
 } from '@ant-design/icons';
 import { DealStatus, DealSource } from 'models/DealModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+dayjs.extend(isBetween);
 
 const { Search } = Input;
 const { Option } = Select;
@@ -93,7 +95,7 @@ const SellerDealList = ({
     if (dateRange && dateRange.length === 2) {
       const [startDate, endDate] = dateRange;
       filtered = filtered.filter(deal => {
-        const dealDate = moment(deal.CreationDate);
+        const dealDate = dayjs(deal.CreationDate);
         return dealDate.isBetween(startDate, endDate, 'day', '[]');
       });
     }
@@ -266,11 +268,11 @@ const SellerDealList = ({
       dataIndex: 'CreationDate',
       key: 'created',
       width: 100,
-      sorter: (a, b) => moment(a.CreationDate) - moment(b.CreationDate),
+      sorter: (a, b) => dayjs(a.CreationDate) - dayjs(b.CreationDate),
       render: (date) => (
         <Space>
           <CalendarOutlined style={{ color: '#8c8c8c' }} />
-          {moment(date).format('DD MMM YY')}
+          {dayjs(date).format('DD MMM YY')}
         </Space>
       )
     },

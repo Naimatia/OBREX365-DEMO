@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Drawer, Row, Col, Card, Typography, Select, DatePicker, Radio, Empty, Spin, Statistic } from 'antd';
 import { Pie, Column } from '@ant-design/plots';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { InvoiceStatus } from 'models/InvoiceModel';
 import InvoiceChart from './InvoiceChart';
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+dayjs.extend(isBetween);
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -18,16 +20,16 @@ const { RangePicker } = DatePicker;
  */
 const InvoiceStatsDrawer = ({ visible, onClose, invoices = [] }) => {
   const [loading, setLoading] = useState(false);
-  const [filterYear, setFilterYear] = useState(moment().year());
+  const [filterYear, setFilterYear] = useState(dayjs().year());
   const [filterPeriod, setFilterPeriod] = useState('year');
   const [dateRange, setDateRange] = useState([
-    moment().startOf('year'),
-    moment().endOf('year')
+    dayjs().startOf('year'),
+    dayjs().endOf('year')
   ]);
   const [filteredInvoices, setFilteredInvoices] = useState([]);
 
   // Generate years for filter dropdown (current year and 2 years back)
-  const currentYear = moment().year();
+  const currentYear = dayjs().year();
   const years = [currentYear, currentYear - 1, currentYear - 2];
 
   useEffect(() => {
@@ -39,7 +41,7 @@ const InvoiceStatsDrawer = ({ visible, onClose, invoices = [] }) => {
       const end = dateRange[1].endOf('day');
       
       const filtered = invoices.filter(invoice => {
-        const invoiceDate = moment(invoice.CreationDate?.toDate?.() || invoice.CreationDate);
+        const invoiceDate = dayjs(invoice.CreationDate?.toDate?.() || invoice.CreationDate);
         return invoiceDate.isBetween(start, end, null, '[]');
       });
       
@@ -55,17 +57,17 @@ const InvoiceStatsDrawer = ({ visible, onClose, invoices = [] }) => {
     
     switch(period) {
       case 'month':
-        start = moment().startOf('month');
-        end = moment().endOf('month');
+        start = dayjs().startOf('month');
+        end = dayjs().endOf('month');
         break;
       case 'quarter':
-        start = moment().startOf('quarter');
-        end = moment().endOf('quarter');
+        start = dayjs().startOf('quarter');
+        end = dayjs().endOf('quarter');
         break;
       case 'year':
       default:
-        start = moment().startOf('year');
-        end = moment().endOf('year');
+        start = dayjs().startOf('year');
+        end = dayjs().endOf('year');
         break;
     }
     
@@ -75,8 +77,8 @@ const InvoiceStatsDrawer = ({ visible, onClose, invoices = [] }) => {
   // Handle year selection
   const handleYearChange = (year) => {
     setFilterYear(year);
-    const start = moment().year(year).startOf('year');
-    const end = moment().year(year).endOf('year');
+    const start = dayjs().year(year).startOf('year');
+    const end = dayjs().year(year).endOf('year');
     setDateRange([start, end]);
   };
 
@@ -134,12 +136,12 @@ const InvoiceStatsDrawer = ({ visible, onClose, invoices = [] }) => {
     
     // Initialize all months with zero
     for (let i = 0; i < 12; i++) {
-      const monthName = moment().month(i).format('MMM');
+      const monthName = dayjs().month(i).format('MMM');
       monthlyData[monthName] = 0;
     }
     
     filteredInvoices.forEach(invoice => {
-      const date = moment(invoice.CreationDate?.toDate?.() || invoice.CreationDate);
+      const date = dayjs(invoice.CreationDate?.toDate?.() || invoice.CreationDate);
       const monthName = date.format('MMM');
       const amount = Number(invoice.amount) || 0;
       

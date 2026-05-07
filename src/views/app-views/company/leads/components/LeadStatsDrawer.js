@@ -19,12 +19,13 @@ import {
   TeamOutlined
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 // Import Chart.js components
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { Pie, Bar } from 'react-chartjs-2';
-
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+dayjs.extend(isBetween);
 // Register ChartJS components
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
@@ -60,7 +61,7 @@ const LeadStatsDrawer = ({
     if (dateRange && dateRange.length === 2) {
       filtered = filtered.filter(lead => {
         const leadDate = lead.CreationDate?.toDate?.() || lead.CreationDate;
-        return moment(leadDate).isBetween(dateRange[0], dateRange[1], 'day', '[]');
+        return dayjs(leadDate).isBetween(dateRange[0], dateRange[1], 'day', '[]');
       });
     }
     
@@ -140,7 +141,7 @@ const LeadStatsDrawer = ({
     filteredLeads.forEach(lead => {
       const date = lead.CreationDate?.toDate?.() || lead.CreationDate;
       if (date) {
-        const monthYear = moment(date).format('MMM YYYY');
+        const monthYear = dayjs(date).format('MMM YYYY');
         
         if (!monthlyData[monthYear]) {
           monthlyData[monthYear] = {
@@ -162,7 +163,7 @@ const LeadStatsDrawer = ({
     
     // Sort months chronologically
     const sortedMonths = Object.keys(monthlyData).sort((a, b) => {
-      return moment(a, 'MMM YYYY').diff(moment(b, 'MMM YYYY'));
+      return dayjs(a, 'MMM YYYY').diff(dayjs(b, 'MMM YYYY'));
     });
     
     // Create chart data

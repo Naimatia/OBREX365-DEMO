@@ -33,7 +33,7 @@ import {
   CloseCircleOutlined,
   ExclamationCircleOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -106,7 +106,7 @@ const SellerInvoiceDetail = ({
   // Check if invoice is overdue
   const isOverdue = () => {
     if (!invoice?.DateLimit) return false;
-    return moment().isAfter(moment(invoice.DateLimit)) && invoice.Status === 'Pending';
+    return dayjs().isAfter(dayjs(invoice.DateLimit)) && invoice.Status === 'Pending';
   };
 
   if (!invoice) return null;
@@ -271,7 +271,7 @@ const SellerInvoiceDetail = ({
               }
             >
               <Space>
-                <Text>{moment(invoice.DateLimit).format('DD MMMM YYYY')}</Text>
+                <Text>{dayjs(invoice.DateLimit).format('DD MMMM YYYY')}</Text>
                 {overdue && <Tag color="red" size="small">OVERDUE</Tag>}
               </Space>
             </Descriptions.Item>
@@ -283,7 +283,7 @@ const SellerInvoiceDetail = ({
                 </span>
               }
             >
-              {moment(invoice.CreationDate).format('DD MMMM YYYY, HH:mm')}
+              {dayjs(invoice.CreationDate).format('DD MMMM YYYY, HH:mm')}
             </Descriptions.Item>
             
             <Descriptions.Item 
@@ -293,7 +293,7 @@ const SellerInvoiceDetail = ({
                 </span>
               }
             >
-              {moment(invoice.LastUpdate).format('DD MMMM YYYY, HH:mm')}
+              {dayjs(invoice.LastUpdate).format('DD MMMM YYYY, HH:mm')}
             </Descriptions.Item>
             
             {invoice.paymentUrl && (
@@ -363,7 +363,7 @@ const SellerInvoiceDetail = ({
                 >
                   <div style={{ marginBottom: '4px' }}>
                     <Text style={{ fontSize: '13px', color: '#8c8c8c' }}>
-                      {moment(note.timestamp?.toDate?.() || note.timestamp).format('DD MMM YYYY, HH:mm')}
+                      {dayjs(note.timestamp?.toDate?.() || note.timestamp).format('DD MMM YYYY, HH:mm')}
                     </Text>
                   </div>
                   <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>

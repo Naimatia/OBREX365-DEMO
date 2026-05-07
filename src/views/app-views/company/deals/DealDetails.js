@@ -9,7 +9,7 @@ import {
   EditOutlined, DeleteOutlined, CheckCircleOutlined, CloseCircleOutlined,
   UserSwitchOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import contactService from 'services/firebase/ContactService';
 import userService from 'services/firebase/UserService';
 import propertyService from 'services/firebase/PropertyService';
@@ -341,16 +341,16 @@ const renderSourceTag = (source) => {
           </div>
           <Descriptions layout="vertical" size="small" column={2}>
             <Descriptions.Item label="Created">
-              {deal.CreationDate ? moment(deal.CreationDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
+              {deal.CreationDate ? dayjs(deal.CreationDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
             </Descriptions.Item>
             <Descriptions.Item label="Last Updated">
-              {deal.LastUpdateDate ? moment(deal.LastUpdateDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
+              {deal.LastUpdateDate ? dayjs(deal.LastUpdateDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
             </Descriptions.Item>
             <Descriptions.Item label="Status Last Changed">
-              {deal.StatusUpdateDate ? moment(deal.StatusUpdateDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
+              {deal.StatusUpdateDate ? dayjs(deal.StatusUpdateDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
             </Descriptions.Item>
             <Descriptions.Item label="Closed Date">
-              {deal.ClosedDate ? moment(deal.ClosedDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
+              {deal.ClosedDate ? dayjs(deal.ClosedDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
             </Descriptions.Item>
           </Descriptions>
         </div>

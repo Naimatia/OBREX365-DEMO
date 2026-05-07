@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import { db, collection, query, where, getDocs, doc, addDoc, deleteDoc, updateDoc, serverTimestamp } from 'configs/FirebaseConfig';
 import { useSelector } from 'react-redux';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import AttendanceForm from './components/AttendanceForm';
 import AttendanceDetail from './components/AttendanceDetail';
 import './attendees.css';
@@ -197,7 +197,7 @@ const AttendancePage = () => {
 
   const handleAttendanceFormSubmit = async (formData) => {
     try {
-      const daysInMonth = moment(formData.month_year, 'YYYY-MM').daysInMonth();
+      const daysInMonth = dayjs(formData.month_year, 'YYYY-MM').daysInMonth();
       const days = isEditing && selectedAttendance?.days
         ? { ...selectedAttendance.days }
         : Array.from({ length: daysInMonth }, (_, i) => i + 1).reduce((acc, day) => ({ ...acc, [day]: '' }), {});

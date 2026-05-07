@@ -36,7 +36,9 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+dayjs.extend(isBetween);
 
 const { Search } = Input;
 const { Option } = Select;
@@ -87,7 +89,7 @@ const SellerInvoiceList = ({
     // Date range filter
     if (dateRange && dateRange.length === 2) {
       filtered = filtered.filter(invoice => {
-        const invoiceDate = moment(invoice.CreationDate);
+        const invoiceDate = dayjs(invoice.CreationDate);
         return invoiceDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
       });
     }
@@ -167,7 +169,7 @@ const SellerInvoiceList = ({
   // Check if invoice is overdue
   const isOverdue = (invoice) => {
     if (!invoice.DateLimit) return false;
-    return moment().isAfter(moment(invoice.DateLimit)) && invoice.Status === 'Pending';
+    return dayjs().isAfter(dayjs(invoice.DateLimit)) && invoice.Status === 'Pending';
   };
 
   // Format currency
@@ -249,7 +251,7 @@ const SellerInvoiceList = ({
                   size="small"
                   style={{ borderRadius: '8px', fontSize: '10px' }}
                 >
-                  {moment(record.CreationDate).format('DD MMM')}
+                  {dayjs(record.CreationDate).format('DD MMM')}
                 </Tag>
               </Space>
             </div>
@@ -345,17 +347,17 @@ const SellerInvoiceList = ({
       dataIndex: 'DateLimit',
       key: 'dueDate',
       width: 120,
-      sorter: (a, b) => moment(a.DateLimit) - moment(b.DateLimit),
+      sorter: (a, b) => dayjs(a.DateLimit) - dayjs(b.DateLimit),
       render: (date, record) => {
         const overdue = isOverdue(record);
         
         return (
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '13px', fontWeight: '500' }}>
-              {moment(date).format('DD MMM')}
+              {dayjs(date).format('DD MMM')}
             </div>
             <div style={{ fontSize: '11px', color: '#8c8c8c' }}>
-              {moment(date).format('YYYY')}
+              {dayjs(date).format('YYYY')}
             </div>
             {overdue && (
               <div style={{ fontSize: '10px', color: '#ff4d4f', marginTop: '2px' }}>

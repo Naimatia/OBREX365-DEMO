@@ -32,7 +32,7 @@ import {
   StarOutlined,
   ShareAltOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -303,7 +303,7 @@ const SellerPropertyDetail = ({
             <div style={{ minWidth: '100px', color: '#8c8c8c' }}>
               <CalendarOutlined /> Created:
             </div>
-            <Text>{moment(property.CreationDate).format('DD MMM YYYY, HH:mm')}</Text>
+            <Text>{dayjs(property.CreationDate).format('DD MMM YYYY, HH:mm')}</Text>
           </div>
 
           {property.LastUpdateDateTime && (
@@ -311,7 +311,7 @@ const SellerPropertyDetail = ({
               <div style={{ minWidth: '100px', color: '#8c8c8c' }}>
                 <CalendarOutlined /> Updated:
               </div>
-              <Text>{moment(property.LastUpdateDateTime).format('DD MMM YYYY, HH:mm')}</Text>
+              <Text>{dayjs(property.LastUpdateDateTime).format('DD MMM YYYY, HH:mm')}</Text>
             </div>
           )}
           
@@ -359,7 +359,7 @@ const SellerPropertyDetail = ({
                   <Text>{note.note}</Text>
                   <br />
                   <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {moment(note.CreationDate).format('DD MMM YYYY, HH:mm')}
+                    {dayjs(note.CreationDate).format('DD MMM YYYY, HH:mm')}
                   </Text>
                 </div>
               )

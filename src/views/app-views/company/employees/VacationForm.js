@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, Form, Input, DatePicker, Button, Alert } from 'antd';
 import { CalendarOutlined } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
 const { TextArea } = Input;
@@ -58,7 +58,7 @@ const VacationForm = ({ visible, onCancel, onSubmit, employee }) => {
     }
     
     const [start, end] = value;
-    const today = moment().startOf('day');
+    const today = dayjs().startOf('day');
     
     if (start.isBefore(today)) {
       return Promise.reject(new Error('Start date cannot be in the past'));
@@ -77,7 +77,7 @@ const VacationForm = ({ visible, onCancel, onSubmit, employee }) => {
 
   // Disable past dates in date picker
   const disabledDate = (current) => {
-    return current && current < moment().startOf('day');
+    return current && current < dayjs().startOf('day');
   };
 
   return (

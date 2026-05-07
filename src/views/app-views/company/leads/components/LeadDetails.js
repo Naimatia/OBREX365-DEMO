@@ -13,7 +13,7 @@ import { useSelector } from 'react-redux';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import UserService from 'services/firebase/UserService';
 import LeadHistoryService from 'services/firebase/LeadHistoryService';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -382,7 +382,7 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
                   <div>
                     <Text strong>{h.createdBy?.name || 'Unknown'}</Text>
                     <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                      {moment(h.createdAt).format('MMM DD, HH:mm')}
+                      {dayjs(h.createdAt).format('MMM DD, HH:mm')}
                     </Text>
                   </div>
 

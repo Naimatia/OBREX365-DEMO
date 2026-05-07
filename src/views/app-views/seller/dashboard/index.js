@@ -46,7 +46,7 @@ import {
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 // Import services
 import LeadsService from 'services/LeadsService';
@@ -54,7 +54,10 @@ import DealsService from 'services/DealsService';
 import ContactsService from 'services/ContactsService';
 import InvoicesService from 'services/InvoicesService';
 import PropertiesService from 'services/PropertiesService';
+import relativeTime from 'dayjs/plugin/relativeTime';   // ← Add this
 
+// Extend dayjs with relativeTime plugin
+dayjs.extend(relativeTime);
 const { Title, Text } = Typography;
 
 /**
@@ -182,15 +185,15 @@ const SellerDashboardPage = () => {
 
   // Get upcoming invoice alerts
   const getUpcomingInvoiceAlerts = () => {
-    const now = moment();
+    const now = dayjs();
     const upcoming = dashboardData.invoices
       .filter(invoice => {
         if (invoice.Status !== 'Pending' || !invoice.DateLimit) return false;
-        const dueDate = moment(invoice.DateLimit);
+        const dueDate = dayjs(invoice.DateLimit);
         const daysUntilDue = dueDate.diff(now, 'days');
         return daysUntilDue >= 0 && daysUntilDue <= 7; // Next 7 days
       })
-      .sort((a, b) => moment(a.DateLimit).diff(moment(b.DateLimit)))
+      .sort((a, b) => dayjs(a.DateLimit).diff(dayjs(b.DateLimit)))
       .slice(0, 5);
 
     return upcoming;
@@ -240,7 +243,7 @@ const SellerDashboardPage = () => {
     });
 
     return activities
-      .sort((a, b) => moment(b.time).diff(moment(a.time)))
+      .sort((a, b) => dayjs(b.time).diff(dayjs(a.time)))
       .slice(0, 8);
   };
 
@@ -313,7 +316,7 @@ const SellerDashboardPage = () => {
                     Welcome back, {userName}! 👋
                   </Title>
                   <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: '16px' }}>
-                    Here's your performance overview for {moment().format('MMMM YYYY')}
+                    Here's your performance overview for {dayjs().format('MMMM YYYY')}
                   </Text>
                 </div>
               </Space>
@@ -352,7 +355,7 @@ const SellerDashboardPage = () => {
                 <div style={{ marginTop: '8px' }}>
                   {upcomingInvoices.map((invoice, index) => (
                     <Tag key={invoice.id} color="orange" style={{ margin: '2px' }}>
-                      {invoice.Title} - {formatCurrency(invoice.amount)} (Due: {moment(invoice.DateLimit).format('MMM DD')})
+                      {invoice.Title} - {formatCurrency(invoice.amount)} (Due: {dayjs(invoice.DateLimit).format('MMM DD')})
                     </Tag>
                   ))}
                 </div>
@@ -588,7 +591,7 @@ const SellerDashboardPage = () => {
                             {activity.description}
                           </Text>
                           <Text type="secondary" style={{ fontSize: '11px' }}>
-                            {moment(activity.time).fromNow()}
+                            {dayjs(activity.time).fromNow()}
                           </Text>
                         </Space>
                       }

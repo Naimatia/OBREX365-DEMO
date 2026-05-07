@@ -14,7 +14,7 @@ import {
   Col,
   Typography
 } from 'antd';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import {
   CalendarOutlined,
   ClockCircleOutlined,
@@ -47,8 +47,8 @@ const MeetingForm = ({
     if (initialValues) {
       form.setFieldsValue({
         ...initialValues,
-        meetingDate: initialValues.DateTime ? moment(initialValues.DateTime) : null,
-        meetingTime: initialValues.DateTime ? moment(initialValues.DateTime) : null,
+        meetingDate: initialValues.DateTime ? dayjs(initialValues.DateTime) : null,
+        meetingTime: initialValues.DateTime ? dayjs(initialValues.DateTime) : null,
         Users: initialValues.Users || [],
       });
       setMeetingType(initialValues.Type || 'onSite');

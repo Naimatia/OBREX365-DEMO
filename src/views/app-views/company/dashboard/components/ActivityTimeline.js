@@ -13,7 +13,7 @@ import {
   ExclamationCircleOutlined,
   CloseCircleOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Text, Title } = Typography;
 
@@ -85,7 +85,7 @@ const formatActivityTime = (timestamp) => {
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
   
-  return moment(date).format('MMM DD, YYYY');
+  return dayjs(date).format('MMM DD, YYYY');
 };
 
 const ActivityItem = ({ activity }) => {
@@ -127,7 +127,7 @@ const ActivityItem = ({ activity }) => {
       
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>
         <div>{user?.name || 'System'}</div>
-        <Tooltip title={timestamp && moment(timestamp.toDate ? timestamp.toDate() : timestamp).format('YYYY-MM-DD HH:mm:ss')}>
+        <Tooltip title={timestamp && dayjs(timestamp.toDate ? timestamp.toDate() : timestamp).format('YYYY-MM-DD HH:mm:ss')}>
           {formatActivityTime(timestamp)}
         </Tooltip>
       </div>

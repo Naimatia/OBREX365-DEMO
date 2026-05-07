@@ -23,8 +23,14 @@ import {
   LinkOutlined,
   ExclamationCircleOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { UserRoles } from 'models/UserModel';   // ← Import for role checking
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+import relativeTime from 'dayjs/plugin/relativeTime';   // ← Add this
+
+// Extend dayjs with relativeTime plugin
+dayjs.extend(relativeTime);
+dayjs.extend(isBetween);
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -94,7 +100,7 @@ const ApplicationTable = ({
     // Date range filter
     let dateMatch = true;
     if (dateRange && dateRange.length === 2) {
-      const applicationDate = moment(application.ApplicantDate);
+      const applicationDate = dayjs(application.ApplicantDate);
       dateMatch = applicationDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
     }
 
@@ -216,10 +222,10 @@ const ApplicationTable = ({
       width: 120,
       render: (date) => (
         <span>
-          {moment(date).format('MMM DD, YYYY')}
+          {dayjs(date).format('MMM DD, YYYY')}
         </span>
       ),
-      sorter: (a, b) => moment(a.ApplicantDate).unix() - moment(b.ApplicantDate).unix(),
+      sorter: (a, b) => dayjs(a.ApplicantDate).unix() - dayjs(b.ApplicantDate).unix(),
     },
     {
       title: 'Last Updated',
@@ -228,10 +234,10 @@ const ApplicationTable = ({
       width: 120,
       render: (date) => (
         <span style={{ fontSize: '12px', color: '#666' }}>
-          {moment(date).fromNow()}
+          {dayjs(date).fromNow()}
         </span>
       ),
-      sorter: (a, b) => moment(a.LastUpdate).unix() - moment(b.LastUpdate).unix(),
+      sorter: (a, b) => dayjs(a.LastUpdate).unix() - dayjs(b.LastUpdate).unix(),
     },
     {
       title: 'CV',
@@ -376,7 +382,7 @@ const ApplicationTable = ({
         size="middle"
         rowClassName={(record) => {
           // Highlight recently updated applications
-          const isRecent = moment().diff(moment(record.LastUpdate), 'hours') < 24;
+          const isRecent = dayjs().diff(dayjs(record.LastUpdate), 'hours') < 24;
           return isRecent ? 'ant-table-row-recent' : '';
         }}
       />

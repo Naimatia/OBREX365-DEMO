@@ -34,7 +34,7 @@ import {
   ShareAltOutlined
 } from '@ant-design/icons';
 import { DealStatus, DealSource } from 'models/DealModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -235,7 +235,7 @@ const SellerDealDetail = ({
             <div style={{ minWidth: '120px', color: '#8c8c8c' }}>
               <CalendarOutlined /> Created:
             </div>
-            <Text>{moment(deal.CreationDate).format('DD MMM YYYY, HH:mm')}</Text>
+            <Text>{dayjs(deal.CreationDate).format('DD MMM YYYY, HH:mm')}</Text>
           </div>
 
           {/* Last Updated */}
@@ -244,7 +244,7 @@ const SellerDealDetail = ({
               <div style={{ minWidth: '120px', color: '#8c8c8c' }}>
                 <CalendarOutlined /> Updated:
               </div>
-              <Text>{moment(deal.LastUpdateDate).format('DD MMM YYYY, HH:mm')}</Text>
+              <Text>{dayjs(deal.LastUpdateDate).format('DD MMM YYYY, HH:mm')}</Text>
             </div>
           )}
 
@@ -321,7 +321,7 @@ const SellerDealDetail = ({
                   <Text>{note.note}</Text>
                   <br />
                   <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {moment(note.CreationDate).format('DD MMM YYYY, HH:mm')}
+                    {dayjs(note.CreationDate).format('DD MMM YYYY, HH:mm')}
                   </Text>
                 </div>
               )

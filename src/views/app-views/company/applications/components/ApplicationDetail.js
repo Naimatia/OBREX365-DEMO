@@ -29,8 +29,11 @@ import {
   EyeOutlined,
   FileSearchOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';   // ← Add this
 
+// Extend dayjs with relativeTime plugin
+dayjs.extend(relativeTime);
 const { Title, Text, Paragraph } = Typography;
 
 // Status color and icon mapping
@@ -84,7 +87,7 @@ const ApplicationDetail = ({
         <div>
           <Text strong>Application Submitted</Text>
           <div style={{ color: '#666', fontSize: '12px' }}>
-            {moment(application.ApplicantDate).format('MMM DD, YYYY [at] HH:mm')}
+            {dayjs(application.ApplicantDate).format('MMM DD, YYYY [at] HH:mm')}
           </div>
         </div>
       )
@@ -161,7 +164,7 @@ const ApplicationDetail = ({
         <div>
           <Text>Last Updated</Text>
           <div style={{ color: '#666', fontSize: '12px' }}>
-            {moment(application.LastUpdate).fromNow()}
+            {dayjs(application.LastUpdate).fromNow()}
           </div>
         </div>
       )
@@ -303,7 +306,7 @@ const ApplicationDetail = ({
           <Descriptions.Item 
             label={<Space><CalendarOutlined /> Application Date</Space>}
           >
-            {moment(application.ApplicantDate).format('MMMM DD, YYYY')}
+            {dayjs(application.ApplicantDate).format('MMMM DD, YYYY')}
           </Descriptions.Item>
           <Descriptions.Item 
             label={<Space><LinkOutlined /> CV/Resume</Space>}

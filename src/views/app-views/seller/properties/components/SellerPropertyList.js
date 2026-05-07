@@ -35,7 +35,9 @@ import {
   UserOutlined,
   EnvironmentOutlined
 } from '@ant-design/icons';
-import moment from 'moment';
+import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+dayjs.extend(isBetween);
 
 const { Search } = Input;
 const { Option } = Select;
@@ -106,7 +108,7 @@ const SellerPropertyList = ({
     if (dateRange && dateRange.length === 2) {
       const [startDate, endDate] = dateRange;
       filtered = filtered.filter(property => {
-        const propertyDate = moment(property.CreationDate);
+        const propertyDate = dayjs(property.CreationDate);
         return propertyDate.isBetween(startDate, endDate, 'day', '[]');
       });
     }
@@ -382,14 +384,14 @@ const SellerPropertyList = ({
       dataIndex: 'CreationDate',
       key: 'created',
       width: 100,
-      sorter: (a, b) => moment(a.CreationDate) - moment(b.CreationDate),
+      sorter: (a, b) => dayjs(a.CreationDate) - dayjs(b.CreationDate),
       render: (date) => (
         <div style={{ fontSize: '12px' }}>
           <CalendarOutlined style={{ color: '#8c8c8c', marginRight: '4px' }} />
-          {moment(date).format('DD MMM')}
+          {dayjs(date).format('DD MMM')}
           <br />
           <span style={{ color: '#8c8c8c' }}>
-            {moment(date).format('YYYY')}
+            {dayjs(date).format('YYYY')}
           </span>
         </div>
       )

@@ -4,7 +4,7 @@ import { UserOutlined, MailOutlined, PhoneOutlined, GlobalOutlined } from '@ant-
 import { LeadStatus, LeadInterestLevel, LeadRedirectionSource } from 'models/LeadModel';
 import { db, collection, getDocs } from 'configs/FirebaseConfig';
 import countries from 'constants/countries';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { UserRoles } from 'models/UserModel';
 
 
@@ -50,8 +50,8 @@ const LeadForm = ({
 
       if (editingLead) {
         const creationDate = editingLead.CreationDate
-          ? moment(editingLead.CreationDate.toDate?.() || editingLead.CreationDate)
-          : moment();
+          ? dayjs(editingLead.CreationDate.toDate?.() || editingLead.CreationDate)
+          : dayjs();
 
         form.setFieldsValue({
           ...editingLead,
@@ -59,7 +59,7 @@ const LeadForm = ({
         });
       } else {
         form.setFieldsValue({
-          CreationDate: moment()
+          CreationDate: dayjs()
         });
       }
 

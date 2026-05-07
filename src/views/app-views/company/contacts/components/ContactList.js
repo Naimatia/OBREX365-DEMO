@@ -26,8 +26,10 @@ import {
   ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { ContactStatus } from 'models/ContactModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import { useSelector } from 'react-redux';
+import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
+dayjs.extend(isBetween);
 
 const { Search } = Input;
 const { Option } = Select;
@@ -163,12 +165,12 @@ const ContactList = ({
         if (!a.CreationDate || !b.CreationDate) return 0;
         return a.CreationDate.getTime() - b.CreationDate.getTime();
       },
-      render: (date) => date ? moment(date).format('YYYY-MM-DD') : '-',
+      render: (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-',
       // Filter contacts by date range
       filteredValue: dateRange && dateFilter === 'CreationDate' ? ['filtered'] : null,
       onFilter: (_, record) => {
         if (!dateRange || !record.CreationDate) return false;
-        const recordDate = moment(record.CreationDate);
+        const recordDate = dayjs(record.CreationDate);
         return recordDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
       },
     },
@@ -180,12 +182,12 @@ const ContactList = ({
         if (!a.AffectingDate || !b.AffectingDate) return 0;
         return a.AffectingDate.getTime() - b.AffectingDate.getTime();
       },
-      render: (date) => date ? moment(date).format('YYYY-MM-DD') : '-',
+      render: (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-',
       // Filter contacts by date range
       filteredValue: dateRange && dateFilter === 'AffectingDate' ? ['filtered'] : null,
       onFilter: (_, record) => {
         if (!dateRange || !record.AffectingDate) return false;
-        const recordDate = moment(record.AffectingDate);
+        const recordDate = dayjs(record.AffectingDate);
         return recordDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
       },
     },

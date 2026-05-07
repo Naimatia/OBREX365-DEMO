@@ -17,7 +17,7 @@ import contactService from 'services/firebase/ContactService';
 import userService from 'services/firebase/UserService';
 import propertyService from 'services/firebase/PropertyService';
 import { DealStatus, DealSource, DealSourceEnum } from 'models/DealModel';
-import moment from 'moment';
+import dayjs from 'dayjs';
 import DealDetails from './DealDetails';
 import DealStatsDrawer from './DealStatsDrawer';
 import DealForm from './DealForm';
@@ -364,7 +364,7 @@ const DealsPage = () => {
       title: 'Created',
       dataIndex: 'CreationDate',
       key: 'created',
-      render: (date) => date ? moment(date.toDate()).format('MMM DD, YYYY') : 'N/A',
+      render: (date) => date ? dayjs(date.toDate()).format('MMM DD, YYYY') : 'N/A',
       sorter: (a, b) => {
         if (!a.CreationDate || !b.CreationDate) return 0;
         return a.CreationDate.toDate() - b.CreationDate.toDate();

@@ -14,7 +14,7 @@ import contactService from 'services/firebase/ContactService';
 import userService from 'services/firebase/UserService';
 import propertyService from 'services/firebase/PropertyService';
 import leadService from 'services/firebase/LeadService';
-import moment from 'moment';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -35,7 +35,7 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
     !form.getFieldValue('ClosedDate')
   ) {
     form.setFieldsValue({
-      ClosedDate: moment(),
+      ClosedDate: dayjs(),
     });
   }
 
@@ -54,7 +54,7 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
 
       // If we're editing, set the form values
       if (isEditing && initialValues) {
-        const today = moment(); // today's date
+        const today = dayjs(); // today's date
         // Need to format dates for the form
         const formattedValues = {
           ...initialValues,
@@ -62,23 +62,23 @@ const DealForm = ({ visible, onCancel, onSubmit, isEditing, initialValues, compa
     lead_id: initialValues.lead_id || null,
     contact_id: initialValues.contact_id || null,
          CreationDate: initialValues.CreationDate && typeof initialValues.CreationDate.toDate === 'function'
-          ? moment(initialValues.CreationDate.toDate())
+          ? dayjs(initialValues.CreationDate.toDate())
           : null,
 
         LastUpdateDate: initialValues.LastUpdateDate && typeof initialValues.LastUpdateDate.toDate === 'function'
-          ? moment(initialValues.LastUpdateDate.toDate())
+          ? dayjs(initialValues.LastUpdateDate.toDate())
           : null,
 
        // ClosedDate: use existing value, or default to today if status is Gain/Loss
         ClosedDate: initialValues.ClosedDate?.toDate
-          ? moment(initialValues.ClosedDate.toDate())
+          ? dayjs(initialValues.ClosedDate.toDate())
           : (initialValues.Status === DealStatus.GAIN || initialValues.Status === DealStatus.LOSS)
             ? today
             : null,
 
         // If you have StatusUpdateDate in form (you do in formattedValues but not in JSX)
         StatusUpdateDate: initialValues.StatusUpdateDate && typeof initialValues.StatusUpdateDate.toDate === 'function'
-          ? moment(initialValues.StatusUpdateDate.toDate())
+          ? dayjs(initialValues.StatusUpdateDate.toDate())
           : null,
       };
 
