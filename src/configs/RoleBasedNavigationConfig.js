@@ -110,6 +110,88 @@ const hrNavigation = [
         submenu: []
       }
     ]
+  },
+    // CRM Tools
+  {
+    key: 'crm',
+    title: 'CRM',
+    icon: AppstoreOutlined,
+    breadcrumb: true,
+    submenu: [
+      {
+        key: 'contacts',
+        path: `${APP_PREFIX_PATH}/contacts`,
+        title: 'Contacts',
+        icon: UserOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'leads',
+        path: `${APP_PREFIX_PATH}/leads`,
+        title: 'Leads',
+        icon: TeamOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'deals',
+        path: `${APP_PREFIX_PATH}/deals`,
+        title: 'Deals',
+        icon: FundOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'properties',
+        path: `${APP_PREFIX_PATH}/properties`,
+        title: 'Properties',
+        icon: HomeOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+    ]
+  },
+   // Tools
+  {
+    key: 'tools',
+    title: 'Tools',
+    icon: SettingOutlined,
+    breadcrumb: true,
+    submenu: [
+      {
+        key: 'property-finance',
+        path: `${APP_PREFIX_PATH}/property-finance`,
+        title: 'Property Finance',
+        icon: DollarOutlined,           
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'property-scanner',
+        path: `${APP_PREFIX_PATH}/property-scanner`,
+        title: 'Property Scanner',
+        icon: EnvironmentOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'todo',
+        path: `${APP_PREFIX_PATH}/todo`,
+        title: 'To Do',
+        icon: CheckSquareOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'history',
+        path: `${APP_PREFIX_PATH}/history`,
+        title: 'History',
+        icon: HistoryOutlined,
+        breadcrumb: true,
+        submenu: []
+      }
+    ]
   }
 ];
 
