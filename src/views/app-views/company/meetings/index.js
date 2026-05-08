@@ -276,6 +276,7 @@ const MeetingsPage = () => {
         ) : (
           <MeetingCalendar
             meetings={meetings}
+            companyUsers={companyUsers}
             onSelectMeeting={handleSelectMeeting}
             onAddMeeting={hasEditPermission() ? handleAddMeeting : undefined}
           />

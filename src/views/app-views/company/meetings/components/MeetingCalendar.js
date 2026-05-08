@@ -1,32 +1,75 @@
-import React from 'react';
-import { Calendar, Badge, Tooltip, Button, Row, Col, Card, Typography, Tag, Select } from 'antd';
+import React, { useState, useMemo } from 'react';
+import { 
+  Calendar, 
+  Badge, 
+  Tooltip, 
+  Button, 
+  Row, 
+  Col, 
+  Card, 
+  Typography, 
+  Tag, 
+  Select,
+  Space
+} from 'antd';
 import { 
   PlusOutlined, 
   CheckCircleOutlined,
   CloseCircleOutlined,
   ClockCircleOutlined,
   EnvironmentOutlined,
-  GlobalOutlined
+  GlobalOutlined,
+  FilterOutlined,
+  ReloadOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
-dayjs.extend(isBetween);
-const { Text, Title } = Typography;
+import isBetween from 'dayjs/plugin/isBetween';
 
-/**
- * Calendar component that displays all meetings
- */
-const MeetingCalendar = ({ meetings, onSelectMeeting, onAddMeeting }) => {
-  // Function to get list of meetings for a specific date
+dayjs.extend(isBetween);
+
+const { Text, Title } = Typography;
+const { Option } = Select;
+
+const MeetingCalendar = ({ 
+  meetings, 
+  onSelectMeeting, 
+  onAddMeeting,
+  companyUsers = []   // Pass all users for seller filter
+}) => {
+
+  const [selectedSeller, setSelectedSeller] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(dayjs());
+
+  // Filter meetings based on seller and month
+  const filteredMeetings = useMemo(() => {
+    let result = [...meetings];
+
+    // Filter by Seller (Creator)
+    if (selectedSeller) {
+      result = result.filter(meeting => meeting.creator_id === selectedSeller);
+    }
+
+    // Filter by Month
+    if (selectedMonth) {
+      result = result.filter(meeting => {
+        const meetingDate = dayjs(meeting.DateTime);
+        return meetingDate.month() === selectedMonth.month() && 
+               meetingDate.year() === selectedMonth.year();
+      });
+    }
+
+    return result;
+  }, [meetings, selectedSeller, selectedMonth]);
+
+  // Get list of meetings for a specific date (using filtered data)
   const getListData = (value) => {
     const dateStr = value.format('YYYY-MM-DD');
-    return meetings.filter(meeting => {
+    return filteredMeetings.filter(meeting => {
       const meetingDate = dayjs(meeting.DateTime).format('YYYY-MM-DD');
       return meetingDate === dateStr;
     });
   };
 
-  // Cell renderer for the calendar
   const dateCellRender = (value) => {
     const listData = getListData(value);
     
@@ -47,23 +90,15 @@ const MeetingCalendar = ({ meetings, onSelectMeeting, onAddMeeting }) => {
             >
               <div 
                 onClick={() => onSelectMeeting(item)} 
-                style={{ 
-                  cursor: 'pointer',
-                  ...getMeetingStyles(item)
-                }}
+                style={{ cursor: 'pointer', ...getMeetingStyles(item) }}
               >
                 <Badge 
                   color={getMeetingStyles(item).badgeColor}
                   text={
-                    <span style={{ fontSize: '12px', fontWeight: item.Type?.toLowerCase() === 'online' ? '500' : 'normal' }}>
+                    <span style={{ fontSize: '12px' }}>
                       {dayjs(item.DateTime).format('HH:mm')} {item.Title}
                       {item.Type?.toLowerCase() === 'online' && 
-                        <Tag 
-                          color="purple" 
-                          style={{ marginLeft: '4px', fontSize: '10px', lineHeight: '14px', padding: '0 4px' }}
-                        >
-                          Online
-                        </Tag>
+                        <Tag color="purple" style={{ marginLeft: '4px', fontSize: '10px' }}>Online</Tag>
                       }
                     </span>
                   }
@@ -76,189 +111,146 @@ const MeetingCalendar = ({ meetings, onSelectMeeting, onAddMeeting }) => {
     );
   };
 
-  // Monthly cell renderer
   const monthCellRender = (value) => {
-    const monthStart = value.clone().startOf('month');
-    const monthEnd = value.clone().endOf('month');
-    
-    // Count meetings for the month
-    const monthMeetings = meetings.filter(meeting => {
+    const monthMeetings = filteredMeetings.filter(meeting => {
       const meetingDate = dayjs(meeting.DateTime);
-      return meetingDate.isBetween(monthStart, monthEnd, null, '[]');
+      return meetingDate.isBetween(
+        value.clone().startOf('month'), 
+        value.clone().endOf('month'), 
+        null, 
+        '[]'
+      );
     });
-    
+
     if (monthMeetings.length === 0) return null;
     
-    return (
-      <div className="month-meetings">
-        <Badge count={monthMeetings.length} style={{ backgroundColor: '#1890ff' }} />
-      </div>
-    );
+    return <Badge count={monthMeetings.length} style={{ backgroundColor: '#1890ff' }} />;
   };
 
-  // Helper function to get badge status and color based on meeting status and type
-  /**
-   * Get meeting styles based on status and type
-   * @param {Object} meeting - The meeting object
-   * @returns {Object} - Style object with badgeStatus and CSS styles
-   */
+  // Get all sellers for filter
+  const sellers = companyUsers.filter(user => 
+    user.Role?.toLowerCase() === 'seller' || 
+    user.role?.toLowerCase() === 'seller'
+  );
+
+  // Reset filters
+  const resetFilters = () => {
+    setSelectedSeller(null);
+    setSelectedMonth(dayjs());
+  };
+
   const getMeetingStyles = (meeting) => {
+    // ... (Keep your existing getMeetingStyles function unchanged)
     const status = meeting.Status?.toLowerCase() || 'pending';
     const type = meeting.Type?.toLowerCase() || 'onsite';
     
-    // Base style object
     const styles = {
-      badgeStatus: 'default', // Valid values: success, error, default, processing, warning
-      badgeColor: '#d9d9d9', // Custom color for more variety
+      badgeColor: '#d9d9d9',
       backgroundColor: 'transparent',
-      borderLeft: '3px solid #d9d9d9',
+      borderLeft: '4px solid #d9d9d9',
       padding: '2px 4px',
       borderRadius: '3px',
       margin: '2px 0'
     };
-    
-    // Set badge color and styles based on meeting status and type for more visual distinction
-    // First, set base colors by status
+
     switch (status) {
-      case 'completed':
-        styles.badgeColor = '#52c41a'; // Green
-        styles.backgroundColor = 'rgba(82, 196, 26, 0.15)';
-        styles.borderLeft = '4px solid #52c41a';
-        break;
-      case 'cancelled':
-        styles.badgeColor = '#f5222d'; // Red
-        styles.backgroundColor = 'rgba(245, 34, 45, 0.15)';
-        styles.borderLeft = '4px solid #f5222d';
-        break;
-      case 'pending':
-        styles.badgeColor = '#1890ff'; // Blue
-        styles.backgroundColor = 'rgba(24, 144, 255, 0.15)';
-        styles.borderLeft = '4px solid #1890ff';
-        break;
-      default:
-        styles.badgeColor = '#d9d9d9'; // Grey
+      case 'completed': styles.badgeColor = '#52c41a'; styles.borderLeft = '4px solid #52c41a'; break;
+      case 'cancelled': styles.badgeColor = '#f5222d'; styles.borderLeft = '4px solid #f5222d'; break;
+      case 'pending':   styles.badgeColor = '#1890ff'; styles.borderLeft = '4px solid #1890ff'; break;
     }
-    
-    // Add distinct styling based on meeting type
+
     if (type === 'online') {
-      // Online meetings get purple accents
       styles.borderRight = '4px solid #722ed1';
-      styles.boxShadow = '0 1px 2px rgba(114, 46, 209, 0.2)';
-      // Add slight gradient effect
-      styles.backgroundImage = 'linear-gradient(to right, ' + styles.backgroundColor + ', rgba(114, 46, 209, 0.05))';
-      styles.backgroundColor = 'transparent'; // Clear base color since we're using gradient
     } else {
-      // On-site meetings get orange/amber accents
       styles.borderRight = '4px solid #fa8c16';
-      styles.boxShadow = '0 1px 2px rgba(250, 140, 22, 0.2)';
-      // Add slight gradient for consistency
-      styles.backgroundImage = 'linear-gradient(to right, ' + styles.backgroundColor + ', rgba(250, 140, 22, 0.05))';
-      styles.backgroundColor = 'transparent'; // Clear base color
     }
-    
+
     return styles;
   };
 
-  // Calendar header with Add Meeting button
-  const calendarHeader = ({ value, type, onChange, onTypeChange }) => {
-    const start = 0;
-    const end = 12;
-    const monthOptions = [];
-
-    const months = dayjs.monthsShort();
-    for (let i = start; i < end; i++) {
-      monthOptions.push(
-        <Select.Option key={i} value={i} className="month-item">
-          {months[i]}
-        </Select.Option>,
-      );
-    }
-
+  // Calendar Header with Filters
+  const calendarHeader = ({ value, onChange }) => {
     return (
-      <Row justify="space-between" align="middle" style={{ padding: '0 16px', marginBottom: '16px' }}>
-        <Col>
-          <Title level={4} style={{ margin: 0 }}>
-            {value.format('MMMM YYYY')}
-          </Title>
-        </Col>
-        <Col>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={onAddMeeting}
-          >
-            Add Meeting
-          </Button>
-        </Col>
-      </Row>
-    );
-  };
+      <div style={{ padding: '0 16px', marginBottom: '16px' }}>
+        <Row justify="space-between" align="middle">
+          <Col>
+            <Title level={4} style={{ margin: 0 }}>
+              {value.format('MMMM YYYY')}
+            </Title>
+          </Col>
 
-  // Summary card showing meetings by status
-  const renderSummaryCard = () => {
-    const pendingMeetings = meetings.filter(m => m.Status === 'Pending').length;
-    const completedMeetings = meetings.filter(m => m.Status === 'Completed').length;
-    const cancelledMeetings = meetings.filter(m => m.Status === 'Cancelled').length;
-    const onlineMeetings = meetings.filter(m => m.Type === 'online').length;
-    const onSiteMeetings = meetings.filter(m => m.Type === 'onSite').length;
+          <Col>
+            <Space>
+              {/* Seller Filter */}
+              <Select
+                style={{ width: 220 }}
+                placeholder="Filter by Seller"
+                allowClear
+                value={selectedSeller}
+                onChange={setSelectedSeller}
+              >
+                {sellers.map(seller => (
+                  <Option key={seller.id} value={seller.id}>
+                    {seller.name} {seller.email ? `(${seller.email})` : ''}
+                  </Option>
+                ))}
+              </Select>
 
-    return (
-      <Card className="mb-4">
-        <Title level={5}>Meetings Summary</Title>
-        <Row gutter={[16, 16]}>
-          <Col xs={12} sm={8} md={4}>
-            <div className="text-center">
-              <div><ClockCircleOutlined style={{ fontSize: '24px', color: '#1890ff' }} /></div>
-              <div><Text strong>{pendingMeetings}</Text></div>
-              <div><Text type="secondary">Pending</Text></div>
-            </div>
-          </Col>
-          <Col xs={12} sm={8} md={4}>
-            <div className="text-center">
-              <div><CheckCircleOutlined style={{ fontSize: '24px', color: '#52c41a' }} /></div>
-              <div><Text strong>{completedMeetings}</Text></div>
-              <div><Text type="secondary">Completed</Text></div>
-            </div>
-          </Col>
-          <Col xs={12} sm={8} md={4}>
-            <div className="text-center">
-              <div><CloseCircleOutlined style={{ fontSize: '24px', color: '#f5222d' }} /></div>
-              <div><Text strong>{cancelledMeetings}</Text></div>
-              <div><Text type="secondary">Cancelled</Text></div>
-            </div>
-          </Col>
-          <Col xs={12} sm={12} md={6}>
-            <div className="text-center">
-              <div><GlobalOutlined style={{ fontSize: '24px', color: '#722ed1' }} /></div>
-              <div><Text strong>{onlineMeetings}</Text></div>
-              <div><Text type="secondary">Online</Text></div>
-            </div>
-          </Col>
-          <Col xs={12} sm={12} md={6}>
-            <div className="text-center">
-              <div><EnvironmentOutlined style={{ fontSize: '24px', color: '#fa8c16' }} /></div>
-              <div><Text strong>{onSiteMeetings}</Text></div>
-              <div><Text type="secondary">On-Site</Text></div>
-            </div>
+              {/* Month Filter */}
+              <Select
+                style={{ width: 140 }}
+                value={selectedMonth.format('YYYY-MM')}
+                onChange={(val) => {
+                  const newMonth = dayjs(val);
+                  setSelectedMonth(newMonth);
+                  onChange(newMonth); // Sync with calendar
+                }}
+              >
+                {Array.from({ length: 12 }, (_, i) => {
+                  const month = dayjs().year(dayjs().year()).month(i);
+                  return (
+                    <Option key={i} value={month.format('YYYY-MM')}>
+                      {month.format('MMMM YYYY')}
+                    </Option>
+                  );
+                })}
+              </Select>
+
+              <Button 
+                icon={<ReloadOutlined />} 
+                onClick={resetFilters}
+                title="Reset Filters"
+              >
+                Reset
+              </Button>
+
+           
+            </Space>
           </Col>
         </Row>
-      </Card>
+      </div>
     );
   };
 
   return (
     <div className="calendar-container">
-      {renderSummaryCard()}
-      
+      <Card className="mb-4">
+        <Title level={5}>
+          <FilterOutlined /> Filtered Meetings ({filteredMeetings.length})
+        </Title>
+      </Card>
+
       <Card bordered={false} bodyStyle={{ padding: 0 }}>
         <Calendar 
           dateCellRender={dateCellRender} 
           monthCellRender={monthCellRender}
           headerRender={calendarHeader}
           mode="month"
+          value={selectedMonth}
+          onChange={setSelectedMonth}
         />
       </Card>
-      
+
       <style>
         {`
           .meeting-events-list li {
@@ -268,13 +260,6 @@ const MeetingCalendar = ({ meetings, onSelectMeeting, onAddMeeting }) => {
             background-color: rgba(24, 144, 255, 0.1);
             border-radius: 4px;
             padding-left: 2px;
-          }
-          .calendar-container {
-            margin-bottom: 24px;
-          }
-          .ant-picker-calendar-date-content {
-            height: 80px;
-            overflow-y: auto;
           }
         `}
       </style>

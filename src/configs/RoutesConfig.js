@@ -113,6 +113,7 @@ export const protectedRoutes = [
         component: React.lazy(() => import('views/app-views/company/meetings')),
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
     },
+
     {
         key: 'applications',
         path: `${APP_PREFIX_PATH}/applications`,
@@ -173,6 +174,22 @@ export const protectedRoutes = [
         UserRoles.READY_TO_MOVE_SALES
     ]
 },
+
+        {
+        key: 'seller-meetings',
+        path: `${APP_PREFIX_PATH}/seller/meetings`,
+        component: React.lazy(() => import('views/app-views/seller/meetings')),
+     allowedRoles: [
+        UserRoles.SUPER_ADMIN,
+        UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES
+    ]
+    },
 {
     key: 'seller-todo',
     path: `${APP_PREFIX_PATH}/seller/todo`,

@@ -425,6 +425,23 @@ const sellerNavigation = [
     submenu: []
   },
 
+    // Company Management
+  {
+    key: 'company',
+    title: 'Company',
+    icon: ApartmentOutlined,
+    breadcrumb: true,
+    submenu: [
+      {
+        key: 'seller-meetings',
+        path: `${APP_PREFIX_PATH}/seller/meetings`,
+        title: 'Meetings',
+        icon: FileTextOutlined,
+        breadcrumb: true,
+        submenu: []
+      }
+    ]
+  },
   // CRM Tools for Sellers
   {
     key: 'seller.crm',
