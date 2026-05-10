@@ -133,7 +133,7 @@ const SearchForm = ({ onSearch, loading }) => {
           bedrooms:      [],
           bathrooms:     [],
           amenities:     [],
-          maxPages:      3,
+          maxPages:      1,
         }}
       >
         {/* ── Row 1 – Core filters ── */}

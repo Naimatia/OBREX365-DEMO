@@ -537,7 +537,7 @@ const PropertyFinancePage = () => {
                     Annual Interest Rate —{' '}
                     <Text strong style={{ color: '#0ea5e9' }}>{interestRate}%</Text>
                   </Text>
-                  <Slider min={1} max={12} step={0.1} value={interestRate} onChange={setInterestRate} />
+                  <Slider min={0} max={12} step={0.1} value={interestRate} onChange={setInterestRate} />
                 </div>
 
                 {/* Loan term */}
@@ -546,7 +546,7 @@ const PropertyFinancePage = () => {
                     Loan Term —{' '}
                     <Text strong style={{ color: '#10b981' }}>{loanTerm} years</Text>
                   </Text>
-                  <Slider min={5} max={30} step={1} value={loanTerm} onChange={setLoanTerm} />
+                  <Slider min={0} max={30} step={1} value={loanTerm} onChange={setLoanTerm} />
                 </div>
 
                 <Divider />

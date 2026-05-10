@@ -147,7 +147,7 @@ const PropertyScannerPage = () => {
 
       const isRent = values.listingType === 'rent';
       const endpoint = `https://${RAPIDAPI_HOST}/${isRent ? 'search-rent' : 'search-buy'}`;
-      const maxPages = values.maxPages || 3;
+      const maxPages = values.maxPages || 1;
 
       const baseParams = {
         sort: 'newest',
