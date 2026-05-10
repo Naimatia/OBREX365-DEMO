@@ -491,6 +491,116 @@ const sellerNavigation = [
     icon: SettingOutlined,
     breadcrumb: true,
     submenu: [
+         {
+        key: 'property-finance',
+        path: `${APP_PREFIX_PATH}/property-finance`,
+        title: 'Property Finance',
+        icon: DollarOutlined,           
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'seller.property-scanner',
+        path: `${APP_PREFIX_PATH}/property-scanner`,
+        title: 'Property Scanner',
+        icon: EnvironmentOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'seller.todo',
+        path: `${APP_PREFIX_PATH}/seller/todo`,
+        title: 'To Do',
+        icon: CheckSquareOutlined,
+        breadcrumb: true,
+        submenu: []
+      }
+    ]
+  },
+];
+
+/**
+ * Navigation configuration for Seller & Sales Team roles
+ */
+const MarketingNavigation = [
+  // Seller Dashboard
+  {
+    key: 'marketing-dashboard',
+    path: `${APP_PREFIX_PATH}/marketing/dashboard`,
+    title: 'Dashboard',
+    icon: DashboardOutlined,
+    breadcrumb: false,
+    submenu: []
+  },
+
+
+    // Company Management
+  {
+    key: 'company',
+    title: 'Company',
+    icon: ApartmentOutlined,
+    breadcrumb: true,
+    submenu: [
+      {
+        key: 'seller-meetings',
+        path: `${APP_PREFIX_PATH}/seller/meetings`,
+        title: 'Meetings',
+        icon: FileTextOutlined,
+        breadcrumb: true,
+        submenu: []
+      }
+    ]
+  },
+
+    {
+    key: 'social-media',
+    title: 'Social Media',
+    icon: GlobalOutlined, // import it
+    breadcrumb: true,
+    submenu: [
+      {
+        key: 'facebook',
+        path: `${APP_PREFIX_PATH}/social/facebook`,
+        title: 'Facebook',
+        icon: FacebookOutlined, // import
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'instagram',
+        path: `${APP_PREFIX_PATH}/social/instagram`,
+        title: 'instagram',
+        icon: InstagramOutlined, // import
+        breadcrumb: true,
+        submenu: []
+      },
+      {
+        key: 'scheduler',
+        path: `${APP_PREFIX_PATH}/social/Post-Scheduler`,
+        title: 'Post Scheduler',
+        icon: ClockCircleOutlined,
+        breadcrumb: true,
+        submenu: []
+      }
+    ]
+  },
+
+
+  // Tools for Sellers
+  {
+    key: 'seller.tools',
+    title: 'Tools',
+    icon: SettingOutlined,
+    breadcrumb: true,
+    submenu: [
+         {
+        key: 'property-finance',
+        path: `${APP_PREFIX_PATH}/property-finance`,
+        title: 'Property Finance',
+        icon: DollarOutlined,           
+        breadcrumb: true,
+        submenu: []
+      },
       {
         key: 'seller.property-scanner',
         path: `${APP_PREFIX_PATH}/property-scanner`,
@@ -518,21 +628,29 @@ const sellerNavigation = [
  */
 export const getNavigation = (role) => {
   // HR sees ONLY HR Management section
-  if (role === UserRoles.HR) {
+  if (
+    role === UserRoles.HR ||
+    role === UserRoles.HUMAN_RESOURCES
+  ) {
     return hrNavigation;
   }
 
-  // SUPER_ADMIN sees everything (CEO + Seller navigation)
+  // SUPER_ADMIN sees everything
   if (role === UserRoles.SUPER_ADMIN) {
-    return [...ceoNavigation, ...sellerNavigation];
+    return [...ceoNavigation, ...sellerNavigation, ...MarketingNavigation];
   }
 
-  // CEO sees full company + HR + CRM + Tools
+  // CEO full access
   if (role === UserRoles.CEO) {
     return ceoNavigation;
   }
 
-  // All Sales & Seller Roles
+  // Marketing Manager access
+  if (role === UserRoles.MARKETING_MANAGER) {
+    return MarketingNavigation;
+  }
+
+  // Sales Roles
   const salesRoles = [
     UserRoles.SELLER,
     UserRoles.SALES_EXECUTIVE,
@@ -547,7 +665,21 @@ export const getNavigation = (role) => {
     return sellerNavigation;
   }
 
-  // Default fallback (for any other roles)
+  // Other staff roles
+  const companyRoles = [
+    UserRoles.COORDINATOR,
+    UserRoles.SECRETARY,
+    UserRoles.FRONT_DESK_OFFICER,
+    UserRoles.OFFICE_BOY,
+    UserRoles.ACCOUNTANT,
+    UserRoles.PUBLIC_RELATIONS_OFFICER
+  ];
+
+  if (companyRoles.includes(role)) {
+    return hrNavigation;
+  }
+
+  // Default fallback
   return sellerNavigation;
 };
 

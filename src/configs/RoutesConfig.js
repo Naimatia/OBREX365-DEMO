@@ -2,6 +2,7 @@
 import React from 'react'
 import { AUTH_PREFIX_PATH, APP_PREFIX_PATH } from 'configs/AppConfig'
 import { UserRoles } from 'models/UserModel'
+import { use } from 'react'
 
 // Public routes accessible without authentication
 export const publicRoutes = [
@@ -51,7 +52,15 @@ export const protectedRoutes = [
         key: 'property-scanner',
         path: `${APP_PREFIX_PATH}/property-scanner`,
         component: React.lazy(() => import('views/app-views/company/property-scanner')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR, UserRoles.SELLER]
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR, UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES,
+        UserRoles.MARKETING_MANAGER
+        ]
     },
     {
         key: 'todo',
@@ -137,25 +146,34 @@ export const protectedRoutes = [
         key: 'facebook',
         path: `${APP_PREFIX_PATH}/social/facebook`,
         component: React.lazy(() => import('views/app-views/social/facebook')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO]
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.MARKETING_MANAGER]
     },
      {
         key: 'instagram',
         path: `${APP_PREFIX_PATH}/social/instagram`,
         component: React.lazy(() => import('views/app-views/social/instagram')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO]
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.MARKETING_MANAGER]
     },
     {
         key: 'scheduler',
         path: `${APP_PREFIX_PATH}/social/Post-Scheduler`,
         component: React.lazy(() => import('views/app-views/social/Post-Scheduler')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO]
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.MARKETING_MANAGER]
     },
     {
         key: 'property-finance',
         path: `${APP_PREFIX_PATH}/property-finance`,
         component: React.lazy(() => import('views/app-views/company/property-finance')),
-        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO]
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO,
+        UserRoles.SELLER,
+        UserRoles.SALES_EXECUTIVE,
+        UserRoles.AGENT,
+        UserRoles.TEAM_LEADER,
+        UserRoles.SALES_MANAGER,
+        UserRoles.OFF_PLAN_SALES,
+        UserRoles.READY_TO_MOVE_SALES,
+        UserRoles.MARKETING_MANAGER
+        ]
     },
     
    // Seller Role Routes
@@ -187,7 +205,8 @@ export const protectedRoutes = [
         UserRoles.TEAM_LEADER,
         UserRoles.SALES_MANAGER,
         UserRoles.OFF_PLAN_SALES,
-        UserRoles.READY_TO_MOVE_SALES
+        UserRoles.READY_TO_MOVE_SALES,
+        UserRoles.MARKETING_MANAGER
     ]
     },
 {
@@ -202,7 +221,8 @@ export const protectedRoutes = [
         UserRoles.TEAM_LEADER,
         UserRoles.SALES_MANAGER,
         UserRoles.OFF_PLAN_SALES,
-        UserRoles.READY_TO_MOVE_SALES
+        UserRoles.READY_TO_MOVE_SALES,
+        UserRoles.MARKETING_MANAGER
     ]
 },
 {
@@ -279,6 +299,12 @@ export const protectedRoutes = [
         UserRoles.OFF_PLAN_SALES,
         UserRoles.READY_TO_MOVE_SALES
     ]
-}
+},
+{
+  key: 'marketing-dashboard',
+  path: `${APP_PREFIX_PATH}/marketing/dashboard`,
+  component: React.lazy(() => import('views/app-views/marketing/dashboard')),
+  allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.MARKETING_MANAGER]
+},
 ]
    
