@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Card, Row, Col, Button, Modal, Statistic, Typography, Space, 
-  Input, Select, Tabs, Badge, message, Avatar 
+import {
+  Card, Row, Col, Button, Modal, Statistic, Typography, Space,
+  Input, Select, Tabs, Badge, message, Avatar
 } from 'antd';
-import { 
-  PlusOutlined, SearchOutlined, FilterOutlined, 
-  UserOutlined, TeamOutlined 
+import {
+  PlusOutlined, SearchOutlined, FilterOutlined,
+  UserOutlined, TeamOutlined, RobotOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
+
 import KanbanBoard from '../../seller/todo/components/KanbanBoard';
 import TodoForm from '../../seller/todo/components/TodoForm';
+import AIBulkTaskModal from '../../seller/todo/components/AIBulkTaskModal'; // ← Import the modal we created
 import TodoService from 'services/TodoService';
 
 const { Title, Text } = Typography;
@@ -25,6 +27,9 @@ const ToDoPage = () => {
   const [searchText, setSearchText] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('all');
   const [activeTab, setActiveTab] = useState('kanban');
+
+  // AI Bulk Modal States
+  const [isAIBulkModalVisible, setIsAIBulkModalVisible] = useState(false);
 
   const user = useSelector(state => state.auth.user);
 
@@ -58,14 +63,18 @@ const ToDoPage = () => {
   }, [fetchTodos, fetchSellers]);
 
   // Filtered Todos
-  const filteredTodos = todos
-    .filter(todo => {
-      const matchesSearch = todo.ToDo?.toLowerCase().includes(searchText.toLowerCase()) ||
-                           todo.Description?.toLowerCase().includes(searchText.toLowerCase());
-      const matchesAssignee = filterAssignee === 'all' || 
-                             (todo.assignee || todo.AssignedTo) === filterAssignee;
-      return matchesSearch && matchesAssignee;
-    });
+  const filteredTodos = todos.filter(todo => {
+    const title = todo.ToDo || todo.Title || todo.title || '';
+    const desc = todo.Description || '';
+
+    const matchesSearch = title.toLowerCase().includes(searchText.toLowerCase()) ||
+                         desc.toLowerCase().includes(searchText.toLowerCase());
+
+    const assignee = todo.assignee || todo.AssignedTo;
+    const matchesAssignee = filterAssignee === 'all' || assignee === filterAssignee;
+
+    return matchesSearch && matchesAssignee;
+  });
 
   const handleFormSuccess = () => {
     fetchTodos();
@@ -86,14 +95,28 @@ const ToDoPage = () => {
             <Text type="secondary">Manage and track tasks across your entire team</Text>
           </Col>
           <Col>
-            <Button 
-              type="primary" 
-              size="large" 
-              icon={<PlusOutlined />}
-              onClick={() => { setEditingTodo(null); setIsModalVisible(true); }}
-            >
-              Assign New Task
-            </Button>
+            <Space>
+              {['CEO', 'HR'].includes(user?.Role) && (
+                <Button
+                  type="dashed"
+                  onClick={() => setIsAIBulkModalVisible(true)}
+                >
+                  ✨ AI Bulk Tasks
+                </Button>
+              )}
+
+              <Button
+                type="primary"
+                size="large"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  setEditingTodo(null);
+                  setIsModalVisible(true);
+                }}
+              >
+                Assign New Task
+              </Button>
+            </Space>
           </Col>
         </Row>
       </div>
@@ -111,9 +134,9 @@ const ToDoPage = () => {
             />
           </Col>
           <Col xs={24} md={8}>
-            <Select 
-              style={{ width: '100%' }} 
-              value={filterAssignee} 
+            <Select
+              style={{ width: '100%' }}
+              value={filterAssignee}
               onChange={setFilterAssignee}
             >
               <Option value="all">All Assignees</Option>
@@ -149,9 +172,9 @@ const ToDoPage = () => {
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic 
-              title="Overdue" 
-              value={todos.filter(t => t.DateLimit && new Date(t.DateLimit) < new Date() && t.Status !== 'Done').length} 
+            <Statistic
+              title="Overdue"
+              value={todos.filter(t => t.DateLimit && new Date(t.DateLimit) < new Date() && t.Status !== 'Done').length}
               valueStyle={{ color: '#ff4d4f' }}
             />
           </Card>
@@ -179,9 +202,7 @@ const ToDoPage = () => {
               currentUser={user}
             />
           </TabPane>
-
           <TabPane tab="List View" key="list">
-            {/* You can add a Table view here later */}
             <div style={{ padding: 40, textAlign: 'center' }}>
               <Text type="secondary">List View Coming Soon...</Text>
             </div>
@@ -189,7 +210,7 @@ const ToDoPage = () => {
         </Tabs>
       </Card>
 
-      {/* Todo Form Modal */}
+      {/* Manual Todo Form Modal */}
       <Modal
         title={editingTodo ? "Edit Task" : "Assign New Task"}
         open={isModalVisible}
@@ -213,6 +234,17 @@ const ToDoPage = () => {
           userRole={user?.Role}
         />
       </Modal>
+
+      {/* AI Bulk Task Generator Modal */}
+      <AIBulkTaskModal
+        open={isAIBulkModalVisible}
+        onCancel={() => {
+          setIsAIBulkModalVisible(false);
+        }}
+        sellers={sellers}
+        currentUser={user}
+        fetchTodos={fetchTodos}
+      />
     </div>
   );
 };
