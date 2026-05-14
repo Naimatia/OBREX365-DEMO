@@ -19,6 +19,7 @@ import {
   FacebookOutlined,
   GlobalOutlined,
   InstagramOutlined,
+  FieldTimeOutlined
   
 } from '@ant-design/icons';
 import { APP_PREFIX_PATH } from 'configs/AppConfig';
@@ -106,6 +107,14 @@ const hrNavigation = [
         path: `${APP_PREFIX_PATH}/attendees`,
         title: 'Attendees',
         icon: ClockCircleOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+       {
+        key: 'attendance-log',
+        path: `${APP_PREFIX_PATH}/AttendanceLog`,
+        title: 'Attendance Log',
+        icon: FieldTimeOutlined,
         breadcrumb: true,
         submenu: []
       }
@@ -287,6 +296,14 @@ const ceoNavigation = [
         path: `${APP_PREFIX_PATH}/attendees`,
         title: 'Attendees',
         icon: ClockCircleOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+             {
+        key: 'attendance-log',
+        path: `${APP_PREFIX_PATH}/attendance-log`,
+        title: 'Attendance Log',
+        icon: FieldTimeOutlined,
         breadcrumb: true,
         submenu: []
       }

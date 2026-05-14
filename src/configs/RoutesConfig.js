@@ -135,6 +135,12 @@ export const protectedRoutes = [
         component: React.lazy(() => import('views/app-views/company/attendees')),
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
     },
+     {
+        key: 'attendance-log',
+        path: `${APP_PREFIX_PATH}/attendance-log`,
+        component: React.lazy(() => import('views/app-views/company/attendance-log')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
+    },
       {
         key: 'payroll',
         path: `${APP_PREFIX_PATH}/payroll`,
