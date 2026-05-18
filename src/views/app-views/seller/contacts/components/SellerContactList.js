@@ -83,6 +83,21 @@ const SellerContactList = ({
     return filtered;
   }, [contacts, searchText, filteredStatus, dateRange]);
 
+  // Get tag color based on status
+  const getStatusColor = (status) => {
+    switch (status) {
+      case ContactStatus.PENDING:        return 'orange';
+      case ContactStatus.CONTACTED:      return 'blue';
+      case ContactStatus.DEAL:           return 'green';
+      case ContactStatus.LOSS:           return 'red';
+      case ContactStatus.NO_RESPONSE:    return 'default';     // Gray
+      case ContactStatus.NOT_INTERESTED: return 'volcano';     // Orange-Red
+      case ContactStatus.JUNK_LEAD:      return 'purple';      // Purple
+      default:                           return 'default';
+    }
+  };
+
+
   // Handle delete confirmation
   const handleDelete = (contact) => {
     confirm({
@@ -180,7 +195,7 @@ const SellerContactList = ({
       key: 'country',
       render: (text) => text || '-',
     },
-    {
+ {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
@@ -189,50 +204,24 @@ const SellerContactList = ({
         { text: 'Contacted', value: ContactStatus.CONTACTED },
         { text: 'Deal', value: ContactStatus.DEAL },
         { text: 'Loss', value: ContactStatus.LOSS },
+        { text: 'No Response', value: ContactStatus.NO_RESPONSE },
+        { text: 'Not Interested', value: ContactStatus.NOT_INTERESTED },
+        { text: 'Junk Lead', value: ContactStatus.JUNK_LEAD },
       ],
       render: (status, record) => {
-        let color = 'default';
-        switch (status) {
-          case ContactStatus.PENDING:
-            color = 'orange';
-            break;
-          case ContactStatus.CONTACTED:
-            color = 'blue';
-            break;
-          case ContactStatus.DEAL:
-            color = 'green';
-            break;
-          case ContactStatus.LOSS:
-            color = 'red';
-            break;
-          default:
-            color = 'default';
-        }
+        const color = getStatusColor(status);
         
         return (
           <Dropdown 
             menu={{
               items: [
-                {
-                  key: ContactStatus.PENDING,
-                  label: <Tag color="orange">Pending</Tag>,
-                  onClick: () => handleStatusUpdate(record, ContactStatus.PENDING)
-                },
-                {
-                  key: ContactStatus.CONTACTED,
-                  label: <Tag color="blue">Contacted</Tag>,
-                  onClick: () => handleStatusUpdate(record, ContactStatus.CONTACTED)
-                },
-                {
-                  key: ContactStatus.DEAL,
-                  label: <Tag color="green">Deal</Tag>,
-                  onClick: () => handleStatusUpdate(record, ContactStatus.DEAL)
-                },
-                {
-                  key: ContactStatus.LOSS,
-                  label: <Tag color="red">Loss</Tag>,
-                  onClick: () => handleStatusUpdate(record, ContactStatus.LOSS)
-                }
+                { key: ContactStatus.PENDING,        label: <Tag color="orange">Pending</Tag>,        onClick: () => handleStatusUpdate(record, ContactStatus.PENDING) },
+                { key: ContactStatus.CONTACTED,      label: <Tag color="blue">Contacted</Tag>,      onClick: () => handleStatusUpdate(record, ContactStatus.CONTACTED) },
+                { key: ContactStatus.DEAL,           label: <Tag color="green">Deal</Tag>,           onClick: () => handleStatusUpdate(record, ContactStatus.DEAL) },
+                { key: ContactStatus.LOSS,           label: <Tag color="red">Loss</Tag>,           onClick: () => handleStatusUpdate(record, ContactStatus.LOSS) },
+                { key: ContactStatus.NO_RESPONSE,    label: <Tag color="default">No Response</Tag>,    onClick: () => handleStatusUpdate(record, ContactStatus.NO_RESPONSE) },
+                { key: ContactStatus.NOT_INTERESTED, label: <Tag color="volcano">Not Interested</Tag>, onClick: () => handleStatusUpdate(record, ContactStatus.NOT_INTERESTED) },
+                { key: ContactStatus.JUNK_LEAD,      label: <Tag color="purple">Junk Lead</Tag>,      onClick: () => handleStatusUpdate(record, ContactStatus.JUNK_LEAD) },
               ]
             }}
             trigger={['click']}
@@ -273,17 +262,6 @@ const SellerContactList = ({
                 icon: <EditOutlined />,
                 label: 'Edit',
                 onClick: () => onEditContact(record)
-              },
-              {
-                key: 'note',
-                icon: <FileTextOutlined />,
-                label: 'Quick Note',
-                onClick: () => {
-                  const note = prompt('Enter note:');
-                  if (note && note.trim()) {
-                    onAddNote(record.id, note.trim());
-                  }
-                }
               },
               {
                 type: 'divider'
@@ -333,10 +311,13 @@ const SellerContactList = ({
             value={filteredStatus}
             onChange={setFilteredStatus}
           >
-            <Option value={ContactStatus.PENDING}>Pending</Option>
+           <Option value={ContactStatus.PENDING}>Pending</Option>
             <Option value={ContactStatus.CONTACTED}>Contacted</Option>
             <Option value={ContactStatus.DEAL}>Deal</Option>
             <Option value={ContactStatus.LOSS}>Loss</Option>
+            <Option value={ContactStatus.NO_RESPONSE}>No Response</Option>
+            <Option value={ContactStatus.NOT_INTERESTED}>Not Interested</Option>
+            <Option value={ContactStatus.JUNK_LEAD}>Junk Lead</Option>
           </Select>
           
           <RangePicker

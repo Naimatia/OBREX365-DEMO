@@ -187,40 +187,50 @@ const SellerLeadList = ({
           '-'
         ),
     },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      filters: [
-        { text: 'Pending', value: LeadStatus.PENDING },
-        { text: 'Gain', value: LeadStatus.GAIN },
-        { text: 'Loss', value: LeadStatus.LOSS },
-      ],
-      onFilter: (value, record) => record.status === value,
-      render: (status, record) => {
-        const colorMap = {
-          [LeadStatus.PENDING]: 'orange',
-          [LeadStatus.GAIN]: 'green',
-          [LeadStatus.LOSS]: 'red',
-        };
-        return (
-          <Dropdown
-            menu={{
-              items: Object.values(LeadStatus).map((s) => ({
-                key: s,
-                label: <Tag color={colorMap[s]}>{s}</Tag>,
-                onClick: () => handleStatusUpdate(record, s),
-              })),
-            }}
-            trigger={['click']}
-          >
-            <Tag color={colorMap[status]} style={{ cursor: 'pointer' }}>
-              {status || 'Unknown'}
-            </Tag>
-          </Dropdown>
-        );
-      },
-    },
+ {
+  title: 'Status',
+  dataIndex: 'status',
+  key: 'status',
+  filters: [
+    { text: 'Pending',        value: LeadStatus.PENDING },
+    { text: 'Gain',           value: LeadStatus.GAIN },
+    { text: 'Loss',           value: LeadStatus.LOSS },
+    { text: 'No Response',    value: LeadStatus.NO_RESPONSE },
+    { text: 'Not Interested', value: LeadStatus.NOT_INTERESTED },
+    { text: 'Junk Lead',      value: LeadStatus.JUNK_LEAD },
+  ],
+  onFilter: (value, record) => record.status === value,
+  render: (status, record) => {
+    const getColor = (s) => {
+      switch (s) {
+        case LeadStatus.PENDING:        return 'orange';
+        case LeadStatus.GAIN:           return 'green';
+        case LeadStatus.LOSS:           return 'red';
+        case LeadStatus.NO_RESPONSE:    return 'default';
+        case LeadStatus.NOT_INTERESTED: return 'volcano';
+        case LeadStatus.JUNK_LEAD:      return 'purple';
+        default:                        return 'default';
+      }
+    };
+
+    return (
+      <Dropdown
+        menu={{
+          items: Object.values(LeadStatus).map((s) => ({
+            key: s,
+            label: <Tag color={getColor(s)}>{s}</Tag>,
+            onClick: () => handleStatusUpdate(record, s),
+          })),
+        }}
+        trigger={['click']}
+      >
+        <Tag color={getColor(status)} style={{ cursor: 'pointer' }}>
+          {status || 'Unknown'}
+        </Tag>
+      </Dropdown>
+    );
+  },
+},
     {
       title: 'Created',
       dataIndex: 'CreationDate',
@@ -262,18 +272,6 @@ const SellerLeadList = ({
             />
           </Tooltip>
 
-          <Tooltip title="Quick Note">
-            <Button
-              type="text"
-              size="small"
-              icon={<FileTextOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                const note = prompt('Enter note:');
-                if (note?.trim()) onAddNote(record.id, note.trim());
-              }}
-            />
-          </Tooltip>
 
           {/* Uncomment if you want to enable delete again */}
           {/*

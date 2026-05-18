@@ -5,7 +5,10 @@ export const ContactStatus = {
   PENDING: 'Pending',
   CONTACTED: 'Contacted',
   DEAL: 'Deal',
-  LOSS: 'Loss'
+  LOSS: 'Loss',
+  NO_RESPONSE: 'No Response',
+  NOT_INTERESTED: 'Not Interested',
+  JUNK_LEAD: 'Junk Lead',
 };
 
 /**

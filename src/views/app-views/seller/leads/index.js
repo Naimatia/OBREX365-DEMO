@@ -294,6 +294,20 @@ const handleUpdateStatus = async (leadId, newStatus) => {
     setCsvImportVisible(false);
     fetchLeads(); // Refresh the leads list
   };
+
+  const handleLeadStatusChange = async (leadId, newStatus) => {
+  try {
+    await LeadsService.updateLead(leadId, { status: newStatus });
+    
+    // Refresh your leads list
+    await fetchLeads();        // or your refresh function
+    
+    message.success(`Lead status updated to ${newStatus}`);
+  } catch (error) {
+    console.error(error);
+    message.error('Failed to update lead status');
+  }
+};
   
   return (
     <div style={{ padding: '24px' }}>
@@ -463,6 +477,7 @@ const handleUpdateStatus = async (leadId, newStatus) => {
         lead={selectedLead}
         onEdit={handleEditLead}
         onAddNote={handleAddNote}
+        onStatusChange={handleLeadStatusChange}   // ← This was missing
         onClose={() => {
           setIsDetailVisible(false);
           setSelectedLead(null);

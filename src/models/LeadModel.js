@@ -25,8 +25,11 @@ export const LeadModel = {
 export const LeadStatus = {
   PENDING: 'Pending',
   GAIN: 'Gain',
-  LOSS: 'Loss'
-}
+  LOSS: 'Loss',
+  NO_RESPONSE: 'No Response',
+  NOT_INTERESTED: 'Not Interested',
+  JUNK_LEAD: 'Junk Lead',
+};
 
 /**
  * Lead interest level options

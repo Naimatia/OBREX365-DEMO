@@ -12,7 +12,8 @@ import {
   Menu,
   Badge,
   message,
-  Modal
+  Modal,
+  Form
 } from 'antd';
 import { 
   EyeOutlined, 
@@ -57,19 +58,58 @@ const ContactList = ({
   const [dateRange, setDateRange] = useState(null);
   const [dateFilter, setDateFilter] = useState('CreationDate'); // 'CreationDate', 'AffectingDate'
 
-  // Get current user role
+// Modals State
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [noteModalVisible, setNoteModalVisible] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+
+  const [assignForm] = Form.useForm();
+  const [noteForm] = Form.useForm();
+
   const { user } = useSelector((state) => state.auth);
-  const userRole = user?.Role || null;
 
   // Reset selected rows when contacts change
   useEffect(() => {
     setSelectedRowKeys([]);
   }, [contacts]);
 
-  // Notify parent component when selection changes
-  useEffect(() => {
+ useEffect(() => {
     onSelectChange(selectedRowKeys);
   }, [selectedRowKeys, onSelectChange]);
+
+  // ==================== Assign to Seller ====================
+  const showAssignModal = (record) => {
+    setSelectedRecord(record);
+    setAssignModalVisible(true);
+    assignForm.resetFields();
+  };
+
+  const handleAssign = () => {
+    assignForm.validateFields().then(values => {
+      if (selectedRecord) {
+        onAssignSeller([selectedRecord.id], values.seller_id, values.affectingDate?.toDate());
+      }
+      setAssignModalVisible(false);
+      assignForm.resetFields();
+    });
+  };
+
+  // ==================== Add Note ====================
+  const showNoteModal = (record) => {
+    setSelectedRecord(record);
+    setNoteModalVisible(true);
+    noteForm.resetFields();
+  };
+
+  const handleAddNote = () => {
+    noteForm.validateFields().then(values => {
+      if (selectedRecord) {
+        onAddNote(selectedRecord.id, values.note);
+      }
+      setNoteModalVisible(false);
+      noteForm.resetFields();
+    });
+  };
 
   // Table columns definition
   const columns = [
@@ -108,39 +148,39 @@ const ContactList = ({
       key: 'region',
       render: (text) => text || '-',
     },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status) => {
-        let color = 'default';
-        switch (status) {
-          case ContactStatus.PENDING:
-            color = 'orange';
-            break;
-          case ContactStatus.CONTACTED:
-            color = 'blue';
-            break;
-          case ContactStatus.DEAL:
-            color = 'green';
-            break;
-          case ContactStatus.LOSS:
-            color = 'red';
-            break;
-          default:
-            color = 'default';
-        }
-        return <Tag color={color}>{status || 'Unknown'}</Tag>;
-      },
-      filters: [
-        { text: 'Pending', value: ContactStatus.PENDING },
-        { text: 'Contacted', value: ContactStatus.CONTACTED },
-        { text: 'Deal', value: ContactStatus.DEAL },
-        { text: 'Loss', value: ContactStatus.LOSS },
-      ],
-      filteredValue: filteredStatus ? [filteredStatus] : null,
-      onFilter: (value, record) => record.status === value,
-    },
+ {
+  title: 'Status',
+  dataIndex: 'status',
+  key: 'status',
+  render: (status) => {
+    const getStatusConfig = (status) => {
+      switch (status) {
+        case ContactStatus.PENDING:        return { color: 'orange',       text: 'Pending' };
+        case ContactStatus.CONTACTED:      return { color: 'blue',         text: 'Contacted' };
+        case ContactStatus.DEAL:           return { color: 'green',        text: 'Deal' };
+        case ContactStatus.LOSS:           return { color: 'red',          text: 'Loss' };
+        case ContactStatus.NO_RESPONSE:    return { color: 'default',      text: 'No Response' };
+        case ContactStatus.NOT_INTERESTED: return { color: 'volcano',      text: 'Not Interested' };
+        case ContactStatus.JUNK_LEAD:      return { color: 'purple',       text: 'Junk Lead' };
+        default:                           return { color: 'default',      text: status || 'Unknown' };
+      }
+    };
+
+    const config = getStatusConfig(status);
+    return <Tag color={config.color}>{config.text}</Tag>;
+  },
+  filters: [
+    { text: 'Pending',        value: ContactStatus.PENDING },
+    { text: 'Contacted',      value: ContactStatus.CONTACTED },
+    { text: 'Deal',           value: ContactStatus.DEAL },
+    { text: 'Loss',           value: ContactStatus.LOSS },
+    { text: 'No Response',    value: ContactStatus.NO_RESPONSE },
+    { text: 'Not Interested', value: ContactStatus.NOT_INTERESTED },
+    { text: 'Junk Lead',      value: ContactStatus.JUNK_LEAD },
+  ],
+  filteredValue: filteredStatus ? [filteredStatus] : null,
+  onFilter: (value, record) => record.status === value,
+},
     {
       title: 'Assigned To',
       dataIndex: 'seller_id',
@@ -191,9 +231,10 @@ const ContactList = ({
         return recordDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
       },
     },
-    {
+ {
       title: 'Actions',
       key: 'actions',
+      width: 80,
       render: (_, record) => (
         <Dropdown overlay={
           <Menu>
@@ -203,10 +244,10 @@ const ContactList = ({
             <Menu.Item key="2" icon={<EditOutlined />} onClick={() => onEditContact(record)}>
               Edit
             </Menu.Item>
-            <Menu.Item key="3" icon={<UserSwitchOutlined />} onClick={() => handleAssignMenu(record)}>
+            <Menu.Item key="3" icon={<UserSwitchOutlined />} onClick={() => showAssignModal(record)}>
               Assign to Seller
             </Menu.Item>
-            <Menu.Item key="4" icon={<FileTextOutlined />} onClick={() => handleAddNote(record)}>
+            <Menu.Item key="4" icon={<FileTextOutlined />} onClick={() => showNoteModal(record)}>
               Add Note
             </Menu.Item>
             <Menu.Divider />
@@ -236,19 +277,6 @@ const ContactList = ({
     });
   };
 
-  // Handle assignment to seller
-  const handleAssignMenu = (record) => {
-    // Implementation would show a modal/dropdown to select a seller
-    // For now, just show a message
-    message.info('Assignment feature will open a seller selection modal');
-  };
-
-  // Handle adding a note
-  const handleAddNote = (record) => {
-    // Implementation would show a modal to add a note
-    // For now, just show a message
-    message.info('Note adding feature will open a note input modal');
-  };
 
   // Row selection configuration
   const rowSelection = {
@@ -360,6 +388,51 @@ const ContactList = ({
           showTotal: (total) => `Total ${total} contacts`,
         }}
       />
+
+      {/* Assign to Seller Modal */}
+      <Modal
+        title="Assign Contact to Seller"
+        open={assignModalVisible}
+        onOk={handleAssign}
+        onCancel={() => setAssignModalVisible(false)}
+        okText="Assign"
+      >
+        <Form form={assignForm} layout="vertical">
+          <Form.Item
+            name="seller_id"
+            label="Seller"
+            rules={[{ required: true, message: 'Please select a seller' }]}
+          >
+            <Select placeholder="Select seller">
+              {sellers.map(s => (
+                <Option key={s.id} value={s.id}>{s.name}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item name="affectingDate" label="Assignment Date">
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Add Note Modal */}
+      <Modal
+        title={`Add Note - ${selectedRecord?.name}`}
+        open={noteModalVisible}
+        onOk={handleAddNote}
+        onCancel={() => setNoteModalVisible(false)}
+        okText="Add Note"
+      >
+        <Form form={noteForm} layout="vertical">
+          <Form.Item
+            name="note"
+            rules={[{ required: true, message: 'Please enter a note' }]}
+          >
+            <Input.TextArea rows={4} placeholder="Write your note here..." />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

@@ -166,8 +166,15 @@ const SellerLeadDetail = ({
     return `${currentUser.firstname} ${currentUser.lastname}`;
   };
 
-  const statusColors = { [LeadStatus.PENDING]: 'orange', [LeadStatus.GAIN]: 'green', [LeadStatus.LOSS]: 'red' };
-  const interestColors = { [LeadInterestLevel.HIGH]: 'red', [LeadInterestLevel.MEDIUM]: 'orange', [LeadInterestLevel.LOW]: 'blue' };
+const statusColors = {
+  [LeadStatus.PENDING]:        'orange',
+  [LeadStatus.GAIN]:           'green',
+  [LeadStatus.LOSS]:           'red',
+  [LeadStatus.NO_RESPONSE]:    'default',      // Gray
+  [LeadStatus.NOT_INTERESTED]: 'volcano',      // Orange-red
+  [LeadStatus.JUNK_LEAD]:      'purple',       // Purple
+};  
+const interestColors = { [LeadInterestLevel.HIGH]: 'red', [LeadInterestLevel.MEDIUM]: 'orange', [LeadInterestLevel.LOW]: 'blue' };
 
   /* ────── MARK CONTACTED (only on communication) ────── */
   const markContactedIfNeeded = async () => {
@@ -277,58 +284,45 @@ const SellerLeadDetail = ({
     message.success('Note added');
   };
 
-  /* ────── STATUS CHANGE (does NOT mark contacted) ────── */
-  const handleStatusChange = async (newStatus) => {
-    try {
-      // Update lead status (your existing logic)
-      await onStatusChange?.(lead.id, newStatus);   // or call service directly
+/* ────── STATUS CHANGE ────── */
+const handleStatusChange = async (newStatus) => {
+  if (!lead || newStatus === lead.status) return;
 
-      // ─── NEW: Auto-create Deal when lead becomes GAIN ───
-      if (newStatus === LeadStatus.GAIN) {
-        const dealData = {
-          // Core fields
-          Amount: lead.Budget || 0,                    // most important mapping
-          Description: `Converted from lead: ${lead.name || 'Unnamed lead'}\n` +
-            `Source: ${lead.RedirectedFrom || 'Unknown'}\n` +
-            `Interest: ${lead.InterestLevel || '-'}\n` +
-            `Region: ${lead.region || '-'}\n\n`,
-
-
-          // Relational IDs
-          lead_id: lead.id,
-          seller_id: lead.seller_id || currentUser?.id,
-          company_id: lead.company_id || currentUser?.company_id,
-
-          // Status & source
-          Status: DealStatus.GAIN,                   // start as open
-          Source: DealSourceEnum.LEADS,                    // came from a lead
-
-          // Contact info (very useful)
-          contact_name: lead.name,
-          contact_email: lead.email,
-          contact_phone: lead.phoneNumber,
-
-          // Optional – if you later link properties
-          property_id: null,
-
-          CreationDate: new Date(),
-        };
-
-        await DealsService.createDeal(dealData);
-
-        message.success(
-          `Lead converted to Gain! A new deal worth ${formatCurrency(lead.Budget || 0)} has been created.`
-        );
-      }
-
-      // Optional: refresh lead or parent list
-      // You might want to call a refresh callback here
-
-    } catch (err) {
-      console.error('Status update failed:', err);
-      message.error('Failed to update status');
+  try {
+    // Safe check - only call if function is passed
+    if (typeof onStatusChange === 'function') {
+      await onStatusChange(lead.id, newStatus);
+    } else {
+      message.warning('Status update handler not connected');
+      console.warn('onStatusChange prop is missing in SellerLeadDetail');
     }
-  };
+
+    // Auto-create Deal when status becomes GAIN
+    if (newStatus === LeadStatus.GAIN && lead.Budget) {
+      const dealData = {
+        Amount: lead.Budget || 0,
+        Description: `Converted from lead: ${lead.name}`,
+        lead_id: lead.id,
+        seller_id: lead.seller_id || currentUser?.id,
+        company_id: lead.company_id || currentUser?.company_id,
+        Status: DealStatus.GAIN,
+        Source: DealSourceEnum.LEADS,
+        contact_name: lead.name,
+        contact_email: lead.email,
+        contact_phone: lead.phoneNumber,
+        CreationDate: new Date(),
+      };
+
+      await DealsService.createDeal(dealData);
+      message.success(`Lead converted to Gain! Deal created.`);
+    } else {
+      message.success(`Status updated to ${newStatus}`);
+    }
+  } catch (err) {
+    console.error(err);
+    message.error('Failed to update status');
+  }
+};
 
   /* ────── TIMELINE ITEMS ────── */
   const timelineItems = useMemo(() => history.map((h, i) => {
@@ -399,20 +393,17 @@ const SellerLeadDetail = ({
     <Drawer
       title={
         <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Space align="center">
+       <Space align="center">
             <Title level={4} style={{ margin: 0 }}>{lead.name}</Title>
 
-            {/* NEW: Contacted badge */}
-            {lead.contacted && (
-              <Badge status="success" text={<Text type="success" strong>Contacted</Text>} />
-            )}
+            {lead.contacted && <Badge status="success" text="Contacted" />}
 
             <Select
               value={lead.status}
               onChange={handleStatusChange}
               size="small"
-              style={{ width: 120 }}
-              disabled={lead.status === LeadStatus.GAIN}   // ← disable when status is Gain
+              style={{ width: 140 }}
+              disabled={lead.status === LeadStatus.GAIN}
             >
               {Object.values(LeadStatus).map(s => (
                 <Option key={s} value={s}>

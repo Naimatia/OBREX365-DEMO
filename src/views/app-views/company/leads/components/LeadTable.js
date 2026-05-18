@@ -28,12 +28,15 @@ const LeadTable = ({
     setData(leads);
   }, [leads]);
 
-  // Status color mapping
-  const statusColors = {
-    [LeadStatus.PENDING]: 'blue',
-    [LeadStatus.GAIN]: 'green',
-    [LeadStatus.LOSS]: 'red'
-  };
+// Status color mapping
+const statusColors = {
+  [LeadStatus.PENDING]:        'blue',          // ← Your preference
+  [LeadStatus.GAIN]:           'green',
+  [LeadStatus.LOSS]:           'red',
+  [LeadStatus.NO_RESPONSE]:    'default',       // Gray
+  [LeadStatus.NOT_INTERESTED]: 'volcano',       // Orange-red
+  [LeadStatus.JUNK_LEAD]:      'purple',        // Purple
+};
 
   // Interest level color mapping
   const interestLevelColors = {

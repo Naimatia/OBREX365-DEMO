@@ -90,10 +90,31 @@ const LeadForm = ({
   }, [visible, editingLead, form]);
 
 
-  const handleSubmit = () => {
-    form.validateFields().then(values => {
-      onSubmit(values);
-    });
+// Clean data before submit (Main Fix)
+  const handleSubmit = async () => {
+    try {
+      const values = await form.validateFields();
+
+      // Remove undefined values and convert Budget properly
+      const cleanedValues = { ...values };
+
+      // Handle Budget field specifically
+      if (cleanedValues.Budget === undefined || cleanedValues.Budget === null || cleanedValues.Budget === '') {
+        delete cleanedValues.Budget;        // Remove the field entirely (recommended)
+        // OR: cleanedValues.Budget = null; // Alternative: set to null
+      }
+
+      // Remove any other undefined fields
+      Object.keys(cleanedValues).forEach(key => {
+        if (cleanedValues[key] === undefined) {
+          delete cleanedValues[key];
+        }
+      });
+
+      onSubmit(cleanedValues);
+    } catch (error) {
+      console.error('Validation failed:', error);
+    }
   };
 
   const title = editingLead ? 'Edit Lead' : 'Add New Lead';

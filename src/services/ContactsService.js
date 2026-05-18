@@ -15,7 +15,8 @@ import {
   orderBy, 
   serverTimestamp,
   Timestamp,
-  writeBatch
+  writeBatch,
+  arrayUnion
 } from 'firebase/firestore';
 
 /**
@@ -250,31 +251,114 @@ const ContactsService = {
 
   /**
    * Add a note to a contact
-   * @param {string} contactId - ID of the contact
-   * @param {string} noteText - Note text
-   * @returns {Promise<void>}
    */
   async addNote(contactId, noteText) {
     try {
       const contactRef = doc(db, 'contacts', contactId);
-      const contactDoc = await getDoc(contactRef);
       
-      if (contactDoc.exists()) {
-        const contactData = contactDoc.data();
-        const notes = contactData.Notes || [];
-        
-        const newNote = {
-          note: noteText,
-          CreationDate: new Date()
-        };
-        
-        await updateDoc(contactRef, {
-          Notes: [...notes, newNote],
-          LastUpdateDate: serverTimestamp()
-        });
-      }
+      const newNote = {
+        id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        note: noteText.trim(),
+        CreationDate: new Date(),           // ← Use client timestamp
+        CreatedBy: auth.currentUser?.uid || null,
+      };
+
+      await updateDoc(contactRef, {
+        Notes: arrayUnion(newNote),         // Better: use arrayUnion
+        LastUpdateDate: serverTimestamp()
+      });
     } catch (error) {
       console.error('Error adding note:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update an existing note
+   */
+  async updateNote(contactId, noteId, newNoteText) {
+    try {
+      const contactRef = doc(db, 'contacts', contactId);
+      const contactDoc = await getDoc(contactRef);
+
+      if (!contactDoc.exists()) throw new Error('Contact not found');
+
+      const data = contactDoc.data();
+      const notes = Array.isArray(data.Notes) ? [...data.Notes] : [];
+
+      const noteIndex = notes.findIndex(n => n.id === noteId);
+      if (noteIndex === -1) throw new Error('Note not found');
+
+      notes[noteIndex] = {
+        ...notes[noteIndex],
+        note: newNoteText.trim(),
+        LastUpdateDate: new Date()           // Client timestamp
+      };
+
+      await updateDoc(contactRef, {
+        Notes: notes,
+        LastUpdateDate: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating note:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete a note
+   */
+  async deleteNote(contactId, noteId) {
+    try {
+      const contactRef = doc(db, 'contacts', contactId);
+      const contactDoc = await getDoc(contactRef);
+
+      if (!contactDoc.exists()) throw new Error('Contact not found');
+
+      const data = contactDoc.data();
+      const notes = Array.isArray(data.Notes) 
+        ? data.Notes.filter(n => n.id !== noteId) 
+        : [];
+
+      await updateDoc(contactRef, {
+        Notes: notes,
+        LastUpdateDate: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * (Legacy) Update note by index - Keep temporarily if needed
+   */
+  async updateNoteByIndex(contactId, noteIndex, newNoteText) {
+    try {
+      const contactRef = doc(db, 'contacts', contactId);
+      const contactDoc = await getDoc(contactRef);
+      
+      if (!contactDoc.exists()) throw new Error('Contact not found');
+
+      const contactData = contactDoc.data();
+      let notes = Array.isArray(contactData.Notes) ? [...contactData.Notes] : [];
+
+      if (noteIndex < 0 || noteIndex >= notes.length) {
+        throw new Error('Invalid note index');
+      }
+
+      notes[noteIndex] = {
+        ...notes[noteIndex],
+        note: newNoteText.trim(),
+        LastUpdateDate: serverTimestamp()
+      };
+
+      await updateDoc(contactRef, {
+        Notes: notes,
+        LastUpdateDate: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating note by index:', error);
       throw error;
     }
   },
