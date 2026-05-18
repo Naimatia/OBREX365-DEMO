@@ -47,9 +47,10 @@ const MeetingForm = ({
   };
 
   const handleSubmit = (values) => {
-    const dateTime = values.meetingDate.clone();
-    dateTime.hour(values.meetingTime.hour());
-    dateTime.minute(values.meetingTime.minute());
+     const date = values.meetingDate.format('YYYY-MM-DD');
+  const time = values.meetingTime.format('HH:mm');
+
+  const dateTime = dayjs(`${date} ${time}`, 'YYYY-MM-DD HH:mm');
 
     // Separate internal users (IDs) and external participants (free text)
     const internalUsers = [];
