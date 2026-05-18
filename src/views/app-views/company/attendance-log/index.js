@@ -77,11 +77,6 @@ const STATUS_COLOR = { Present: 'green', Late: 'orange', Absent: 'red' };
 const timeToMins = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const fmtDuration = m => (!m || m <= 0) ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 
-// NEW: Add 3 hours for Dubai time display
-const add3Hours = (date) => {
-  if (!date) return null;
-  return dayjs(date).add(3, 'hour');
-};
 
 const fmtHHMM = d => d ? dayjs(d).format('HH:mm') : '—';
 const toDate = t => t?.toDate ? t.toDate() : (t ? new Date(t) : null);
@@ -107,11 +102,8 @@ const buildDailyRow = (emp, mapping, punchesForDay, dateStr, graceMinutes = DEFA
     let ts = toDate(p.timestamp);
     if (!ts) return;
 
-    const dubaiTs = add3Hours(ts);   // ← Apply +3h
-    if (!dubaiTs) return;
-
     if (!byType[type]) byType[type] = [];
-    byType[type].push({ ts: dubaiTs.toDate(), raw: p });
+    byType[type].push({ ts, raw: p });
   });
 
   Object.keys(byType).forEach(k => byType[k].sort((a, b) => a.ts - b.ts));
@@ -494,7 +486,7 @@ const PunchDetailModal = ({ row, onClose }) => {
                     {cfg.label}
                   </Tag>
                   <Text strong style={{ fontSize: 14, fontFamily: 'monospace' }}>
-                    {add3Hours(p.ts)?.format('HH:mm:ss') || '—'}
+{dayjs(p.ts).format('HH:mm:ss') || '—'}
                   </Text>
                   <Text type="secondary" style={{ fontSize: 11 }}>{p.deviceId || ''}</Text>
                 </div>
