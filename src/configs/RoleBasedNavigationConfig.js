@@ -112,7 +112,7 @@ const hrNavigation = [
       },
        {
         key: 'attendance-log',
-        path: `${APP_PREFIX_PATH}/AttendanceLog`,
+        path: `${APP_PREFIX_PATH}/attendance-log`,
         title: 'Attendance Log',
         icon: FieldTimeOutlined,
         breadcrumb: true,
