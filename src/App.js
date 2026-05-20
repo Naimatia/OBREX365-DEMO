@@ -7,6 +7,7 @@ import store from './store';
 import Layouts from './layouts'
 import { THEME_CONFIG } from './configs/AppConfig';
 import './lang'
+import SessionManager from 'components/SessionManager';
 
 const themes = {
   dark: `${process.env.PUBLIC_URL}/css/dark-theme.css`,
@@ -18,6 +19,7 @@ function App() {
     <div className="App">
       <Provider store={store}>
         <BrowserRouter>
+        <SessionManager />
           <ThemeSwitcherProvider 
             themeMap={themes} 
             defaultTheme={THEME_CONFIG.currentTheme} 

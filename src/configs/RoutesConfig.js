@@ -35,6 +35,24 @@ export const publicRoutes = [
 
 // Role-based routes for OBREX365 CRM
 export const protectedRoutes = [
+    {
+        key: 'account-settings',
+        path: `${APP_PREFIX_PATH}/account-settings`,
+        component: React.lazy(() => import('views/app-views/account-settings')),
+        allowedRoles: [
+            UserRoles.SUPER_ADMIN,
+            UserRoles.CEO,
+            UserRoles.HR,
+            UserRoles.SELLER,
+            UserRoles.SALES_EXECUTIVE,
+            UserRoles.AGENT,
+            UserRoles.TEAM_LEADER,
+            UserRoles.SALES_MANAGER,
+            UserRoles.OFF_PLAN_SALES,
+            UserRoles.READY_TO_MOVE_SALES,
+            UserRoles.MARKETING_MANAGER
+        ]
+    },
     // CEO/HR Role Routes
     {
         key: 'dashboard',

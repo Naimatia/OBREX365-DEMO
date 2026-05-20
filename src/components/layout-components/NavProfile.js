@@ -71,10 +71,14 @@ const items = [
 		key: 'Edit Profile',
 		label: <MenuItem path="/" label="Edit Profile" icon={<EditOutlined />} />,
 	},
-	{
-		key: 'Account Setting',
-		label: <MenuItem path="/" label="Account Setting" icon={<SettingOutlined />} />,
-	},
+{
+    key: 'Account Setting',
+    label: <MenuItem 
+        path="/app/account-settings" 
+        label="Account Setting" 
+        icon={<SettingOutlined />} 
+    />,
+},
 	{
 		key: 'Account Billing',
 		label: <MenuItem path="/" label="Account Billing" icon={<ShopOutlined />} />,
