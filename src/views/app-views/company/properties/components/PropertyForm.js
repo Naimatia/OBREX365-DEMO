@@ -17,15 +17,10 @@ import {
 } from 'antd';
 import { 
   PlusOutlined, 
-  MinusCircleOutlined, 
   UploadOutlined, 
-  HomeOutlined,
-  DollarOutlined,
-  BankOutlined,
-  EnvironmentOutlined
+  HomeOutlined
 } from '@ant-design/icons';
 import cloudinaryService from 'services/CloudinaryService';
-import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -44,25 +39,27 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
 
   const isEditMode = !!initialValues;
 
+  // Watch category to show/hide rent-specific fields
+  const category = Form.useWatch('Category', form);
+
   // Set initial values when form is in edit mode
   useEffect(() => {
     if (initialValues) {
       form.setFieldsValue({
         ...initialValues,
-        OriginalPrice: Number(initialValues.OriginalPrice),
-        SellPrice: Number(initialValues.SellPrice),
-        NbrBedRooms: Number(initialValues.NbrBedRooms),
-        NbrBathRooms: Number(initialValues.NbrBathRooms)
+        SellPrice: Number(initialValues.SellPrice) || 0,
+        NbrBedRooms: Number(initialValues.NbrBedRooms) || 0,
+        NbrBathRooms: Number(initialValues.NbrBathRooms) || 0,
+        Cheques: Number(initialValues.Cheques) || undefined,
+        UnitNumber: initialValues.UnitNumber || '',
+        FloorNumber: initialValues.FloorNumber || '',
+        BuildingName: initialValues.BuildingName || '',
+        Area: Number(initialValues.Area) || undefined,
       });
 
-      if (Array.isArray(initialValues.Features)) {
-        setFeatures(initialValues.Features);
-      }
-
+      if (Array.isArray(initialValues.Features)) setFeatures(initialValues.Features);
       if (Array.isArray(initialValues.Images) && initialValues.Images.length > 0) {
         setUploadedImages(initialValues.Images);
-        
-        // Create file list for preview
         const initialFileList = initialValues.Images.map((url, index) => ({
           uid: `-${index}`,
           name: `Image ${index + 1}`,
@@ -78,13 +75,11 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
   // Handle form submission
   const handleSubmit = async (values) => {
     try {
-      // Check if currentUser is defined
       if (!currentUser) {
         message.error('User information is missing. Please log in again.');
         return;
       }
 
-      // Format the property data
       const propertyData = {
         ...values,
         company_id: currentUser.company_id || '',
@@ -93,7 +88,6 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
         Images: uploadedImages,
       };
 
-      // Call the onSave callback with the property data
       await onSave(propertyData);
     } catch (error) {
       console.error('Error submitting property form:', error);
@@ -101,7 +95,7 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
     }
   };
 
-  // Handle image uploads
+  // Image handlers
   const handleImageUpload = async (options) => {
     const { file, onSuccess, onError } = options;
     setUploadLoading(true);
@@ -112,38 +106,29 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
         tags: ['property', currentUser?.company_id]
       });
 
-      // Add the uploaded image URL to the list
       setUploadedImages(prev => [...prev, result.url]);
-      
-      // Signal success
       onSuccess(result, file);
       message.success(`${file.name} uploaded successfully`);
     } catch (error) {
       console.error('Error uploading image:', error);
-      message.error(`${file.name} upload failed: ${error.message}`);
+      message.error(`${file.name} upload failed`);
       onError(error);
     } finally {
       setUploadLoading(false);
     }
   };
 
-  // Handle image removal
   const handleImageRemove = (file) => {
-    // Remove from file list
-    const updatedFileList = fileList.filter(item => item.uid !== file.uid);
-    setFileList(updatedFileList);
-
-    // Remove from uploaded images
+    setFileList(prev => prev.filter(item => item.uid !== file.uid));
     if (file.url) {
-      const updatedImages = uploadedImages.filter(url => url !== file.url);
-      setUploadedImages(updatedImages);
+      setUploadedImages(prev => prev.filter(url => url !== file.url));
     }
   };
 
-  // Handle feature tag input
+  // Feature handlers
   const handleAddFeature = () => {
-    if (newFeature && !features.includes(newFeature)) {
-      setFeatures([...features, newFeature]);
+    if (newFeature?.trim() && !features.includes(newFeature.trim())) {
+      setFeatures([...features, newFeature.trim()]);
       setNewFeature('');
     }
   };
@@ -153,22 +138,12 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
   };
 
   const propertyTypes = [
- "Studio",
-  "Apartment",
-  "Villa",
-  "Penthouse",
-  "Retail",
-  "Hotel",
-  "Building",
-  "Tower",
-  "Land",
-  "Hotel Room",
-  "Store",
-  "Mall",
+    "Studio", "Apartment", "Villa", "Penthouse", "Retail", "Hotel",
+    "Building", "Tower", "Land", "Hotel Room", "Store", "Mall"
   ];
 
   const propertyCategories = ['OffPlan', 'Buy', 'Rent'];
-  const propertyStatuses = ['Pending', 'Sold', 'Rented', 'Available'];
+  const propertyStatuses = ['Vacant', 'Rented', 'Available', 'Sold'];
 
   return (
     <Spin spinning={loading || uploadLoading}>
@@ -180,9 +155,6 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
           Type: 'Apartment',
           Category: 'Buy',
           Status: 'Available',
-          Features: [],
-          Images: [],
-          Notes: []
         }}
       >
         <Row gutter={16}>
@@ -199,7 +171,7 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
             <Form.Item
               name="title"
               label="Property Title"
-              rules={[{ required: true, message: 'Please enter property title' }]}
+              rules={[{ required: true, message: 'Please enter the property title' }]}
             >
               <Input placeholder="Enter property title" maxLength={100} />
             </Form.Item>
@@ -228,8 +200,8 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
               rules={[{ required: true, message: 'Please select category' }]}
             >
               <Select placeholder="Select category">
-                {propertyCategories.map(category => (
-                  <Option key={category} value={category}>{category}</Option>
+                {propertyCategories.map(cat => (
+                  <Option key={cat} value={cat}>{cat}</Option>
                 ))}
               </Select>
             </Form.Item>
@@ -255,24 +227,9 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
         <Row gutter={16}>
           <Col xs={24} md={12}>
             <Form.Item
-              name="OriginalPrice"
-              label="Original Price (AED)"
-              rules={[{ required: true, message: 'Please enter original price' }]}
-            >
-              <InputNumber
-                style={{ width: '100%' }}
-                placeholder="Enter price in AED"
-                min={0}
-                precision={2}
-              />
-            </Form.Item>
-          </Col>
-          
-          <Col xs={24} md={12}>
-            <Form.Item
               name="SellPrice"
-              label="Sell/Rent Price (AED)"
-              rules={[{ required: true, message: 'Please enter sell/rent price' }]}
+              label="Sell / Rent Price (AED)"
+              rules={[{ required: true, message: 'Please enter the sell or rent price' }]}
             >
               <InputNumber
                 style={{ width: '100%' }}
@@ -282,6 +239,23 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
               />
             </Form.Item>
           </Col>
+
+          {category === 'Rent' && (
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="Cheques"
+                label="Number of Cheques"
+                rules={[{ required: true, message: 'Please enter number of cheques' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  placeholder="e.g. 12"
+                  min={1}
+                  max={24}
+                />
+              </Form.Item>
+            </Col>
+          )}
         </Row>
 
         {/* Location */}
@@ -290,20 +264,56 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
           <Col xs={24} md={12}>
             <Form.Item
               name="Location"
-              label="Location/City"
-              rules={[{ required: true, message: 'Please enter location' }]}
+              label="Location / City"
+              rules={[{ required: true, message: 'Please enter the location or city' }]}
             >
-              <Input placeholder="City or general location" />
+              <Input placeholder="e.g. Dubai Marina, Downtown, etc." />
             </Form.Item>
           </Col>
-          
+
           <Col xs={24} md={12}>
             <Form.Item
-              name="address"
-              label="Full Address"
-              rules={[{ required: true, message: 'Please enter address' }]}
+              name="BuildingName"
+              label="Building Name"
+              rules={[{ required: true, message: 'Please enter building name' }]}
             >
-              <Input placeholder="Full property address" />
+              <Input placeholder="Building name" />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Row gutter={16}>
+          <Col xs={24} md={8}>
+            <Form.Item
+              name="UnitNumber"
+              label="Unit Number"
+              rules={[{ required: true, message: 'Please enter unit number' }]}
+            >
+              <Input placeholder="e.g. 1203" />
+            </Form.Item>
+          </Col>
+
+          <Col xs={24} md={8}>
+            <Form.Item
+              name="FloorNumber"
+              label="Floor Number"
+              rules={[{ required: true, message: 'Please enter floor number' }]}
+            >
+              <InputNumber style={{ width: '100%' }} placeholder="Floor" min={0} />
+            </Form.Item>
+          </Col>
+
+          <Col xs={24} md={8}>
+            <Form.Item
+              name="Area"
+              label="Area (Sq Ft)"
+              rules={[{ required: true, message: 'Please enter the area in square feet' }]}
+            >
+              <InputNumber
+                style={{ width: '100%' }}
+                placeholder="Area in Sq Ft"
+                min={0}
+              />
             </Form.Item>
           </Col>
         </Row>
@@ -317,7 +327,7 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
               label="Bedrooms"
               rules={[{ required: true, message: 'Please enter number of bedrooms' }]}
             >
-              <InputNumber style={{ width: '100%' }} min={0} placeholder="Bedrooms" />
+              <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
           </Col>
           
@@ -327,7 +337,7 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
               label="Bathrooms"
               rules={[{ required: true, message: 'Please enter number of bathrooms' }]}
             >
-              <InputNumber style={{ width: '100%' }} min={0} placeholder="Bathrooms" />
+              <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
           </Col>
           
@@ -335,7 +345,6 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
             <Form.Item
               name="Source"
               label="Source"
-              rules={[{ required: false }]}
             >
               <Input placeholder="Property source (e.g., Direct Owner, Agency)" />
             </Form.Item>
@@ -367,11 +376,7 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
                 onChange={e => setNewFeature(e.target.value)}
                 onPressEnter={handleAddFeature}
                 suffix={
-                  <Button 
-                    type="text" 
-                    icon={<PlusOutlined />} 
-                    onClick={handleAddFeature}
-                  />
+                  <Button type="text" icon={<PlusOutlined />} onClick={handleAddFeature} />
                 }
               />
             </Space>
@@ -385,11 +390,11 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
             <Form.Item
               name="description"
               label="Property Description"
-              rules={[{ required: true, message: 'Please enter property description' }]}
+              rules={[{ required: true, message: 'Please provide a detailed property description' }]}
             >
               <TextArea 
                 rows={4} 
-                placeholder="Detailed description of the property" 
+                placeholder="Detailed description of the property..." 
                 maxLength={2000} 
                 showCount 
               />
@@ -414,17 +419,15 @@ const PropertyForm = ({ initialValues = null, onSave, onCancel, loading = false,
                 <div style={{ marginTop: 8 }}>Upload</div>
               </div>
             </Upload>
-            <Text type="secondary">Upload multiple property images (max 10)</Text>
+            <Text type="secondary">Upload multiple property images (max 10 recommended)</Text>
           </Col>
         </Row>
 
         {/* Form Actions */}
-        <Row justify="end" style={{ marginTop: '24px' }}>
+        <Row justify="end" style={{ marginTop: '32px' }}>
           <Col>
             <Space>
-              <Button onClick={onCancel}>
-                Cancel
-              </Button>
+              <Button onClick={onCancel}>Cancel</Button>
               <Button type="primary" htmlType="submit" loading={loading}>
                 {isEditMode ? 'Update Property' : 'Add Property'}
               </Button>

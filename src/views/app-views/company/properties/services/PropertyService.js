@@ -22,15 +22,19 @@ import { db as firestore } from 'configs/FirebaseConfig';
  * @typedef {Object} Property
  * @property {string} id - Property ID
  * @property {string} company_id - Company ID
+ * @property {string} creator_id - Creator ID
  * @property {string} title - Property title
  * @property {string} description - Property description
- * @property {number} OriginalPrice - Original price
- * @property {number} SellPrice - Selling price
+ * @property {number} SellPrice - Sell / Rent price (AED)
+ * @property {number} [Cheques] - Number of cheques (for Rent)
  * @property {string[]} Features - List of features
- * @property {string} Location - Property location
- * @property {string} address - Property address
+ * @property {string} Location - City / General location
+ * @property {string} BuildingName - Building name
+ * @property {string} UnitNumber - Unit number
+ * @property {number|string} FloorNumber - Floor number
+ * @property {number} Area - Area in Sq Ft
  * @property {string[]} Images - List of image URLs
- * @property {string} Source - Property source
+ * @property {string} [Source] - Property source
  * @property {number} NbrBedRooms - Number of bedrooms
  * @property {number} NbrBathRooms - Number of bathrooms
  * @property {string} Type - Property type
@@ -38,19 +42,44 @@ import { db as firestore } from 'configs/FirebaseConfig';
  * @property {string} Category - Property category
  * @property {Date|Timestamp} CreationDate - Creation date
  * @property {Date|Timestamp} LastUpdateDateTime - Last update date/time
- * @property {string} creator_id - Creator ID
- * @property {Array<{text: string, CreationDate: Date|Timestamp}>} Notes - List of notes
+ * @property {Array<{note: string, CreationDate: Date|Timestamp}>} [Notes]
  */
 
 class PropertyService {
+
+  /**
+   * Remove undefined, null, or empty values from object (Firestore compatible)
+   */
+  static #cleanData(data) {
+    const cleaned = { ...data };
+
+    Object.keys(cleaned).forEach(key => {
+      const value = cleaned[key];
+      
+      // Remove undefined and null
+      if (value === undefined || value === null) {
+        delete cleaned[key];
+      }
+      // Remove empty strings (optional - you can keep them if you want)
+      else if (typeof value === 'string' && value.trim() === '') {
+        delete cleaned[key];
+      }
+      // Clean arrays
+      else if (Array.isArray(value)) {
+        if (value.length === 0) {
+          delete cleaned[key]; // or keep as [] if you prefer
+        }
+      }
+    });
+
+    return cleaned;
+  }
+
   /**
    * Fetch all properties for a specific company
-   * @param {string} companyId - The company ID to fetch properties for
-   * @returns {Promise<Array<Property>>} - Array of property objects
    */
   static async fetchProperties(companyId) {
     try {
-      // Create query to get all properties for this company, ordered by creation date
       const propertiesRef = collection(firestore, 'properties');
       const q = query(
         propertiesRef,
@@ -58,18 +87,14 @@ class PropertyService {
         orderBy('CreationDate', 'desc')
       );
 
-      // Execute query
       const querySnapshot = await getDocs(q);
       
-      // Map results to array
-      /** @type {Array<Property>} */
       const properties = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       
-      // Convert Firestore timestamps to JavaScript Date objects
-      return properties.map(/** @param {Property} property */ property => ({
+      return properties.map(property => ({
         ...property,
         CreationDate: property.CreationDate instanceof Timestamp 
           ? property.CreationDate.toDate() 
@@ -93,6 +118,52 @@ class PropertyService {
   }
 
   /**
+   * Create a new property
+   */
+  static async createProperty(propertyData) {
+    try {
+      const cleanedData = this.#cleanData(propertyData);
+      
+      const timestamp = serverTimestamp();
+
+      const dataWithTimestamps = {
+        ...cleanedData,
+        CreationDate: timestamp,
+        LastUpdateDateTime: timestamp,
+        Features: Array.isArray(cleanedData.Features) ? cleanedData.Features : [],
+        Images: Array.isArray(cleanedData.Images) ? cleanedData.Images : [],
+        Notes: Array.isArray(cleanedData.Notes) ? cleanedData.Notes : [],
+      };
+
+      const docRef = await addDoc(collection(firestore, 'properties'), dataWithTimestamps);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error creating property:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing property
+   */
+  static async updateProperty(propertyId, propertyData) {
+    try {
+      const cleanedData = this.#cleanData(propertyData);
+
+      const dataWithTimestamp = {
+        ...cleanedData,
+        LastUpdateDateTime: serverTimestamp()
+      };
+
+      const propertyRef = doc(firestore, 'properties', propertyId);
+      await updateDoc(propertyRef, dataWithTimestamp);
+    } catch (error) {
+      console.error('Error updating property:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Fetch a single property by ID
    * @param {string} propertyId - The property ID to fetch
    * @returns {Promise<Object>} - The property object
@@ -111,7 +182,6 @@ class PropertyService {
         ...propertySnap.data()
       };
 
-      // Convert Firestore timestamps to JavaScript Date objects
       return {
         ...property,
         CreationDate: property.CreationDate instanceof Timestamp 
@@ -135,57 +205,7 @@ class PropertyService {
     }
   }
 
-  /**
-   * Create a new property
-   * @param {Object} propertyData - The property data to create
-   * @returns {Promise<string>} - The new property ID
-   */
-  static async createProperty(propertyData) {
-    try {
-      // Add timestamps
-      const timestamp = serverTimestamp();
-      const dataWithTimestamps = {
-        ...propertyData,
-        CreationDate: timestamp,
-        LastUpdateDateTime: timestamp
-      };
 
-      // Ensure arrays are properly initialized
-      if (!dataWithTimestamps.Features) dataWithTimestamps.Features = [];
-      if (!dataWithTimestamps.Images) dataWithTimestamps.Images = [];
-      if (!dataWithTimestamps.Notes) dataWithTimestamps.Notes = [];
-
-      // Add document to Firestore
-      const docRef = await addDoc(collection(firestore, 'properties'), dataWithTimestamps);
-      return docRef.id;
-    } catch (error) {
-      console.error('Error creating property:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Update an existing property
-   * @param {string} propertyId - The ID of the property to update
-   * @param {Object} propertyData - The new property data
-   * @returns {Promise<void>}
-   */
-  static async updateProperty(propertyId, propertyData) {
-    try {
-      // Add update timestamp
-      const dataWithTimestamp = {
-        ...propertyData,
-        LastUpdateDateTime: serverTimestamp()
-      };
-
-      // Update document in Firestore
-      const propertyRef = doc(firestore, 'properties', propertyId);
-      await updateDoc(propertyRef, dataWithTimestamp);
-    } catch (error) {
-      console.error('Error updating property:', error);
-      throw error;
-    }
-  }
 
   /**
    * Delete a property
@@ -194,7 +214,6 @@ class PropertyService {
    */
   static async deleteProperty(propertyId) {
     try {
-      // Delete document from Firestore
       const propertyRef = doc(firestore, 'properties', propertyId);
       await deleteDoc(propertyRef);
     } catch (error) {
@@ -211,7 +230,6 @@ class PropertyService {
    */
   static async addPropertyNote(propertyId, noteText) {
     try {
-      // Get current property data
       const propertyRef = doc(firestore, 'properties', propertyId);
       const propertySnap = await getDoc(propertyRef);
 
@@ -222,16 +240,13 @@ class PropertyService {
       const propertyData = propertySnap.data();
       const notes = Array.isArray(propertyData.Notes) ? propertyData.Notes : [];
 
-      // Create new note
       const newNote = {
         note: noteText,
         CreationDate: serverTimestamp()
       };
 
-      // Add note to array
       notes.push(newNote);
 
-      // Update property
       await updateDoc(propertyRef, {
         Notes: notes,
         LastUpdateDateTime: serverTimestamp()

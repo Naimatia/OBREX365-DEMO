@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import {
   Form,
@@ -12,59 +11,22 @@ import {
   Space,
   message,
   Upload,
-  Progress,
   Tag,
-  Image,
-  Divider
+  Divider,
+  Typography
 } from 'antd';
 import { 
   HomeOutlined, 
-  DollarOutlined, 
   PlusOutlined,
   DeleteOutlined,
-  UploadOutlined,
-  EyeOutlined,
-  LoadingOutlined
+  UploadOutlined
 } from '@ant-design/icons';
 import CloudinaryService from 'services/CloudinaryService';
 
 const { Option } = Select;
 const { TextArea } = Input;
+const { Text } = Typography;
 
-// Property categories and types
-const PropertyCategories = {
-  OFFPLAN: 'OffPlan',
-  BUY: 'Buy',
-  RENT: 'Rent'
-};
-
-const PropertyTypes = {
-ALL: 'All Types',
-  STUDIO: 'Studio',
-  APARTMENT: 'Apartment',
-  VILLA: 'Villa',
-  PENTHOUSE: 'Penthouse',
-  TOWNHOUSE: 'Townhouse',
-  RETAIL: 'Retail',
-  HOTEL: 'Hotel',
-  BUILDING: 'Building',
-  TOWER: 'Tower',
-  LAND: 'Land',
-  HOTEL_ROOM: 'Hotel Room',
-  STORE: 'Store',
-  MALL: 'Mall',
-  OFFICE: 'Office',
-  WAREHOUSE: 'Warehouse',
-};
-
-const PropertyStatus = {
-  PENDING: 'Pending',
-  SOLD: 'Sold'
-};
-
-/**
- * Form component for creating/editing properties
- */
 const SellerPropertyForm = ({ 
   visible, 
   onCancel, 
@@ -77,62 +39,34 @@ const SellerPropertyForm = ({
   const [form] = Form.useForm();
   const [uploadedImages, setUploadedImages] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({});
-  const [featuresInput, setFeaturesInput] = useState('');
   const [features, setFeatures] = useState([]);
+  const [newFeature, setNewFeature] = useState('');
 
-  // Validation rules
-  const rules = {
-    title: [
-      { required: true, message: 'Please enter property title!' },
-      { min: 5, message: 'Title must be at least 5 characters!' }
-    ],
-    SellPrice: [
-      { required: true, message: 'Please enter property price!' },
-      { type: 'number', min: 0, message: 'Price must be positive!' }
-    ],
-    Type: [
-      { required: true, message: 'Please select property type!' }
-    ],
-    Category: [
-      { required: true, message: 'Please select property category!' }
-    ],
-    Status: [
-      { required: true, message: 'Please select property status!' }
-    ],
-    Location: [
-      { required: true, message: 'Please enter location!' }
-    ],
-    address: [
-      { required: true, message: 'Please enter address!' }
-    ],
-    NbrBedRooms: [
-      { required: true, message: 'Please enter number of bedrooms!' },
-      { type: 'number', min: 0, message: 'Bedrooms must be 0 or more!' }
-    ],
-    NbrBathRooms: [
-      { required: true, message: 'Please enter number of bathrooms!' },
-      { type: 'number', min: 1, message: 'Bathrooms must be at least 1!' }
-    ]
-  };
+  const isEditMode = !!property;
+  const category = Form.useWatch('Category', form);
 
-  // Set form values when property prop changes
+  // Initialize form
   useEffect(() => {
     if (property) {
       form.setFieldsValue({
         ...property,
-        SellPrice: property.SellPrice || 0
+        SellPrice: Number(property.SellPrice) || 0,
+        NbrBedRooms: Number(property.NbrBedRooms) || 0,
+        NbrBathRooms: Number(property.NbrBathRooms) || 0,
+        Cheques: Number(property.Cheques) || undefined,
+        FloorNumber: property.FloorNumber || undefined,
+        Area: Number(property.Area) || undefined,
       });
       setUploadedImages(property.Images || []);
       setFeatures(property.Features || []);
     } else {
-      // Set default values for new property
+      form.resetFields();
       form.setFieldsValue({
-        Status: PropertyStatus.PENDING,
-        Category: PropertyCategories.BUY,
-        Type: PropertyTypes.APARTMENT,
+        Category: 'Buy',
+        Status: 'Pending',
+        Type: 'Apartment',
         NbrBedRooms: 1,
-        NbrBathRooms: 1
+        NbrBathRooms: 1,
       });
       setUploadedImages([]);
       setFeatures([]);
@@ -142,104 +76,82 @@ const SellerPropertyForm = ({
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      
+
       const propertyData = {
         ...values,
         Images: uploadedImages,
         Features: features,
         creator_id: userId,
-        company_id: companyId
+        company_id: companyId,
       };
-      
+
       await onSubmit(propertyData);
+
+      // Reset after successful submit
       form.resetFields();
       setUploadedImages([]);
       setFeatures([]);
+      setNewFeature('');
     } catch (error) {
       console.error('Form validation failed:', error);
     }
   };
 
-  // Handle image upload
+  // Fixed Image Upload Handler
   const handleImageUpload = async (file) => {
     try {
       setUploading(true);
-      setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
-      
-      // Simulate progress for better UX
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => ({
-          ...prev,
-          [file.name]: Math.min((prev[file.name] || 0) + 10, 90)
-        }));
-      }, 200);
-      
-      const result = await CloudinaryService.uploadImage(file, {
+
+      const result = await CloudinaryService.uploadFile(file, {
         folder: 'properties',
         tags: ['property', companyId]
       });
-      
-      clearInterval(progressInterval);
-      setUploadProgress(prev => ({ ...prev, [file.name]: 100 }));
-      
-      const newImageUrl = result.secure_url;
-      setUploadedImages(prev => [...prev, newImageUrl]);
-      
-      message.success(`${file.name} uploaded successfully!`);
-      
-      // Clear progress after a delay
-      setTimeout(() => {
-        setUploadProgress(prev => {
-          const newProgress = { ...prev };
-          delete newProgress[file.name];
-          return newProgress;
-        });
-      }, 1000);
-      
+
+      setUploadedImages(prev => [...prev, result.url || result.secure_url]);
+      message.success(`${file.name} uploaded successfully`);
     } catch (error) {
       console.error('Upload error:', error);
-      message.error(`Failed to upload ${file.name}`);
-      setUploadProgress(prev => {
-        const newProgress = { ...prev };
-        delete newProgress[file.name];
-        return newProgress;
-      });
+      message.error('Failed to upload image. Please try again.');
     } finally {
       setUploading(false);
     }
-    
-    return false; // Prevent default upload behavior
+
+    return false; // Prevent default Ant Design upload behavior
   };
 
-  // Remove image
   const removeImage = (imageUrl) => {
     setUploadedImages(prev => prev.filter(url => url !== imageUrl));
-    message.success('Image removed');
+    message.info('Image removed');
   };
 
-  // Add feature
   const addFeature = () => {
-    if (featuresInput.trim() && !features.includes(featuresInput.trim())) {
-      setFeatures([...features, featuresInput.trim()]);
-      setFeaturesInput('');
+    if (newFeature.trim() && !features.includes(newFeature.trim())) {
+      setFeatures([...features, newFeature.trim()]);
+      setNewFeature('');
     }
   };
 
-  // Remove feature
   const removeFeature = (feature) => {
     setFeatures(features.filter(f => f !== feature));
   };
 
+  const propertyTypes = [
+    "Studio", "Apartment", "Villa", "Penthouse", "Retail", "Hotel",
+    "Building", "Tower", "Land", "Hotel Room", "Store", "Mall", 
+    "Office", "Warehouse"
+  ];
+
+  const propertyCategories = ['OffPlan', 'Buy', 'Rent'];
+  const propertyStatuses = [ 'Sold', 'Available', 'Rented', 'Vacant'];
+
   return (
     <Modal
-      title={property ? 'Edit Property' : 'Add New Property'}
+      title={isEditMode ? 'Edit Property' : 'Add New Property'}
       open={visible}
       onCancel={onCancel}
-      width={900}
+      width={950}
       footer={[
-        <Button key="cancel" onClick={onCancel}>
-          Cancel
-        </Button>,
+        <Button key="cancel" onClick={onCancel}>Cancel</Button>,
         <Button
           key="submit"
           type="primary"
@@ -247,271 +159,170 @@ const SellerPropertyForm = ({
           onClick={handleSubmit}
           icon={<HomeOutlined />}
         >
-          {property ? 'Update Property' : 'Create Property'}
+          {isEditMode ? 'Update Property' : 'Create Property'}
         </Button>
       ]}
-      style={{ top: 20 }}
     >
-      <Form form={form} layout="vertical" size="large">
+      <Form form={form} layout="vertical">
         {/* Basic Information */}
         <Divider orientation="left">Basic Information</Divider>
-        
         <Row gutter={16}>
-          <Col xs={24} sm={12}>
-            <Form.Item
-              name="title"
-              label="Property Title"
-              rules={rules.title}
-            >
-              <Input 
-                placeholder="Enter property title"
-                prefix={<HomeOutlined />}
-              />
+          <Col xs={24} md={16}>
+            <Form.Item name="title" label="Property Title" rules={[{ required: true, message: 'Please enter property title' }]}>
+              <Input placeholder="Enter property title" maxLength={100} />
             </Form.Item>
           </Col>
-          
-          <Col xs={24} sm={12}>
-            <Form.Item
-              name="SellPrice"
-              label="Price (AED)"
-              rules={rules.SellPrice}
-            >
-              <InputNumber
-                style={{ width: '100%' }}
-                placeholder="Enter price in AED"
-                formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                parser={value => value.replace(/\$\s?|(,*)/g, '')}
-                prefix="AED"
-                min={0}
-                precision={0}
-              />
-            </Form.Item>
-          </Col>
-        </Row>
-
-        <Row gutter={16}>
-          <Col xs={24} sm={8}>
-            <Form.Item
-              name="Type"
-              label="Property Type"
-              rules={rules.Type}
-            >
+          <Col xs={24} md={8}>
+            <Form.Item name="Type" label="Property Type" rules={[{ required: true }]}>
               <Select placeholder="Select type">
-                {Object.values(PropertyTypes).map(type => (
-                  <Option key={type} value={type}>{type}</Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </Col>
-          
-          <Col xs={24} sm={8}>
-            <Form.Item
-              name="Category"
-              label="Category"
-              rules={rules.Category}
-            >
-              <Select placeholder="Select category">
-                {Object.values(PropertyCategories).map(category => (
-                  <Option key={category} value={category}>{category}</Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </Col>
-          
-          <Col xs={24} sm={8}>
-            <Form.Item
-              name="Status"
-              label="Status"
-              rules={rules.Status}
-            >
-              <Select placeholder="Select status">
-                {Object.values(PropertyStatus).map(status => (
-                  <Option key={status} value={status}>
-                    <Space>
-                      <span style={{ color: status === 'Sold' ? '#52c41a' : '#1890ff' }}>●</span>
-                      {status}
-                    </Space>
-                  </Option>
-                ))}
+                {propertyTypes.map(type => <Option key={type} value={type}>{type}</Option>)}
               </Select>
             </Form.Item>
           </Col>
         </Row>
 
-        {/* Location Information */}
-        <Divider orientation="left">Location Information</Divider>
-        
         <Row gutter={16}>
-          <Col xs={24} sm={12}>
-            <Form.Item
-              name="Location"
-              label="Location"
-              rules={rules.Location}
-            >
-              <Input placeholder="e.g., Dubai Marina, Business Bay" />
+          <Col xs={24} md={8}>
+            <Form.Item name="Category" label="Category" rules={[{ required: true }]}>
+              <Select placeholder="Select category">
+                {propertyCategories.map(cat => <Option key={cat} value={cat}>{cat}</Option>)}
+              </Select>
             </Form.Item>
           </Col>
-          
-          <Col xs={24} sm={12}>
-            <Form.Item
-              name="address"
-              label="Address"
-              rules={rules.address}
-            >
-              <Input placeholder="Full address" />
+          <Col xs={24} md={8}>
+            <Form.Item name="Status" label="Status" rules={[{ required: true }]}>
+              <Select placeholder="Select status">
+                {propertyStatuses.map(status => <Option key={status} value={status}>{status}</Option>)}
+              </Select>
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={8}>
+            <Form.Item name="SellPrice" label="Price (AED)" rules={[{ required: true }]}>
+              <InputNumber style={{ width: '100%' }} min={0} precision={0} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        {/* Cheques for Rent */}
+        {category === 'Rent' && (
+          <Form.Item name="Cheques" label="Number of Cheques" rules={[{ required: true }]}>
+            <InputNumber style={{ width: '100%' }} min={1} max={24} />
+          </Form.Item>
+        )}
+
+        {/* Location */}
+        <Divider orientation="left">Location Details</Divider>
+        <Row gutter={16}>
+          <Col xs={24} md={12}>
+            <Form.Item name="Location" label="City / Area" rules={[{ required: true }]}>
+              <Input placeholder="e.g. Dubai Marina" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item name="BuildingName" label="Building Name" rules={[{ required: true }]}>
+              <Input placeholder="Building name" />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Row gutter={16}>
+          <Col xs={24} md={8}>
+            <Form.Item name="UnitNumber" label="Unit Number" rules={[{ required: true }]}>
+              <Input placeholder="e.g. 1203" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={8}>
+            <Form.Item name="FloorNumber" label="Floor Number" rules={[{ required: true }]}>
+              <InputNumber style={{ width: '100%' }} min={0} />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={8}>
+            <Form.Item name="Area" label="Area (Sq Ft)" rules={[{ required: true }]}>
+              <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
           </Col>
         </Row>
 
         {/* Property Details */}
         <Divider orientation="left">Property Details</Divider>
-        
         <Row gutter={16}>
-          <Col xs={24} sm={8}>
-            <Form.Item
-              name="NbrBedRooms"
-              label="Bedrooms"
-              rules={rules.NbrBedRooms}
-            >
-              <InputNumber
-                style={{ width: '100%' }}
-                min={0}
-                placeholder="Number of bedrooms"
-              />
+          <Col xs={24} md={6}>
+            <Form.Item name="NbrBedRooms" label="Bedrooms" rules={[{ required: true }]}>
+              <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
           </Col>
-          
-          <Col xs={24} sm={8}>
-            <Form.Item
-              name="NbrBathRooms"
-              label="Bathrooms"
-              rules={rules.NbrBathRooms}
-            >
-              <InputNumber
-                style={{ width: '100%' }}
-                min={1}
-                placeholder="Number of bathrooms"
-              />
+          <Col xs={24} md={6}>
+            <Form.Item name="NbrBathRooms" label="Bathrooms" rules={[{ required: true }]}>
+              <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
           </Col>
-          
-          <Col xs={24} sm={8}>
-            <Form.Item
-              name="Source"
-              label="Source"
-            >
-              <Input placeholder="Property source (optional)" />
+          <Col xs={24} md={12}>
+            <Form.Item name="Source" label="Source">
+              <Input placeholder="Direct Owner, Agency, etc." />
             </Form.Item>
           </Col>
         </Row>
 
         {/* Features */}
         <Divider orientation="left">Features</Divider>
-        
-        <Row gutter={16}>
-          <Col xs={24}>
-            <Form.Item label="Features">
-              <Space.Compact style={{ width: '100%' }}>
-                <Input
-                  value={featuresInput}
-                  onChange={(e) => setFeaturesInput(e.target.value)}
-                  placeholder="Add a feature (e.g., Swimming Pool, Gym, Parking)"
-                  onPressEnter={addFeature}
-                />
-                <Button type="primary" icon={<PlusOutlined />} onClick={addFeature}>
-                  Add
-                </Button>
-              </Space.Compact>
-              
-              <div style={{ marginTop: '8px' }}>
-                {features.map(feature => (
-                  <Tag
-                    key={feature}
-                    closable
-                    onClose={() => removeFeature(feature)}
-                    style={{ marginBottom: '8px' }}
-                  >
-                    {feature}
-                  </Tag>
-                ))}
-              </div>
-            </Form.Item>
-          </Col>
-        </Row>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Space wrap>
+            {features.map(feature => (
+              <Tag key={feature} closable onClose={() => removeFeature(feature)} color="blue">
+                {feature}
+              </Tag>
+            ))}
+          </Space>
+          <Input
+            placeholder="Add a feature (e.g. Pool, Gym, Parking)"
+            value={newFeature}
+            onChange={e => setNewFeature(e.target.value)}
+            onPressEnter={addFeature}
+            suffix={<Button type="text" icon={<PlusOutlined />} onClick={addFeature} />}
+          />
+        </Space>
 
-        {/* Images Upload */}
+        {/* Description */}
+        <Divider orientation="left">Description</Divider>
+        <Form.Item
+          name="description"
+          label="Property Description"
+          rules={[{ required: true, message: 'Please enter description' }]}
+        >
+          <TextArea rows={4} placeholder="Detailed description of the property..." />
+        </Form.Item>
+
+        {/* Images */}
         <Divider orientation="left">Property Images</Divider>
-        
-        <Row gutter={16}>
-          <Col xs={24}>
-            <Form.Item label="Images">
-              <Upload
-                multiple
-                beforeUpload={handleImageUpload}
-                showUploadList={false}
-                accept="image/*"
-              >
-                <Button 
-                  icon={uploading ? <LoadingOutlined /> : <UploadOutlined />} 
-                  loading={uploading}
-                  style={{ marginBottom: '16px' }}
-                >
-                  Upload Images
-                </Button>
-              </Upload>
+        <Upload
+          multiple
+          beforeUpload={handleImageUpload}
+          showUploadList={false}
+          accept="image/*"
+        >
+          <Button icon={<UploadOutlined />} loading={uploading}>
+            {uploading ? 'Uploading...' : 'Upload Images'}
+          </Button>
+        </Upload>
 
-              {/* Upload Progress */}
-              {Object.entries(uploadProgress).map(([fileName, progress]) => (
-                <div key={fileName} style={{ marginBottom: '8px' }}>
-                  <div style={{ fontSize: '12px', color: '#666' }}>Uploading {fileName}</div>
-                  <Progress percent={progress} size="small" />
-                </div>
-              ))}
-
-              {/* Uploaded Images */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {uploadedImages.map((imageUrl, index) => (
-                  <div key={index} style={{ position: 'relative', border: '1px solid #d9d9d9', borderRadius: '6px' }}>
-                    <Image
-                      width={100}
-                      height={100}
-                      src={imageUrl}
-                      style={{ objectFit: 'cover', borderRadius: '6px' }}
-                      preview={{
-                        mask: <EyeOutlined />
-                      }}
-                    />
-                    <Button
-                      type="text"
-                      danger
-                      size="small"
-                      icon={<DeleteOutlined />}
-                      onClick={() => removeImage(imageUrl)}
-                      style={{ 
-                        position: 'absolute', 
-                        top: '4px', 
-                        right: '4px',
-                        backgroundColor: 'rgba(255,255,255,0.8)'
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-              
-              {uploadedImages.length === 0 && (
-                <div style={{ 
-                  textAlign: 'center', 
-                  padding: '20px', 
-                  border: '2px dashed #d9d9d9', 
-                  borderRadius: '6px',
-                  color: '#999'
-                }}>
-                  No images uploaded yet
-                </div>
-              )}
-            </Form.Item>
-          </Col>
-        </Row>
+        <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {uploadedImages.map((url, index) => (
+            <div key={index} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden' }}>
+              <img
+                src={url}
+                alt="uploaded"
+                style={{ width: 110, height: 110, objectFit: 'cover' }}
+              />
+              <Button
+                danger
+                size="small"
+                icon={<DeleteOutlined />}
+                style={{ position: 'absolute', top: 6, right: 6 }}
+                onClick={() => removeImage(url)}
+              />
+            </div>
+          ))}
+        </div>
       </Form>
     </Modal>
   );

@@ -15,15 +15,38 @@ import {
 import { db } from 'configs/FirebaseConfig';
 
 /**
+ * Remove undefined, null, or empty values (Firestore doesn't allow undefined)
+ */
+const cleanData = (data) => {
+  const cleaned = { ...data };
+
+  Object.keys(cleaned).forEach(key => {
+    const value = cleaned[key];
+
+    // Remove undefined and null
+    if (value === undefined || value === null) {
+      delete cleaned[key];
+    }
+    // Remove empty strings (optional - you can keep them if needed)
+    else if (typeof value === 'string' && value.trim() === '') {
+      delete cleaned[key];
+    }
+    // Clean arrays
+    else if (Array.isArray(value)) {
+      if (value.length === 0) {
+        delete cleaned[key]; // or set to [] if you prefer to keep empty arrays
+      }
+    }
+  });
+
+  return cleaned;
+};
+
+/**
  * Service for managing properties in Firestore
  */
 const PropertiesService = {
 
-  /**
-   * Get all properties for a specific company
-   * @param {string} companyId - The company's ID
-   * @returns {Promise<Array>} Array of properties
-   */
   async getCompanyProperties(companyId) {
     try {
       const propertiesQuery = query(
@@ -40,7 +63,6 @@ const PropertiesService = {
         properties.push({
           id: doc.id,
           ...data,
-          // Convert timestamps to Date objects for easier handling
           CreationDate: data.CreationDate?.toDate ? data.CreationDate.toDate() : data.CreationDate,
           LastUpdateDateTime: data.LastUpdateDateTime?.toDate ? data.LastUpdateDateTime.toDate() : data.LastUpdateDateTime
         });
@@ -55,22 +77,22 @@ const PropertiesService = {
 
   /**
    * Create a new property
-   * @param {Object} propertyData - Property data
-   * @returns {Promise<string>} ID of created property
    */
   async createProperty(propertyData) {
     try {
+      const cleanedData = cleanData(propertyData);
+      
       const now = serverTimestamp();
+      
       const propertyToCreate = {
-        ...propertyData,
+        ...cleanedData,
         CreationDate: now,
         LastUpdateDateTime: now,
-        // Ensure these fields are properly set
-        Notes: propertyData.Notes || [],
-        Features: propertyData.Features || [],
-        Images: propertyData.Images || []
+        Notes: Array.isArray(cleanedData.Notes) ? cleanedData.Notes : [],
+        Features: Array.isArray(cleanedData.Features) ? cleanedData.Features : [],
+        Images: Array.isArray(cleanedData.Images) ? cleanedData.Images : [],
       };
-      
+
       const docRef = await addDoc(collection(db, 'properties'), propertyToCreate);
       return docRef.id;
     } catch (error) {
@@ -81,18 +103,17 @@ const PropertiesService = {
 
   /**
    * Update an existing property
-   * @param {string} propertyId - Property ID
-   * @param {Object} updates - Property updates
-   * @returns {Promise<void>}
    */
   async updateProperty(propertyId, updates) {
     try {
-      const propertyRef = doc(db, 'properties', propertyId);
+      const cleanedUpdates = cleanData(updates);
+      
       const updateData = {
-        ...updates,
+        ...cleanedUpdates,
         LastUpdateDateTime: serverTimestamp()
       };
-      
+
+      const propertyRef = doc(db, 'properties', propertyId);
       await updateDoc(propertyRef, updateData);
     } catch (error) {
       console.error('Error updating property:', error);
@@ -100,11 +121,6 @@ const PropertiesService = {
     }
   },
 
-  /**
-   * Delete a property
-   * @param {string} propertyId - Property ID
-   * @returns {Promise<void>}
-   */
   async deleteProperty(propertyId) {
     try {
       const propertyRef = doc(db, 'properties', propertyId);
@@ -115,47 +131,31 @@ const PropertiesService = {
     }
   },
 
-  /**
-   * Add a note to a property
-   * @param {string} propertyId - Property ID
-   * @param {string} noteText - Note text
-   * @returns {Promise<void>}
-   */
   async addNote(propertyId, noteText) {
     try {
       const propertyRef = doc(db, 'properties', propertyId);
       const propertyDoc = await getDoc(propertyRef);
       
-      if (!propertyDoc.exists()) {
-        throw new Error('Property not found');
-      }
-      
-      const propertyData = propertyDoc.data();
-      const currentNotes = propertyData.Notes || [];
+      if (!propertyDoc.exists()) throw new Error('Property not found');
+
+      const currentNotes = propertyDoc.data().Notes || [];
       
       const newNote = {
         note: noteText,
-        CreationDate: new Date() // Use Date instead of serverTimestamp for arrays
+        CreationDate: new Date()
       };
-      
-      const updatedNotes = [...currentNotes, newNote];
-      
+
       await updateDoc(propertyRef, {
-        Notes: updatedNotes,
+        Notes: [...currentNotes, newNote],
         LastUpdateDateTime: serverTimestamp()
       });
     } catch (error) {
-      console.error('Error adding note to property:', error);
+      console.error('Error adding note:', error);
       throw error;
     }
   },
 
-  /**
-   * Bulk update properties status
-   * @param {Array<string>} propertyIds - Array of property IDs
-   * @param {string} status - New status
-   * @returns {Promise<void>}
-   */
+  // ... keep other methods as they are
   async bulkUpdateProperties(propertyIds, status) {
     try {
       const batch = writeBatch(db);
@@ -176,19 +176,12 @@ const PropertiesService = {
     }
   },
 
-  /**
-   * Get property by ID
-   * @param {string} propertyId - Property ID
-   * @returns {Promise<Object>} Property data
-   */
   async getPropertyById(propertyId) {
     try {
       const propertyRef = doc(db, 'properties', propertyId);
       const propertyDoc = await getDoc(propertyRef);
       
-      if (!propertyDoc.exists()) {
-        throw new Error('Property not found');
-      }
+      if (!propertyDoc.exists()) throw new Error('Property not found');
       
       const data = propertyDoc.data();
       return {
@@ -199,26 +192,6 @@ const PropertiesService = {
       };
     } catch (error) {
       console.error('Error getting property:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Update property images
-   * @param {string} propertyId - Property ID
-   * @param {Array<string>} imageUrls - Array of image URLs
-   * @returns {Promise<void>}
-   */
-  async updatePropertyImages(propertyId, imageUrls) {
-    try {
-      const propertyRef = doc(db, 'properties', propertyId);
-      
-      await updateDoc(propertyRef, {
-        Images: imageUrls,
-        LastUpdateDateTime: serverTimestamp()
-      });
-    } catch (error) {
-      console.error('Error updating property images:', error);
       throw error;
     }
   }
