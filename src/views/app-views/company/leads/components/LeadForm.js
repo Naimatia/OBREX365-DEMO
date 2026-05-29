@@ -1,38 +1,35 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Input, Select, Button, InputNumber, Row, Col, DatePicker, Modal } from 'antd';
-import { UserOutlined, MailOutlined, PhoneOutlined, GlobalOutlined } from '@ant-design/icons';
-import { LeadStatus, LeadInterestLevel, LeadRedirectionSource } from 'models/LeadModel';
+import { 
+  Form, Input, Select, Button, Row, Col, Modal, Divider, Typography 
+} from 'antd';
+import { 
+  UserOutlined, MailOutlined, PhoneOutlined, GlobalOutlined, DollarOutlined 
+} from '@ant-design/icons';
+import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import { db, collection, getDocs } from 'configs/FirebaseConfig';
 import countries from 'constants/countries';
 import dayjs from 'dayjs';
 import { UserRoles } from 'models/UserModel';
 
-
 const { Option } = Select;
+const { Text, Title } = Typography;
 
 const salesRoles = [
-  UserRoles.SELLER,
-  UserRoles.SALES_EXECUTIVE,
-  UserRoles.AGENT,
-  UserRoles.TEAM_LEADER,
-  UserRoles.SALES_MANAGER,
-  UserRoles.OFF_PLAN_SALES,
-  UserRoles.READY_TO_MOVE_SALES,
+  UserRoles.SELLER, UserRoles.SALES_EXECUTIVE, UserRoles.AGENT,
+  UserRoles.TEAM_LEADER, UserRoles.SALES_MANAGER,
+  UserRoles.OFF_PLAN_SALES, UserRoles.READY_TO_MOVE_SALES,
 ];
 
-  // Source options with icons
-  const sourceOptions = [
-    { value: 'Facebook', icon: '📘', color: '#1877F2' },
-    { value: 'Instagram', icon: '📷', color: '#E4405F' },
-    { value: 'Website', icon: '🌐', color: '#52c41a' },
-    { value: 'LinkedIn', icon: '💼', color: '#0A66C2' },
-    { value: 'TikTok', icon: '🎵', color: '#ff0050' },
-    { value: 'Freelance', icon: '💪', color: '#fa8c16' }
-  ];
+// Source options
+const sourceOptions = [
+  { value: 'Facebook', icon: '📘', color: '#1877F2' },
+  { value: 'Instagram', icon: '📷', color: '#E4405F' },
+  { value: 'Website', icon: '🌐', color: '#52c41a' },
+  { value: 'LinkedIn', icon: '💼', color: '#0A66C2' },
+  { value: 'TikTok', icon: '🎵', color: '#ff0050' },
+  { value: 'Freelance', icon: '💪', color: '#fa8c16' }
+];
 
-/**
- * Component for adding or editing lead
- */
 const LeadForm = ({
   visible,
   onCancel,
@@ -43,7 +40,6 @@ const LeadForm = ({
   const [form] = Form.useForm();
   const [sellers, setSellers] = useState([]);
 
-  // Fetch sellers (employees with sales-related roles) from Firebase
   useEffect(() => {
     if (visible) {
       form.resetFields();
@@ -55,25 +51,26 @@ const LeadForm = ({
 
         form.setFieldsValue({
           ...editingLead,
-          CreationDate: creationDate
+          CreationDate: creationDate,
+          Budget: editingLead.Budget || '',           // Support string budget
+          lookingFor: editingLead.lookingFor || '',
         });
       } else {
         form.setFieldsValue({
-          CreationDate: dayjs()
+          CreationDate: dayjs(),
+          status: LeadStatus.PENDING,
+          InterestLevel: LeadInterestLevel.MEDIUM,
+          RedirectedFrom: 'Website',
         });
       }
 
+      // Fetch sellers
       const fetchSellers = async () => {
         try {
-          const sellersRef = collection(db, 'users');
-          const sellersSnapshot = await getDocs(sellersRef);
-
+          const sellersSnapshot = await getDocs(collection(db, 'users'));
           const sellersList = sellersSnapshot.docs
-            .map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }))
-            .filter(seller => salesRoles.includes(seller.Role))   // changed here
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(seller => salesRoles.includes(seller.Role))
             .map(seller => ({
               id: seller.id,
               name: `${seller.firstname ?? ""} ${seller.lastname ?? ""}${seller.country ? ` (${seller.country})` : ""}`.trim()
@@ -89,24 +86,15 @@ const LeadForm = ({
     }
   }, [visible, editingLead, form]);
 
-
-// Clean data before submit (Main Fix)
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
 
-      // Remove undefined values and convert Budget properly
       const cleanedValues = { ...values };
 
-      // Handle Budget field specifically
-      if (cleanedValues.Budget === undefined || cleanedValues.Budget === null || cleanedValues.Budget === '') {
-        delete cleanedValues.Budget;        // Remove the field entirely (recommended)
-        // OR: cleanedValues.Budget = null; // Alternative: set to null
-      }
-
-      // Remove any other undefined fields
+      // Clean undefined values
       Object.keys(cleanedValues).forEach(key => {
-        if (cleanedValues[key] === undefined) {
+        if (cleanedValues[key] === undefined || cleanedValues[key] === '') {
           delete cleanedValues[key];
         }
       });
@@ -117,25 +105,23 @@ const LeadForm = ({
     }
   };
 
-  const title = editingLead ? 'Edit Lead' : 'Add New Lead';
+  const isMetaLead = editingLead?.meta_lead_id;
 
   return (
     <Modal
-      title={title}
-      visible={visible}
+      title={editingLead ? 'Edit Lead' : 'Add New Lead'}
+      open={visible}
       onCancel={onCancel}
-      width={800}
+      width={900}
       footer={[
-        <Button key="cancel" onClick={onCancel}>
-          Cancel
-        </Button>,
+        <Button key="cancel" onClick={onCancel}>Cancel</Button>,
         <Button
           key="submit"
           type="primary"
           loading={confirmLoading}
           onClick={handleSubmit}
         >
-          {editingLead ? 'Update' : 'Create'}
+          {editingLead ? 'Update Lead' : 'Create Lead'}
         </Button>
       ]}
     >
@@ -143,18 +129,13 @@ const LeadForm = ({
         form={form}
         layout="vertical"
         name="leadForm"
-        initialValues={{
-          status: LeadStatus.PENDING,
-          InterestLevel: LeadInterestLevel.MEDIUM,
-          RedirectedFrom: LeadRedirectionSource.WEBSITE
-        }}
       >
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item
               name="name"
               label="Full Name"
-              rules={[{ required: true, message: 'Please enter the lead name' }]}
+              rules={[{ required: true, message: 'Full name is required' }]}
             >
               <Input prefix={<UserOutlined />} placeholder="Enter full name" />
             </Form.Item>
@@ -162,17 +143,10 @@ const LeadForm = ({
           <Col span={12}>
             <Form.Item
               name="region"
-              label="Region"
-              rules={[{ required: true, message: 'Please select a region' }]}
+              label="Region / Country"
+              rules={[{ required: true, message: 'Region is required' }]}
             >
-              <Select
-                placeholder="Select region"
-                showSearch
-                optionFilterProp="children"
-              >
-                <Option value="" disabled>
-                  <GlobalOutlined /> Select a country
-                </Option>
+              <Select placeholder="Select region" showSearch>
                 {countries.map(country => (
                   <Option key={country.code} value={country.name}>
                     {country.name}
@@ -187,95 +161,63 @@ const LeadForm = ({
           <Col span={12}>
             <Form.Item
               name="email"
-              label="Email"
+              label="Email Address"
               rules={[
-                { type: 'email', message: 'Please enter a valid email' },
-                { required: true, message: 'Please enter email' }
+                { type: 'email', message: 'Valid email required' },
+                { required: true, message: 'Email is required' }
               ]}
             >
-              <Input placeholder="Enter email address" />
+              <Input prefix={<MailOutlined />} placeholder="example@email.com" />
             </Form.Item>
           </Col>
           <Col span={12}>
             <Form.Item
               name="phoneNumber"
               label="Phone Number"
-              rules={[{ required: true, message: 'Please enter phone number' }]}
+              rules={[{ required: true, message: 'Phone number is required' }]}
             >
-              <Input placeholder="Enter phone number" />
+              <Input prefix={<PhoneOutlined />} placeholder="+964 781 780 0362" />
             </Form.Item>
           </Col>
         </Row>
 
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item
-              name="secondaryEmail"
-              label="Secondary Email Address"
-              rules={[
-                { type: 'email', message: 'Please enter a valid email' },
-              ]}
-              extra="Optional secondary email for additional communications"
-            >
-              <Input prefix={<MailOutlined />} placeholder="secondary@example.com" />
+            <Form.Item name="secondaryEmail" label="Secondary Email">
+              <Input placeholder="secondary@email.com" />
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item
-              name="phoneNumber2"
-              label="Secondary Phone Number"
-              rules={[
-                { pattern: /^[\d\+\-\s()]+$/, message: 'Please enter a valid phone number' },
-              ]}
-            >
-              <Input prefix={<PhoneOutlined />} placeholder="+1 (234) 567-8902" />
+            <Form.Item name="phoneNumber2" label="Secondary Phone">
+              <Input placeholder="+964 xxx xxx xxxx" />
             </Form.Item>
           </Col>
         </Row>
 
         <Row gutter={16}>
           <Col span={8}>
-            <Form.Item
-              name="status"
-              label="Status"
-              rules={[{ required: true, message: 'Please select status' }]}
-            >
-              <Select placeholder="Select status">
+            <Form.Item name="status" label="Status" rules={[{ required: true }]}>
+              <Select>
                 {Object.values(LeadStatus).map(status => (
-                  <Option key={status} value={status}>
-                    {status}
-                  </Option>
+                  <Option key={status} value={status}>{status}</Option>
                 ))}
               </Select>
             </Form.Item>
           </Col>
           <Col span={8}>
-            <Form.Item
-              name="InterestLevel"
-              label="Interest Level"
-              rules={[{ required: true, message: 'Please select interest level' }]}
-            >
-              <Select placeholder="Select interest level">
+            <Form.Item name="InterestLevel" label="Interest Level" rules={[{ required: true }]}>
+              <Select>
                 {Object.values(LeadInterestLevel).map(level => (
-                  <Option key={level} value={level}>
-                    {level}
-                  </Option>
+                  <Option key={level} value={level}>{level}</Option>
                 ))}
               </Select>
             </Form.Item>
           </Col>
           <Col span={8}>
-            <Form.Item
-              name="Budget"
-              label="Budget (AED)"
-              rules={[{ required: false }]}
-            >
-              <InputNumber
-                style={{ width: '100%' }}
-                addonBefore="AED"
-                placeholder="0.00"
-                min={0}
-                precision={2}
+            <Form.Item name="Budget" label="Budget">
+              <Input 
+                prefix={<DollarOutlined />} 
+                placeholder="807_ألف_دولار_–_1.08_مليون_دولار" 
               />
             </Form.Item>
           </Col>
@@ -283,53 +225,29 @@ const LeadForm = ({
 
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item
-              name="RedirectedFrom"
-              label="Lead Source"
-              rules={[{ required: true, message: 'Please select lead source' }]}
-            >
-            <Select
-  placeholder="Select lead source"
-  optionLabelProp="label"
->
-  {sourceOptions.map(source => (
-    <Option
-      key={source.value}
-      value={source.value}
-      label={
-        <span>
-          <span style={{ color: source.color, marginRight: 8 }}>
-            {source.icon}
-          </span>
-          {source.value}
-        </span>
-      }
-    >
-      <span style={{ color: source.color, marginRight: 8 }}>
-        {source.icon}
-      </span>
-      {source.value}
-    </Option>
-  ))}
-</Select>
-
+            <Form.Item name="lookingFor" label="Looking For">
+              <Input.TextArea 
+                rows={2} 
+                placeholder="What is the lead looking for? (e.g. للسكن, investment...)" 
+              />
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item
-              name="seller_id"
-              label="Assigned Seller"
-              rules={[{ required: false }]}
-            >
-              <Select
-                placeholder="Select seller"
-                allowClear
-                showSearch
-                optionFilterProp="children"
-              >
-                {sellers.map(seller => (
-                  <Option key={seller.id} value={seller.id}>
-                    {seller.name}
+            <Form.Item name="RedirectedFrom" label="Lead Source" rules={[{ required: true }]}>
+              <Select optionLabelProp="label">
+                {sourceOptions.map(source => (
+                  <Option
+                    key={source.value}
+                    value={source.value}
+                    label={
+                      <span>
+                        <span style={{ color: source.color, marginRight: 8 }}>{source.icon}</span>
+                        {source.value}
+                      </span>
+                    }
+                  >
+                    <span style={{ color: source.color, marginRight: 8 }}>{source.icon}</span>
+                    {source.value}
                   </Option>
                 ))}
               </Select>
@@ -337,11 +255,40 @@ const LeadForm = ({
           </Col>
         </Row>
 
-        <Form.Item
-          name="CreationDate"
-          hidden
-        >
-          <DatePicker />
+        <Form.Item name="seller_id" label="Assigned Seller">
+          <Select placeholder="Select seller" allowClear showSearch>
+            {sellers.map(seller => (
+              <Option key={seller.id} value={seller.id}>
+                {seller.name}
+              </Option>
+            ))}
+          </Select>
+        </Form.Item>
+
+        {/* Meta Information - Read Only */}
+        {isMetaLead && (
+          <>
+            <Divider />
+            <Title level={5}>Meta Lead Information (Read Only)</Title>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Text strong>Form:</Text> <Text>{editingLead.meta_form_name}</Text>
+              </Col>
+              <Col span={12}>
+                <Text strong>Ad:</Text> <Text>{editingLead.meta_ad_name}</Text>
+              </Col>
+              <Col span={12}>
+                <Text strong>Campaign:</Text> <Text>{editingLead.meta_campaign}</Text>
+              </Col>
+              <Col span={12}>
+                <Text strong>Lead ID:</Text> <Text>{editingLead.meta_lead_id}</Text>
+              </Col>
+            </Row>
+          </>
+        )}
+
+        <Form.Item name="CreationDate" hidden>
+          <Input />
         </Form.Item>
       </Form>
     </Modal>
