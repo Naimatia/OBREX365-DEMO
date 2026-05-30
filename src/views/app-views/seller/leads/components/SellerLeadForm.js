@@ -26,6 +26,7 @@ import {
   ShareAltOutlined
 } from '@ant-design/icons';
 import LeadsService from 'services/LeadsService';
+import countries from 'constants/countries';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -60,42 +61,43 @@ const SellerLeadForm = ({
 
   // Handle form submission
 const handleSubmit = () => {
-    form
-      .validateFields()
-      .then(async (values) => {
-        try {
-          if (lead?.id) {
-            // Update
-            await LeadsService.updateLead(lead.id, values, sellerId, companyId);
-            message.success('Lead updated successfully');
-          } else {
-            // Create new lead
-            const leadData = {
-              ...values,
-              company_id: companyId,
-              seller_id: sellerId,
-              status: LeadStatus.PENDING,
-              Notes: values.initialNote ? [{
-                note: values.initialNote,
-                CreationDate: new Date()
-              }] : []
-            };
-            delete leadData.initialNote;
-            
-            await LeadsService.createLead(leadData);
-            message.success('Lead created successfully');
-          }
+  form.validateFields().then(async (values) => {
+    try {
+      // Security check for edit
+      if (lead?.id && lead.seller_id !== sellerId) {
+        message.error("You can only edit your own leads");
+        return;
+      }
 
-          onSubmit?.(values);
-        } catch (err) {
-          message.error('Failed to save lead');
-          console.error(err);
-        }
-      })
-      .catch((info) => {
-        message.error('Please check the form for errors.');
-      });
-  };
+      let leadData = {
+        ...values,
+        company_id: companyId,
+        seller_id: sellerId,
+        status: LeadStatus.PENDING,
+      };
+
+      // Handle initial note only for new leads
+      if (!lead?.id && values.initialNote) {
+        leadData.Notes = [{
+          note: values.initialNote,
+          createdAt: new Date(),
+          createdBy: sellerId
+        }];
+      }
+
+      delete leadData.initialNote;
+
+      // Call parent handler only (remove duplicate call)
+      await onSubmit(leadData);   // ← Only call once
+
+    } catch (err) {
+      console.error(err);
+      message.error('Failed to save lead');
+    }
+  }).catch(() => {
+    message.error('Please check the form');
+  });
+};
 
   // Form validation rules
   const rules = {
@@ -182,16 +184,19 @@ const handleSubmit = () => {
             </Form.Item>
           </Col>
           
-          <Col xs={24} sm={12}>
+           <Col span={12}>
             <Form.Item
               name="region"
-              label="Region"
+              label="Region / Country"
               rules={rules.region}
             >
-              <Input 
-                prefix={<GlobalOutlined />} 
-                placeholder="e.g., Dubai, New York, London"
-              />
+              <Select placeholder="Select region" showSearch>
+                {countries.map(country => (
+                  <Option key={country.code} value={country.name}>
+                    {country.name}
+                  </Option>
+                ))}
+              </Select>
             </Form.Item>
           </Col>
         </Row>
@@ -251,39 +256,19 @@ const handleSubmit = () => {
         </Row>
 
         {/* Budget and Status */}
-        <Row gutter={16}>
-          <Col xs={24} sm={12}>
-            <Form.Item
-              name="Budget"
-              label="Budget (Optional)"
-            >
-              <InputNumber
-                style={{ width: '100%' }}
-                prefix={<DollarOutlined />}
-                placeholder="Enter budget amount"
-                min={0}
-                formatter={value => `AED ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                parser={value => value.replace(/AED\s?|(,*)/g, '')}
-              />
-            </Form.Item>
-          </Col>
-          
-          <Col xs={24} sm={12}>
-            <Form.Item
-              name="status"
-              label="Status"
-            >
-              <Select disabled>
-                <Option value={LeadStatus.PENDING}>
-                  <Space>
-                    <span style={{ color: '#faad14' }}>●</span>
-                    Pending
-                  </Space>
-                </Option>
-              </Select>
-            </Form.Item>
-          </Col>
-        </Row>
+      <Form.Item
+  name="Budget"
+  label="Budget (AED) - Optional"
+>
+  <InputNumber
+    style={{ width: '100%' }}
+    prefix={<DollarOutlined />}
+    placeholder="e.g. 850000"
+    min={0}
+    formatter={value => value ? `AED ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
+    parser={value => value ? value.replace(/AED\s?|(,*)/g, '') : ''}
+  />
+</Form.Item>
 
         {/* Initial Note (only for new leads) */}
         {!isEditMode && (

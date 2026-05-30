@@ -3,21 +3,32 @@
  */
 export const LeadModel = {
   id: '',
-  company_id: '', // Company ID for data partitioning
-  seller_id: '', // Optional, ID of the seller assigned to this lead
+  company_id: '',
+  seller_id: '',
   name: '',
   region: '',
-  RedirectedFrom: '', // Source of lead
-  CreationDate: null, // Firebase Timestamp
-  status: '', // Pending, Gain, Loss
+  RedirectedFrom: '',
+  CreationDate: null,
+  status: '',
   phoneNumber: '',
   email: '',
   secondaryEmail: '',
   phoneNumber2: '',
-  InterestLevel: '', // Low, Medium, High
+  InterestLevel: '',
   Budget: 0,
-  Notes: [] // Array of {note, CreationDate} objects
-}
+  Notes: [],
+  // New fields added
+  lookingFor: '',
+  meta_lead_id: '',
+  meta_form_id: '',
+  meta_form_name: '',
+  meta_ad_name: '',
+  meta_campaign: '',
+  meta_adset: '',
+  meta_platform: '',
+  raw_meta_fields: {},
+  sourceDetails: {},
+};
 
 /**
  * Lead status options
@@ -38,7 +49,7 @@ export const LeadInterestLevel = {
   LOW: 'Low',
   MEDIUM: 'Medium',
   HIGH: 'High'
-}
+};
 
 /**
  * Lead redirection source options
@@ -51,7 +62,7 @@ export const LeadRedirectionSource = {
   WEBSITE: 'Website',
   LINKEDIN: 'LinkedIn',
   OTHER: 'Other'
-}
+};
 
 /**
  * Convert Firestore document to lead model
@@ -65,21 +76,39 @@ export const convertToLeadModel = (doc) => {
 
   return {
     id: doc.id || '',
+    
+    // IMPORTANT: Spread ALL data first to keep every field
+    ...data,
+
+    // Explicitly override / ensure critical fields
     company_id: data.company_id || '',
     seller_id: data.seller_id || '',
     name: data.name || '',
     region: data.region || '',
     RedirectedFrom: data.RedirectedFrom || '',
-    CreationDate: data.CreationDate || null,
     status: data.status || LeadStatus.PENDING,
-    phoneNumber: data.phoneNumber || '',
-    email: data.email || '',
-    secondaryEmail: data.secondaryEmail || '',
-    phoneNumber2: data.phoneNumber2 || '',
     InterestLevel: data.InterestLevel || LeadInterestLevel.MEDIUM,
-    Budget: data.Budget || 0,
-    Notes: data.Notes || []
-  }
-}
+    Budget: data.Budget || '',
+    lookingFor: data.lookingFor || '',
+
+    // Meta Fields (Critical for Facebook leads)
+    meta_lead_id: data.meta_lead_id || '',
+    meta_form_id: data.meta_form_id || '',
+    meta_form_name: data.meta_form_name || '',
+    meta_ad_name: data.meta_ad_name || '',
+    meta_campaign: data.meta_campaign || '',
+    meta_adset: data.meta_adset || '',
+    meta_platform: data.meta_platform || 'fb',
+
+    // Raw data backup
+    raw_meta_fields: data.raw_meta_fields || {},
+    sourceDetails: data.sourceDetails || {},
+
+    // Timestamps
+    CreationDate: data.CreationDate,
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+  };
+};
 
 export default LeadModel;

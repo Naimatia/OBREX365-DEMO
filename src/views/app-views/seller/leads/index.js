@@ -131,44 +131,70 @@ const SellerLeadsPage = () => {
     fetchLeads();
   }, [fetchLeads]);
   
-  // Handle submitting the lead form (create or update)
-  const handleFormSubmit = async (formData) => {
-    try {
-      if (selectedLead?.id) {
-        // Update existing lead
-        await LeadsService.updateLead(selectedLead.id, formData);
-        message.success('Lead updated successfully');
-      } else {
-        // Create new lead
-        const leadData = {
-          ...formData,
-          company_id: companyId,
-          seller_id: sellerId, // Automatically assign to current seller
-          status: LeadStatus.PENDING, // New leads start as pending
-          // Add initial note if provided
-          Notes: formData.initialNote ? [
-            {
-              note: formData.initialNote,
-              CreationDate: new Date()
-            }
-          ] : []
-        };
-        
-        // Remove initialNote from the data
-        delete leadData.initialNote;
-        
-        await LeadsService.createLead(leadData);
-        message.success('Lead created successfully');
+// Handle submitting the lead form (create or update)
+const handleFormSubmit = async (formData) => {
+  try {
+    // === CLEAN DATA: Remove undefined values ===
+    const cleanedData = { ...formData };
+
+    Object.keys(cleanedData).forEach(key => {
+      if (cleanedData[key] === undefined || cleanedData[key] === '') {
+        delete cleanedData[key];
       }
-      
-      fetchLeads();
-      setIsFormVisible(false);
-      
-    } catch (err) {
-      console.error('Error saving lead:', err);
-      message.error('Failed to save lead. Please try again.');
+    });
+
+    // Special handling for Budget
+    if (cleanedData.Budget === undefined || cleanedData.Budget === null) {
+      delete cleanedData.Budget;        // Remove completely
+      // OR: cleanedData.Budget = null; // Alternative: set to null
+    } else if (typeof cleanedData.Budget === 'string') {
+      // Convert string budget to number if possible
+      const numBudget = Number(cleanedData.Budget.replace(/[^0-9.]/g, ''));
+      if (!isNaN(numBudget)) {
+        cleanedData.Budget = numBudget;
+      }
     }
-  };
+
+    if (selectedLead?.id) {
+      // === UPDATE EXISTING LEAD ===
+      if (selectedLead.seller_id !== sellerId) {
+        message.error("You can only edit leads assigned to you.");
+        return;
+      }
+
+      await LeadsService.updateLead(selectedLead.id, cleanedData);
+      message.success('Lead updated successfully');
+      
+    } else {
+      // === CREATE NEW LEAD ===
+      const leadData = {
+        ...cleanedData,
+        company_id: companyId,
+        seller_id: sellerId,
+        status: LeadStatus.PENDING,
+        CreationDate: new Date(),
+        Notes: cleanedData.initialNote ? [{
+          note: cleanedData.initialNote,
+          createdAt: new Date(),
+          createdBy: sellerId
+        }] : []
+      };
+
+      delete leadData.initialNote;
+
+      await LeadsService.createLead(leadData);
+      message.success('Lead created successfully and assigned to you');
+    }
+
+    fetchLeads();
+    setIsFormVisible(false);
+    setSelectedLead(null);
+    
+  } catch (err) {
+    console.error('Error saving lead:', err);
+    message.error('Failed to save lead. Please try again.');
+  }
+};
   
   // Handle opening the lead form for creating a new lead
   const handleAddLead = () => {
@@ -182,11 +208,40 @@ const SellerLeadsPage = () => {
     setIsDetailVisible(true);
   };
   
-  // Handle editing a lead
-  const handleEditLead = (lead) => {
-    setSelectedLead(lead);
-    setIsFormVisible(true);
-  };
+// Handle editing a lead
+const handleEditLead = (lead) => {
+  if (lead.seller_id !== sellerId) {
+    message.warning("You can only edit leads assigned to you.");
+    return;
+  }
+  setSelectedLead(lead);
+  setIsFormVisible(true);
+};
+
+// Handle deleting a lead
+const handleDeleteLead = async (leadId) => {
+  const lead = leads.find(l => l.id === leadId);
+  if (!lead || lead.seller_id !== sellerId) {
+    message.error("You can only delete your own leads.");
+    return;
+  }
+
+  Modal.confirm({
+    title: 'Delete Lead',
+    content: `Are you sure you want to delete "${lead.name}"?`,
+    okText: 'Delete',
+    okType: 'danger',
+    onOk: async () => {
+      try {
+        await LeadsService.deleteLead(leadId);
+        message.success('Lead deleted successfully');
+        fetchLeads();
+      } catch (err) {
+        message.error('Failed to delete lead');
+      }
+    }
+  });
+};
   
   const currentUser = useSelector(state => state.auth.user);
 
@@ -270,23 +325,6 @@ const handleUpdateStatus = async (leadId, newStatus) => {
     }
   };
   
-  // Handle deleting a lead
-  const handleDeleteLead = async (leadId) => {
-    try {
-      await LeadsService.deleteLead(leadId);
-      message.success('Lead deleted successfully');
-      fetchLeads();
-      
-      // Close detail drawer if viewing the deleted lead
-      if (selectedLead?.id === leadId) {
-        setIsDetailVisible(false);
-        setSelectedLead(null);
-      }
-    } catch (err) {
-      console.error('Error deleting lead:', err);
-      message.error('Failed to delete lead.');
-    }
-  };
 
   // Handle successful CSV import
   const handleCsvImportSuccess = (importedCount) => {
@@ -311,45 +349,45 @@ const handleUpdateStatus = async (leadId, newStatus) => {
   
   return (
     <div style={{ padding: '24px' }}>
-      {/* Page Header */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: '24px' }}>
-        <Col>
-          <Title level={2} style={{ margin: 0 }}>
-            <TeamOutlined style={{ marginRight: '12px', color: '#1890ff' }} />
-            My Leads
-          </Title>
-          <Text type="secondary">
-            Manage your leads and track conversion progress
-          </Text>
-        </Col>
-        <Col>
-          <Space>
-            {/** 
-             * <Button 
-              type="primary" 
-              icon={<UserAddOutlined />}
-              onClick={handleAddLead}
-            >
-              Add Lead
-            </Button>
-            <Button 
-              icon={<UploadOutlined />}
-              onClick={() => setCsvImportVisible(true)}
-            >
-              Import CSV
-            </Button>
-             */}
-            
-            <Button 
-              icon={<ReloadOutlined />}
-              onClick={fetchLeads}
-              loading={loading}
-            >
-              Refresh
-            </Button>
-          </Space>
-        </Col>
-      </Row>
+{/* Page Header */}
+<Row justify="space-between" align="middle" style={{ marginBottom: '24px' }}>
+  <Col>
+    <Title level={2} style={{ margin: 0 }}>
+      <TeamOutlined style={{ marginRight: '12px', color: '#1890ff' }} />
+      My Leads
+    </Title>
+    <Text type="secondary">Manage your assigned leads</Text>
+  </Col>
+
+  <Col>
+    <Space size="middle">
+      <Button 
+        icon={<ReloadOutlined />} 
+        onClick={fetchLeads} 
+        loading={loading}
+      >
+        Refresh
+      </Button>
+
+      {/* === ADD LEAD BUTTON === */}
+      <Button 
+        type="primary" 
+        icon={<UserAddOutlined />}
+        onClick={handleAddLead}
+        size="large"
+      >
+        Add New Lead
+      </Button>
+
+      <Button 
+        icon={<UploadOutlined />}
+        onClick={() => setCsvImportVisible(true)}
+      >
+        Import CSV
+      </Button>
+    </Space>
+  </Col>
+</Row>
       
       {/* Monthly Progress Statistics */}
       <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
@@ -443,6 +481,7 @@ const handleUpdateStatus = async (leadId, newStatus) => {
             onDeleteLead={handleDeleteLead}
             onUpdateStatus={handleUpdateStatus}
             onAddNote={handleAddNote}
+            sellerId={sellerId}
           />
         )}
       </Card>

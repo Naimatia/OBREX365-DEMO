@@ -19,20 +19,18 @@ import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import { serverTimestamp } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 
-// Import components
-import LeadTable from './components/LeadTable';
-import LeadForm from './components/LeadForm';
-import LeadDetailsPro from './components/LeadDetails';
-import LeadFilters from './components/LeadFilters';
+import LeadTable        from './components/LeadTable';
+import LeadForm         from './components/LeadForm';
+import LeadDetailsPro   from './components/LeadDetails';
+import LeadFilters      from './components/LeadFilters';
 import AssignSellerForm from './components/AssignSellerForm';
-import LeadStats from './components/LeadStats';
-import LeadStatsDrawer from './components/LeadStatsDrawer';
-import { UserRoles } from 'models/UserModel';
-import API_BASE_URL from "../../../../constants/ApiConstant";
+import LeadStats        from './components/LeadStats';
+import LeadStatsDrawer  from './components/LeadStatsDrawer';
+import { UserRoles }    from 'models/UserModel';
+import API_BASE_URL     from '../../../../constants/ApiConstant';
 
 const { Title, Text } = Typography;
-const { confirm } = Modal;
-
+const { confirm }     = Modal;
 
 const salesRoles = [
   UserRoles.SELLER,
@@ -44,79 +42,68 @@ const salesRoles = [
   UserRoles.READY_TO_MOVE_SALES,
 ];
 
-// ─── Meta → Lead model mapper ───────────────────────────────────────────────
-// ─── Enhanced Meta → Lead Model Mapper ─────────────────────────────────────
+// ─── Meta → Lead mapper ───────────────────────────────────────────────────────
 const mapMetaLeadToModel = (metaLead, companyId) => {
   const raw = metaLead.raw_fields || {};
+  
+  const budget =
+    raw['ما_هي_ميزانيتك_الاستثمارية_لشراء_الفيلا؟'] ||
+    raw.what_is_your_apartment_investment_budget ||
+    raw.budget;
 
-  // Extract useful fields from raw_fields (Arabic + English support)
-  const budget = raw["ما_هي_ميزانيتك_الاستثمارية_لشراء_الفيلا؟"] ||
-                 raw.what_is_your_apartment_investment_budget ||
-                 raw.budget;
-
-  const lookingFor = raw["ما_الذي_تبحث_عنه؟"] ||
-                     raw.what_are_you_looking_for ||
-                     raw.looking_for;
+  const lookingFor =
+    raw['ما_الذي_تبحث_عنه؟'] || raw.what_are_you_looking_for || raw.looking_for;
 
   const nationality = raw.nationality || raw.country || '';
 
-  return {
-    name:           metaLead.full_name || raw.full_name || 'Unknown',
-    email:          metaLead.email || raw.email || '',
-    phoneNumber:    metaLead.phone_number || raw.phone_number || raw.work_phone_number || '',
-    
-    secondaryEmail: raw.secondary_email || '',
-    phoneNumber2:   raw.secondary_phone || raw.additional_phone || '',
-    
-    region:         nationality || 'UAE',
-    status:         LeadStatus.PENDING,
-    InterestLevel:  LeadInterestLevel.MEDIUM,
-    
-    Budget:         budget ? String(budget) : null,
-    lookingFor:     lookingFor || null,           // ← NEW: Important field
-    
-    RedirectedFrom: 'Facebook',
-    company_id:     companyId,
-    
-    Notes:          [],
-    
-    CreationDate:   metaLead.created_time 
-                      ? new Date(metaLead.created_time) 
-                      : new Date(),
-    
-    // Meta Tracking Fields (Very Important for deduplication & analytics)
-    meta_lead_id:   metaLead.lead_id,
-    meta_form_id:   metaLead.form_id,
-    meta_form_name: metaLead.form_name,
-    meta_ad_name:   metaLead.ad_name || '',
-    meta_campaign:  metaLead.campaign_name || '',
-    meta_adset:     metaLead.adset_name || '',
-    meta_platform:  metaLead.platform || 'facebook',
+  // Determine source based on platform
+  let redirectedFrom = 'Facebook';
+  if (metaLead.platform === 'ig' || metaLead.meta_platform === 'ig') {
+    redirectedFrom = 'Instagram';
+  }
 
-    // Store everything for future use
-    raw_meta_fields: raw,
+  return {
+    name:            metaLead.full_name || raw.full_name || 'Unknown',
+    email:           metaLead.email || raw.email || '',
+    phoneNumber:     metaLead.phone_number || raw.phone_number || raw.work_phone_number || '',
+    secondaryEmail:  raw.secondary_email || '',
+    phoneNumber2:    raw.secondary_phone || raw.additional_phone || '',
+    region:          nationality || 'UAE',
+    status:          LeadStatus.PENDING,
+    InterestLevel:   LeadInterestLevel.MEDIUM,
+    Budget:          budget ? String(budget) : null,
+    lookingFor:      lookingFor || null,
     
-    // Optional: Add source details
+    // ✅ Dynamic source based on platform
+    RedirectedFrom:  redirectedFrom,
+    
+    company_id:      companyId,
+    Notes:           [],
+    CreationDate:    metaLead.created_time ? new Date(metaLead.created_time) : new Date(),
+    
+    meta_lead_id:    metaLead.lead_id,
+    meta_form_id:    metaLead.form_id,
+    meta_form_name:  metaLead.form_name,
+    meta_ad_name:    metaLead.ad_name || '',
+    meta_campaign:   metaLead.campaign_name || '',
+    meta_adset:      metaLead.adset_name || '',
+    
+    // Keep original platform for reference
+    meta_platform:   metaLead.platform || metaLead.meta_platform || 'facebook',
+    
+    raw_meta_fields: raw,
     sourceDetails: {
       formName: metaLead.form_name,
-      adName: metaLead.ad_name,
+      adName:   metaLead.ad_name,
       campaign: metaLead.campaign_name,
     },
-
-    // Timestamps
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 };
 
-// ─── Meta Sync Modal ─────────────────────────────────────────────────────────
-const MetaSyncModal = ({
-  visible,
-  onClose,
-  syncing,
-  syncResult,
-  onSync,
-}) => (
+// ─── Meta Sync Modal ──────────────────────────────────────────────────────────
+const MetaSyncModal = ({ visible, onClose, syncing, syncResult, onSync }) => (
   <Modal
     title={
       <Space>
@@ -151,13 +138,11 @@ const MetaSyncModal = ({
         <FacebookOutlined style={{ fontSize: 48, color: '#1877F2', marginBottom: 16 }} />
         <Title level={5} style={{ marginBottom: 8 }}>Pull Leads from Facebook Forms</Title>
         <Text type="secondary">
-          This will fetch all leads from your active Meta Lead Ad forms
-          and save new ones to your CRM. Existing leads (matched by Meta
-          Lead ID) will be skipped automatically.
+          This will fetch all leads from your active Meta Lead Ad forms and save new ones to your
+          CRM. Existing leads (matched by Meta Lead ID) will be skipped automatically.
         </Text>
       </div>
     )}
-
     {syncing && (
       <div style={{ textAlign: 'center', padding: '32px 0' }}>
         <Spin size="large" />
@@ -166,7 +151,6 @@ const MetaSyncModal = ({
         </div>
       </div>
     )}
-
     {syncResult && (
       <div style={{ padding: '8px 0' }}>
         {syncResult.error ? (
@@ -190,55 +174,44 @@ const MetaSyncModal = ({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const LeadsPage = () => {
-  const initialFilters = {
-    search: '',
-    status: '',
-    InterestLevel: '',
-    region: '',
-    seller_id: '',
-  };
+  const initialFilters = { search: '', status: '', InterestLevel: '', region: '', seller_id: '' };
 
-  // State
-  const [leads, setLeads]                       = useState([]);
-  const [loading, setLoading]                   = useState(false);
-  const [formVisible, setFormVisible]           = useState(false);
-  const [confirmLoading, setConfirmLoading]     = useState(false);
-  const [editingLead, setEditingLead]           = useState(null);
-  const [selectedLead, setSelectedLead]         = useState(null);
-  const [detailsVisible, setDetailsVisible]     = useState(false);
-  const [sellers, setSellers]                   = useState([]);
+  const [leads, setLeads]                           = useState([]);
+  const [loading, setLoading]                       = useState(false);
+  const [formVisible, setFormVisible]               = useState(false);
+  const [confirmLoading, setConfirmLoading]         = useState(false);
+  const [editingLead, setEditingLead]               = useState(null);
+  const [selectedLead, setSelectedLead]             = useState(null);
+  const [detailsVisible, setDetailsVisible]         = useState(false);
+  const [sellers, setSellers]                       = useState([]);
   const [assignSellerVisible, setAssignSellerVisible] = useState(false);
-  const [assigningLead, setAssigningLead]       = useState(null);
-  const [filters, setFilters]                   = useState(initialFilters);
+  const [assigningLead, setAssigningLead]           = useState(null);
+  const [filters, setFilters]                       = useState(initialFilters);
   const [statsDrawerVisible, setStatsDrawerVisible] = useState(false);
 
+  // Bulk assign state
+  const [bulkAssignVisible, setBulkAssignVisible]   = useState(false);
+  const [bulkLeadIds, setBulkLeadIds]               = useState([]);
+
   // Meta sync state
-  const [syncModalVisible, setSyncModalVisible] = useState(false);
-  const [syncing, setSyncing]                   = useState(false);
-  const [syncResult, setSyncResult]             = useState(null);
-  const [newMetaLeadsCount, setNewMetaLeadsCount] = useState(0);
+  const [syncModalVisible, setSyncModalVisible]     = useState(false);
+  const [syncing, setSyncing]                       = useState(false);
+  const [syncResult, setSyncResult]                 = useState(null);
 
   const user      = useSelector(state => state.auth.user);
   const companyId = user?.company_id;
 
   useEffect(() => {
-    if (companyId) {
-      fetchLeads();
-      fetchSellers();
-    }
+    if (companyId) { fetchLeads(); fetchSellers(); }
   }, [companyId]);
 
-  // ─── Fetch leads ──────────────────────────────────────────────────────────
+  // ─── Fetch ────────────────────────────────────────────────────────────────
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
-      let leadsData;
-
-      if (filters.search) {
-        leadsData = await LeadService.searchLeads(companyId, filters.search);
-      } else {
-        leadsData = await LeadService.getLeadsByCompany(companyId);
-      }
+      let leadsData = filters.search
+        ? await LeadService.searchLeads(companyId, filters.search)
+        : await LeadService.getLeadsByCompany(companyId);
 
       if (filters.status)        leadsData = leadsData.filter(l => l.status        === filters.status);
       if (filters.InterestLevel) leadsData = leadsData.filter(l => l.InterestLevel === filters.InterestLevel);
@@ -254,235 +227,167 @@ const LeadsPage = () => {
     }
   }, [companyId, filters]);
 
-  // ─── Fetch sellers ────────────────────────────────────────────────────────
   const fetchSellers = async () => {
     try {
-      const usersRef      = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersRef);
-
-      const sellersList = usersSnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
+      const snap = await getDocs(collection(db, 'users'));
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
         .filter(u => u.company_id === companyId && salesRoles.includes(u.Role))
         .map(u => ({
           id:   u.id,
           name: `${u.firstname ?? ''} ${u.lastname ?? ''}${u.country ? ` (${u.country})` : ''}`.trim(),
         }));
-
-      setSellers(sellersList);
+      setSellers(list);
     } catch (error) {
-      console.error('Error fetching sellers:', error);
       message.error('Failed to fetch sellers');
     }
   };
 
   // ─── Meta Sync ────────────────────────────────────────────────────────────
-  const openSyncModal = () => {
-    setSyncResult(null);
-    setSyncModalVisible(true);
+  const normalizePhone = (phone) => {
+    if (!phone) return null;
+    return phone.toString().replace(/[^0-9+]/g, '').replace(/^00/, '+').trim();
   };
 
-const handleMetaSync = async () => {
-  setSyncing(true);
-  setSyncResult(null);
+  const openSyncModal = () => { setSyncResult(null); setSyncModalVisible(true); };
 
-  try {
-    const res = await fetch(
-      `${API_BASE_URL}/api/facebook/leads?company_id=${companyId}&limit=200`
-    );
+  const handleMetaSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/facebook/leads?company_id=${companyId}&limit=200`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to fetch Meta leads');
+      }
+      const { leads: metaLeads = [] } = await res.json();
+      if (metaLeads.length === 0) { setSyncResult({ total: 0, saved: 0, skipped: 0, failed: 0 }); return; }
 
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || 'Failed to fetch Meta leads');
-    }
+      const existing     = await LeadService.getLeadsByCompany(companyId);
+      const metaIds      = new Set(existing.map(l => l.meta_lead_id).filter(Boolean));
+      const emails       = new Set(existing.map(l => l.email?.toLowerCase().trim()).filter(Boolean));
+      const phones       = new Set(existing.map(l => normalizePhone(l.phoneNumber)).filter(Boolean));
 
-    const json = await res.json();
-    const metaLeads = json.leads || [];
+      let saved = 0, skipped = 0, failed = 0;
 
-    if (metaLeads.length === 0) {
-      setSyncResult({ total: 0, saved: 0, skipped: 0, failed: 0 });
-      return;
-    }
+      for (const ml of metaLeads) {
+        const email = (ml.email || ml.raw_fields?.email || '').toLowerCase().trim();
+        const phone = normalizePhone(ml.phone_number || ml.raw_fields?.phone_number);
 
-    // Fetch existing leads once
-    const existingLeads = await LeadService.getLeadsByCompany(companyId);
-
-    // Create lookup sets for fast deduplication
-    const existingMetaIds = new Set(
-      existingLeads.map(l => l.meta_lead_id).filter(Boolean)
-    );
-
-    const existingEmails = new Set(
-      existingLeads
-        .map(l => l.email?.toLowerCase().trim())
-        .filter(Boolean)
-    );
-
-    const existingPhones = new Set(
-      existingLeads
-        .map(l => normalizePhone(l.phoneNumber))
-        .filter(Boolean)
-    );
-
-    let saved = 0, skipped = 0, failed = 0;
-
-    for (const metaLead of metaLeads) {
-      const email = (metaLead.email || metaLead.raw_fields?.email || '').toLowerCase().trim();
-      const phone = normalizePhone(metaLead.phone_number || metaLead.raw_fields?.phone_number);
-
-      // === Duplicate Check Logic ===
-      if (existingMetaIds.has(metaLead.lead_id)) {
-        skipped++;
-        continue;
+        if (metaIds.has(ml.lead_id) || (email && emails.has(email)) || (phone && phones.has(phone))) {
+          skipped++; continue;
+        }
+        try {
+          await LeadService.create(mapMetaLeadToModel(ml, companyId));
+          if (email) emails.add(email);
+          if (phone) phones.add(phone);
+          metaIds.add(ml.lead_id);
+          saved++;
+        } catch { failed++; }
       }
 
-      if (email && existingEmails.has(email)) {
-        skipped++;
-        console.log(`Skipped duplicate by email: ${email}`);
-        continue;
-      }
-
-      if (phone && existingPhones.has(phone)) {
-        skipped++;
-        console.log(`Skipped duplicate by phone: ${phone}`);
-        continue;
-      }
-
-      // No duplicate found → Save new lead
-      try {
-        const leadData = mapMetaLeadToModel(metaLead, companyId);
-        await LeadService.create(leadData);
-
-        // Add to local sets to prevent duplicates within the same sync batch
-        if (email) existingEmails.add(email);
-        if (phone) existingPhones.add(phone);
-        existingMetaIds.add(metaLead.lead_id);
-
-        saved++;
-      } catch (err) {
-        console.error('Failed to save Meta lead:', metaLead.lead_id, err);
-        failed++;
-      }
+      setSyncResult({ total: metaLeads.length, saved, skipped, failed });
+      if (saved > 0) { message.success(`${saved} new Meta lead${saved > 1 ? 's' : ''} imported!`); fetchLeads(); }
+      else if (skipped > 0) message.info(`All leads already exist (${skipped} skipped).`);
+    } catch (err) {
+      setSyncResult({ error: err.message });
+      message.error('Sync failed: ' + err.message);
+    } finally {
+      setSyncing(false);
     }
+  };
 
-    const result = { total: metaLeads.length, saved, skipped, failed };
-    setSyncResult(result);
-
-    if (saved > 0) {
-      message.success(`${saved} new Meta lead${saved > 1 ? 's' : ''} imported successfully!`);
-      fetchLeads();
-    } else if (skipped > 0) {
-      message.info(`All leads already exist (${skipped} skipped).`);
-    }
-  } catch (err) {
-    console.error('Meta sync error:', err);
-    setSyncResult({ error: err.message });
-    message.error('Sync failed: ' + err.message);
-  } finally {
-    setSyncing(false);
-  }
-};
-
-// Helper function to normalize phone numbers
-const normalizePhone = (phone) => {
-  if (!phone) return null;
-  return phone.toString()
-    .replace(/[^0-9+]/g, '')           // Remove non-numeric except +
-    .replace(/^00/, '+')               // Convert 00 to +
-    .trim();
-};
-
-  // ─── CRUD handlers ────────────────────────────────────────────────────────
+  // ─── CRUD ─────────────────────────────────────────────────────────────────
   const handleAddLead = async (values) => {
     setConfirmLoading(true);
     try {
-      const leadData = {
+      await LeadService.create({
         ...values,
-        company_id:   companyId,
-        CreationDate: values.CreationDate?.toDate() || serverTimestamp(),
-        Notes:        [],
+        company_id:     companyId,
+        CreationDate:   values.CreationDate?.toDate() || serverTimestamp(),
+        Notes:          [],
         secondaryEmail: values.secondaryEmail || '',
         phoneNumber2:   values.phoneNumber2   || '',
-      };
-      await LeadService.create(leadData);
+      });
       message.success('Lead created successfully');
       setFormVisible(false);
       fetchLeads();
-    } catch (error) {
-      console.error('Error adding lead:', error);
-      message.error('Failed to create lead');
-    } finally {
-      setConfirmLoading(false);
-    }
+    } catch { message.error('Failed to create lead'); }
+    finally { setConfirmLoading(false); }
   };
 
   const handleUpdateLead = async (values) => {
     setConfirmLoading(true);
     try {
-      const updateData = {
+      const data = {
         ...values,
         CreationDate:   values.CreationDate?.toDate() || editingLead.CreationDate,
         secondaryEmail: values.secondaryEmail || '',
         phoneNumber2:   values.phoneNumber2   || '',
       };
-      await LeadService.update(editingLead.id, updateData);
-      message.success('Lead updated successfully');
+      await LeadService.update(editingLead.id, data);
+      message.success('Lead updated');
       setFormVisible(false);
       setEditingLead(null);
       fetchLeads();
-      if (selectedLead?.id === editingLead.id) setSelectedLead({ ...selectedLead, ...updateData });
-    } catch (error) {
-      console.error('Error updating lead:', error);
-      message.error('Failed to update lead');
-    } finally {
-      setConfirmLoading(false);
-    }
+      if (selectedLead?.id === editingLead.id) setSelectedLead({ ...selectedLead, ...data });
+    } catch { message.error('Failed to update lead'); }
+    finally { setConfirmLoading(false); }
   };
 
-  const handleDeleteLead = (lead) => {
+  const handleDeleteLead = (lead) =>
     confirm({
-      title:      'Are you sure you want to delete this lead?',
+      title:      'Delete this lead?',
       icon:       <ExclamationCircleOutlined />,
       content:    'This action cannot be undone.',
-      okText:     'Yes',
+      okText:     'Delete',
       okType:     'danger',
-      cancelText: 'No',
+      cancelText: 'Cancel',
       onOk: async () => {
         try {
           await LeadService.delete(lead.id);
-          message.success('Lead deleted successfully');
+          message.success('Lead deleted');
           fetchLeads();
           if (selectedLead?.id === lead.id) { setDetailsVisible(false); setSelectedLead(null); }
-        } catch (error) {
-          console.error('Error deleting lead:', error);
-          message.error('Failed to delete lead');
-        }
+        } catch { message.error('Failed to delete lead'); }
       },
     });
-  };
 
+  // Single assign
   const handleAssignSeller = async (leadId, sellerId) => {
     try {
-      const selectedSeller = sellers.find(s => s.id === sellerId);
-      if (!selectedSeller) throw new Error('Seller not found');
-      await LeadService.assignTo(leadId, {
-        id:        sellerId,
-        firstName: selectedSeller.firstname || '',
-        lastName:  selectedSeller.lastname  || '',
-      });
-      message.success(`Lead assigned to ${selectedSeller.name || 'seller'}`);
+      const seller = sellers.find(s => s.id === sellerId);
+      if (!seller) throw new Error('Seller not found');
+      await LeadService.assignTo(leadId, { id: sellerId, firstName: '', lastName: '' });
+      message.success(`Lead assigned to ${seller.name}`);
       fetchLeads();
-    } catch (error) {
-      message.error('Failed to assign seller');
-    }
+    } catch { message.error('Failed to assign seller'); }
+  };
+
+  // Bulk assign
+  const handleBulkAssignSeller = async (leadIds, sellerId) => {
+    setConfirmLoading(true);
+    try {
+      const seller = sellers.find(s => s.id === sellerId);
+      await Promise.all(leadIds.map(id => LeadService.assignTo(id, { id: sellerId, firstName: '', lastName: '' })));
+      message.success(`${leadIds.length} leads assigned to ${seller?.name || 'seller'}`);
+      setBulkAssignVisible(false);
+      setBulkLeadIds([]);
+      fetchLeads();
+    } catch { message.error('Failed to bulk assign'); }
+    finally { setConfirmLoading(false); }
   };
 
   const handleShowAssignSeller = (lead) => {
-    if (sellers.length === 0) {
-      message.warning('No sellers available in your company. Please add sellers first.');
-      return;
-    }
+    if (!sellers.length) { message.warning('No sellers available.'); return; }
     setAssigningLead(lead);
     setAssignSellerVisible(true);
+  };
+
+  const handleBulkAssignOpen = (ids) => {
+    if (!sellers.length) { message.warning('No sellers available.'); return; }
+    setBulkLeadIds(ids);
+    setBulkAssignVisible(true);
   };
 
   const handleAddNote = async (leadId, note) => {
@@ -490,24 +395,18 @@ const normalizePhone = (phone) => {
       const lead  = await LeadService.getById(leadId);
       const notes = [...(lead.Notes || []), note];
       await LeadService.update(leadId, { Notes: notes });
-      message.success('Note added successfully');
-      if (selectedLead?.id === leadId) {
-        const updated = await LeadService.getById(leadId);
-        setSelectedLead(updated);
-      }
+      message.success('Note added');
+      if (selectedLead?.id === leadId) setSelectedLead(await LeadService.getById(leadId));
       fetchLeads();
-    } catch (error) {
-      console.error('Error adding note:', error);
-      message.error('Failed to add note');
-    }
+    } catch { message.error('Failed to add note'); }
   };
 
-  const handleViewDetails = (lead) => { setSelectedLead(lead); setDetailsVisible(true); };
-  const handleEditLead    = (lead) => { setEditingLead(lead);   setFormVisible(true);   };
-  const handleFilter      = (values) => { setFilters(values); fetchLeads(); };
+  const handleViewDetails  = (lead)   => { setSelectedLead(lead); setDetailsVisible(true); };
+  const handleEditLead     = (lead)   => { setEditingLead(lead);   setFormVisible(true);   };
+  const handleFilter       = (values) => { setFilters(values);     fetchLeads(); };
   const handleClearFilters = ()       => { setFilters(initialFilters); fetchLeads(); };
-  const handleSearch      = (value)  => { setFilters({ ...filters, search: value }); fetchLeads(); };
-  const handleFormSubmit  = (values) => editingLead ? handleUpdateLead(values) : handleAddLead(values);
+  const handleSearch       = (value)  => { setFilters({ ...filters, search: value }); fetchLeads(); };
+  const handleFormSubmit   = (values) => editingLead ? handleUpdateLead(values) : handleAddLead(values);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -517,144 +416,164 @@ const normalizePhone = (phone) => {
       const reader = new FileReader();
       reader.onload = async (evt) => {
         const wb   = XLSX.read(evt.target.result, { type: 'binary' });
-        const ws   = wb.Sheets[wb.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
-
-        const validLeads = data
-          .map((row, index) => {
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        const valid = data
+          .map((row, i) => {
             const name  = row['Full Name'] || row['Name'] || row['name'];
             const email = row['Email']     || row['email'];
             const phone = row['Phone']     || row['phoneNumber'] || row['Phone Number'];
-            if (!name || !email || !phone) {
-              message.warning(`Row ${index + 2}: Missing required fields (Name, Email, Phone)`);
-              return null;
-            }
+            if (!name || !email || !phone) { message.warning(`Row ${i + 2}: Missing required fields`); return null; }
             return {
-              name:           name.trim(),
-              email:          email.trim(),
-              phoneNumber:    phone.toString().trim(),
-              region:         row['Region']           || row['Country'] || 'UAE',
-              status:         row['Status'],
-              InterestLevel:  row['Interest Level'],
-              Budget:         Number(row['Budget'])   || 0,
-              secondaryEmail: row['Secondary Email']  || '',
-              RedirectedFrom: row['Lead Source'],
-              phoneNumber2:   row['Secondary Phone']  || '',
-              CreationDate:   new Date(),
-              company_id:     companyId,
-              Notes:          [],
+              name: name.trim(), email: email.trim(), phoneNumber: phone.toString().trim(),
+              region: row['Region'] || 'UAE', status: row['Status'],
+              InterestLevel: row['Interest Level'], Budget: Number(row['Budget']) || 0,
+              secondaryEmail: row['Secondary Email'] || '', RedirectedFrom: row['Lead Source'],
+              phoneNumber2: row['Secondary Phone'] || '', CreationDate: new Date(),
+              company_id: companyId, Notes: [],
             };
           })
           .filter(Boolean);
-
-        if (validLeads.length === 0) { message.error('No valid leads to import'); return; }
-
-        for (const lead of validLeads) await LeadService.create(lead);
-        message.success(`${validLeads.length} leads imported successfully`);
+        if (!valid.length) { message.error('No valid leads to import'); return; }
+        for (const lead of valid) await LeadService.create(lead);
+        message.success(`${valid.length} leads imported`);
         fetchLeads();
       };
       reader.readAsBinaryString(file);
-    } catch (error) {
-      console.error('Import error:', error);
-      message.error('Failed to import file');
-    } finally {
-      setConfirmLoading(false);
-      e.target.value = '';
-    }
+    } catch { message.error('Failed to import file'); }
+    finally { setConfirmLoading(false); e.target.value = ''; }
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="leads-page">
-      <Row gutter={[16, 16]}>
-        <Col span={24}>
-          <Card className="leads-header">
-            <div className="d-flex justify-content-between align-items-center">
-              <Title level={2} style={{ margin: 0 }}>Leads Management</Title>
+    <div className="leads-page" style={{ padding: '0 0 24px' }}>
+     <Row gutter={[24, 24]}>
+  {/* ==================== HEADER ==================== */}
+  <Col span={24}>
+    <Card
+      bordered={false}
+      style={{ 
+        borderRadius: 16, 
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        background: 'linear-gradient(145deg, #ffffff 0%, #fafafa 100%)'
+      }}
+      bodyStyle={{ padding: '20px 24px' }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+        
+        <div>
+          <Title level={3} style={{ margin: 0, fontWeight: 600 }}>
+            Leads Management
+          </Title>
+          <Text type="secondary">Manage and track all your real estate leads</Text>
+        </div>
 
-              <Space wrap>
-                {/* ── Meta Sync Button ── */}
-                <Tooltip title="Sync leads from Meta (Facebook) Lead Ad forms">
-                  <Badge count={newMetaLeadsCount} size="small">
-                    <Button
-                      icon={<FacebookOutlined />}
-                      onClick={openSyncModal}
-                      style={{
-                        background:   '#1877F2',
-                        borderColor:  '#1877F2',
-                        color:        '#fff',
-                        fontWeight:   600,
-                        display:      'flex',
-                        alignItems:   'center',
-                        gap:          4,
-                      }}
-                    >
-                      Sync Meta Leads
-                    </Button>
-                  </Badge>
-                </Tooltip>
+        <Space wrap size={10}>
+          {/* Meta Sync Button */}
+          <Tooltip title="Sync leads from Facebook Meta Forms">
+            <Button
+              icon={<FacebookOutlined />}
+              onClick={openSyncModal}
+              style={{ 
+                background: '#1877F2', 
+                borderColor: '#1877F2', 
+                color: '#fff', 
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}
+            >
+              Sync Meta Leads
+            </Button>
+          </Tooltip>
 
-                {/* ── Import CSV ── */}
-                <Button
-                  type="default"
-                  icon={<UploadOutlined />}
-                  onClick={() => document.getElementById('csv-upload').click()}
-                >
-                  Import CSV/Excel
-                </Button>
-                <input
-                  id="csv-upload"
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  style={{ display: 'none' }}
-                  onChange={handleFileUpload}
-                />
+          {/* Import Button */}
+          <Button
+            icon={<UploadOutlined />}
+            onClick={() => document.getElementById('csv-upload').click()}
+          >
+            Import CSV / Excel
+          </Button>
 
-                {/* ── Add Lead ── */}
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={() => { setEditingLead(null); setFormVisible(true); }}
-                >
-                  Add Lead
-                </Button>
-              </Space>
-            </div>
+          <input
+            id="csv-upload"
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            style={{ display: 'none' }}
+            onChange={handleFileUpload}
+          />
 
-            <LeadFilters
-              onSearch={handleSearch}
-              onFilter={handleFilter}
-              onClear={handleClearFilters}
-              sellers={sellers}
-              loading={loading}
-              filters={filters}
-            />
-          </Card>
-        </Col>
+          {/* Add New Lead */}
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => { 
+              setEditingLead(null); 
+              setFormVisible(true); 
+            }}
+            style={{ height: 40, padding: '0 20px' }}
+          >
+            Add New Lead
+          </Button>
+        </Space>
+      </div>
 
-        <Col span={24}>
-          <Card>
-            <div className="mb-4">
-              <LeadStats
-                leads={leads}
-                loading={loading}
-                onShowDetailStats={() => setStatsDrawerVisible(true)}
-              />
-            </div>
-            <Divider />
-            <LeadTable
-              leads={leads}
-              loading={loading}
-              onEdit={handleEditLead}
-              onDelete={handleDeleteLead}
-              onAssignSeller={handleShowAssignSeller}
-              onViewDetails={handleViewDetails}
-            />
-          </Card>
-        </Col>
-      </Row>
+      <Divider style={{ margin: '18px 0 12px 0' }} />
 
-      {/* Lead form modal */}
+      {/* Filters */}
+      <LeadFilters
+        onSearch={handleSearch}
+        onFilter={handleFilter}
+        onClear={handleClearFilters}
+        sellers={sellers}
+        loading={loading}
+        filters={filters}
+      />
+    </Card>
+  </Col>
+
+  {/* ==================== QUICK STATS ==================== */}
+  <Col span={24}>
+    <LeadStats
+      leads={leads}
+      loading={loading}
+      onShowDetailStats={() => setStatsDrawerVisible(true)}
+    />
+  </Col>
+
+  {/* ==================== MAIN TABLE ==================== */}
+  <Col span={24}>
+    <Card
+      bordered={false}
+      style={{ 
+        borderRadius: 16, 
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)' 
+      }}
+      bodyStyle={{ padding: 0 }}
+    >
+      <div style={{ padding: '16px 24px', borderBottom: '1px solid #f0f0f0' }}>
+        <Title level={5} style={{ margin: 0 }}>
+          All Leads 
+          <Text type="secondary" style={{ marginLeft: 8, fontSize: 14 }}>
+            ({leads.length} total)
+          </Text>
+        </Title>
+      </div>
+
+      <LeadTable
+        leads={leads}
+        loading={loading}
+        onEdit={handleEditLead}
+        onDelete={handleDeleteLead}
+        onAssignSeller={handleShowAssignSeller}
+        onViewDetails={handleViewDetails}
+        onBulkAssign={handleBulkAssignOpen}
+      />
+    </Card>
+  </Col>
+</Row>
+
+      {/* Modals & Drawers */}
       <LeadForm
         visible={formVisible}
         onCancel={() => { setFormVisible(false); setEditingLead(null); }}
@@ -664,7 +583,6 @@ const normalizePhone = (phone) => {
         sellers={sellers}
       />
 
-      {/* Lead details drawer */}
       <LeadDetailsPro
         visible={detailsVisible}
         onClose={() => setDetailsVisible(false)}
@@ -673,7 +591,7 @@ const normalizePhone = (phone) => {
         onAddNote={handleAddNote}
       />
 
-      {/* Assign seller modal */}
+      {/* Single assign */}
       <AssignSellerForm
         visible={assignSellerVisible}
         onCancel={() => { setAssignSellerVisible(false); setAssigningLead(null); }}
@@ -683,7 +601,17 @@ const normalizePhone = (phone) => {
         sellers={sellers}
       />
 
-      {/* Stats drawer */}
+      {/* Bulk assign */}
+      <AssignSellerForm
+        visible={bulkAssignVisible}
+        onCancel={() => { setBulkAssignVisible(false); setBulkLeadIds([]); }}
+        onSubmit={handleBulkAssignSeller}
+        confirmLoading={confirmLoading}
+        leadIds={bulkLeadIds}
+        bulk
+        sellers={sellers}
+      />
+
       <LeadStatsDrawer
         visible={statsDrawerVisible}
         onClose={() => setStatsDrawerVisible(false)}
@@ -692,7 +620,6 @@ const normalizePhone = (phone) => {
         loading={loading}
       />
 
-      {/* ── Meta Sync Modal ── */}
       <MetaSyncModal
         visible={syncModalVisible}
         onClose={() => setSyncModalVisible(false)}

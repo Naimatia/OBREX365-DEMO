@@ -1,63 +1,84 @@
-import React from 'react';
-import { Row, Col, Input, Select, Button, Form, Space, Drawer } from 'antd';
-import { SearchOutlined, FilterOutlined, ClearOutlined, MenuOutlined } from '@ant-design/icons';
-import { LeadStatus, LeadInterestLevel, LeadRedirectionSource } from 'models/LeadModel';
+import React, { useState, useEffect } from 'react';
+import { 
+  Row, 
+  Col, 
+  Input, 
+  Select, 
+  Button, 
+  Form, 
+  Space, 
+  Drawer,
+  Grid
+} from 'antd';
+import { 
+  SearchOutlined, 
+  FilterOutlined, 
+  ClearOutlined, 
+  MenuOutlined 
+} from '@ant-design/icons';
+import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import countries from 'constants/countries';
 
 const { Search } = Input;
+const { useBreakpoint } = Grid;
 
 const LeadFilters = ({ 
   onSearch, 
   onFilter, 
   onClear, 
   sellers = [], 
-  loading,
-  filters
+  loading = false,
+  filters = {}
 }) => {
   const [form] = Form.useForm();
-  const [drawerVisible, setDrawerVisible] = React.useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const screens = useBreakpoint();
 
-  const handleFilter = () => {
-    const values = form.getFieldsValue();
-    onFilter(values);
-    setDrawerVisible(false); // Close drawer on mobile
-  };
+  const isMobile = !screens.md; // Use Ant Design breakpoints for reliability
 
-  const handleClear = () => {
-    form.resetFields();
-    onClear();
-    setDrawerVisible(false);
-  };
-
-  React.useEffect(() => {
+  // Sync external filters with form
+  useEffect(() => {
     if (filters) {
       form.setFieldsValue(filters);
     }
   }, [filters, form]);
 
-  // Responsive: Show drawer on small screens
-  const isMobile = window.innerWidth <= 768;
-  const showDrawer = isMobile;
+  const handleApplyFilters = () => {
+    const values = form.getFieldsValue();
+    onFilter(values);
+    setDrawerVisible(false);
+  };
 
-  const FilterContent = (
-    <>
-      <Row gutter={[16, 16]} align="bottom">
-        <Col xs={24} sm={12} md={6} lg={5}>
+  const handleClearFilters = () => {
+    form.resetFields();
+    onClear();
+    setDrawerVisible(false);
+  };
+
+  const handleSearch = (value) => {
+    onSearch(value);
+  };
+
+  const FilterFormContent = (
+    <Form form={form} layout="vertical">
+      <Row gutter={[16, 16]}>
+        {/* Search */}
+        <Col xs={24} md={8} lg={6}>
           <Form.Item name="search" label="Search">
             <Search
-              placeholder="Name, email, phone"
+              placeholder="Name, email or phone"
               allowClear
-              enterButton={<SearchOutlined />}
-              onSearch={onSearch}
+              onSearch={handleSearch}
               loading={loading}
               disabled={loading}
             />
           </Form.Item>
         </Col>
 
-        <Col xs={24} sm={12} md={4} lg={4}>
+        {/* Status */}
+        <Col xs={24} md={8} lg={4}>
           <Form.Item name="status" label="Status">
-            <Select placeholder="All statuses" allowClear>
+            <Select placeholder="All Statuses" allowClear>
               {Object.values(LeadStatus).map(status => (
                 <Select.Option key={status} value={status}>{status}</Select.Option>
               ))}
@@ -65,9 +86,10 @@ const LeadFilters = ({
           </Form.Item>
         </Col>
 
-        <Col xs={24} sm={12} md={4} lg={4}>
+        {/* Interest Level */}
+        <Col xs={24} md={8} lg={4}>
           <Form.Item name="InterestLevel" label="Interest">
-            <Select placeholder="All levels" allowClear>
+            <Select placeholder="All Levels" allowClear>
               {Object.values(LeadInterestLevel).map(level => (
                 <Select.Option key={level} value={level}>{level}</Select.Option>
               ))}
@@ -75,10 +97,11 @@ const LeadFilters = ({
           </Form.Item>
         </Col>
 
-        <Col xs={24} sm={12} md={4} lg={4}>
+        {/* Region */}
+        <Col xs={24} md={8} lg={4}>
           <Form.Item name="region" label="Region">
             <Select
-              placeholder="All regions"
+              placeholder="All Regions"
               allowClear
               showSearch
               optionFilterProp="children"
@@ -92,61 +115,59 @@ const LeadFilters = ({
           </Form.Item>
         </Col>
 
-        <Col xs={24} sm={12} md={4} lg={4}>
+        {/* Assigned Seller */}
+        <Col xs={24} md={8} lg={4}>
           <Form.Item name="seller_id" label="Seller">
             <Select
-              placeholder="All sellers"
+              placeholder="All Sellers"
               allowClear
               showSearch
               optionFilterProp="children"
             >
               {sellers.map(seller => (
                 <Select.Option key={seller.id} value={seller.id}>
-                  {seller.name || `${seller.firstname} ${seller.lastname}`}
+                  {seller.name || `${seller.firstname || ''} ${seller.lastname || ''}`.trim()}
                 </Select.Option>
               ))}
             </Select>
           </Form.Item>
         </Col>
 
-        <Col xs={24} sm={12} md={4} lg={3}>
-          <Form.Item label=" ">
-            <Space>
-              <Button
-                type="primary"
-                icon={<FilterOutlined />}
-                onClick={handleFilter}
-                loading={loading}
-                size="middle"
-              >
-                Apply
-              </Button>
-              <Button
-                danger
-                icon={<ClearOutlined />}
-                onClick={handleClear}
-                size="middle"
-              >
-                Clear
-              </Button>
-            </Space>
-          </Form.Item>
+        {/* Action Buttons */}
+        <Col xs={24} md={24} lg={4} style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <Space>
+            <Button
+              type="primary"
+              icon={<FilterOutlined />}
+              onClick={handleApplyFilters}
+              loading={loading}
+            >
+              Apply
+            </Button>
+            <Button
+              danger
+              icon={<ClearOutlined />}
+              onClick={handleClearFilters}
+            >
+              Clear
+            </Button>
+          </Space>
         </Col>
       </Row>
-    </>
+    </Form>
   );
 
   return (
-    <Form form={form} layout="vertical" className="lead-filters-form mb-4">
-      {showDrawer ? (
+    <div className="lead-filters">
+      {isMobile ? (
+        // Mobile View
         <>
-          <Row gutter={16} align="middle" className="mb-3">
+          <Row gutter={12} align="middle" style={{ marginBottom: 16 }}>
             <Col flex="auto">
               <Search
                 placeholder="Search leads..."
                 allowClear
-                enterButton={<SearchOutlined />}
-                onSearch={onSearch}
+                onSearch={handleSearch}
                 loading={loading}
                 size="large"
               />
@@ -156,34 +177,37 @@ const LeadFilters = ({
                 icon={<MenuOutlined />}
                 onClick={() => setDrawerVisible(true)}
                 size="large"
-              />
+              >
+                Filters
+              </Button>
             </Col>
           </Row>
 
           <Drawer
-            title="Filter Leads"
+            title="Advanced Filters"
             placement="right"
             open={drawerVisible}
             onClose={() => setDrawerVisible(false)}
-            width="90%"
+            width="85%"
             footer={
               <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                <Button onClick={handleClear} danger>
+                <Button onClick={handleClearFilters} danger>
                   Clear All
                 </Button>
-                <Button type="primary" onClick={handleFilter} loading={loading}>
+                <Button type="primary" onClick={handleApplyFilters} loading={loading}>
                   Apply Filters
                 </Button>
               </Space>
             }
           >
-            {FilterContent}
+            {FilterFormContent}
           </Drawer>
         </>
       ) : (
-        FilterContent
+        // Desktop View
+        FilterFormContent
       )}
-    </Form>
+    </div>
   );
 };
 

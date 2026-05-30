@@ -10,31 +10,32 @@ import {
   Divider, 
   Typography, 
   Empty,
-  Spin
+  Spin,
+  Statistic
 } from 'antd';
 import { 
   PieChartOutlined, 
   BarChartOutlined, 
   CalendarOutlined,
-  TeamOutlined
+  TeamOutlined,
+  DollarOutlined,
+  RiseOutlined
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';
 
-// Import Chart.js components
+
+// Register ChartJS
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { Pie, Bar } from 'react-chartjs-2';
-import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
 dayjs.extend(isBetween);
-// Register ChartJS components
+
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
 const { Title: TextTitle } = Typography;
 const { RangePicker } = DatePicker;
 
-/**
- * Component for displaying detailed lead statistics in a drawer
- */
 const LeadStatsDrawer = ({ 
   visible, 
   onClose, 
@@ -42,275 +43,229 @@ const LeadStatsDrawer = ({
   sellers = [],
   loading = false 
 }) => {
-  const [filteredLeads, setFilteredLeads] = useState(leads);
+  const [filteredLeads, setFilteredLeads] = useState([]);
   const [dateRange, setDateRange] = useState(null);
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [chartLoading, setChartLoading] = useState(false);
 
-  // Update filtered leads when props change or filters are applied
+  // Filter leads
   useEffect(() => {
     setChartLoading(true);
     let filtered = [...leads];
-    
-    // Apply seller filter
+
+    // Seller filter
     if (selectedSeller) {
       filtered = filtered.filter(lead => lead.seller_id === selectedSeller);
     }
-    
-    // Apply date range filter
+
+    // Date range filter
     if (dateRange && dateRange.length === 2) {
+      const [start, end] = dateRange;
       filtered = filtered.filter(lead => {
-        const leadDate = lead.CreationDate?.toDate?.() || lead.CreationDate;
-        return dayjs(leadDate).isBetween(dateRange[0], dateRange[1], 'day', '[]');
+        const leadDate = lead.CreationDate?.toDate?.() 
+                      || lead.CreationDate 
+                      || lead.createdAt?.toDate?.() 
+                      || lead.createdAt;
+        
+        if (!leadDate) return false;
+        return dayjs(leadDate).isBetween(start, end, 'day', '[]');
       });
     }
-    
+
     setFilteredLeads(filtered);
-    setTimeout(() => setChartLoading(false), 300); // Small delay for animation
+    setTimeout(() => setChartLoading(false), 250);
   }, [leads, selectedSeller, dateRange]);
-  
-  // Handle date range change
-  const handleDateRangeChange = (dates) => {
-    setDateRange(dates);
-  };
-  
-  // Handle seller change
-  const handleSellerChange = (value) => {
-    setSelectedSeller(value);
-  };
-  
-  // Clear filters
+
+  const handleDateRangeChange = (dates) => setDateRange(dates);
+  const handleSellerChange = (value) => setSelectedSeller(value);
   const handleClearFilters = () => {
     setDateRange(null);
     setSelectedSeller(null);
   };
-  
-  // Calculate data for status distribution chart
-  const getStatusData = () => {
-    const pending = filteredLeads.filter(lead => lead.status === LeadStatus.PENDING).length;
-    const gain = filteredLeads.filter(lead => lead.status === LeadStatus.GAIN).length;
-    const loss = filteredLeads.filter(lead => lead.status === LeadStatus.LOSS).length;
-    
-    const data = {
-      labels: ['Pending', 'Gained', 'Lost'],
-      datasets: [
-        {
-          data: [pending, gain, loss],
-          backgroundColor: [
-            '#faad14',
-            '#52c41a',
-            '#f5222d',
-          ],
-          borderWidth: 1,
-        },
+
+  // Summary Stats
+  const totalLeads = filteredLeads.length;
+  const gainedLeads = filteredLeads.filter(l => l.status === LeadStatus.GAIN).length;
+  const conversionRate = totalLeads > 0 ? ((gainedLeads / totalLeads) * 100).toFixed(1) : 0;
+
+  const numericBudgets = filteredLeads
+    .map(l => Number(l.Budget))
+    .filter(n => !isNaN(n) && n > 0);
+
+  const avgBudget = numericBudgets.length > 0 
+    ? Math.round(numericBudgets.reduce((a, b) => a + b, 0) / numericBudgets.length) 
+    : 0;
+
+  // Charts Data
+  const getStatusData = () => ({
+    labels: ['Pending', 'Gained', 'Lost', 'Others'],
+    datasets: [{
+      data: [
+        filteredLeads.filter(l => l.status === LeadStatus.PENDING).length,
+        gainedLeads,
+        filteredLeads.filter(l => l.status === LeadStatus.LOSS).length,
+        filteredLeads.filter(l => !['Pending','Gain','Loss'].includes(l.status)).length,
       ],
-    };
-    
-    return data;
-  };
-  
-  // Calculate data for interest level distribution chart
-  const getInterestData = () => {
-    const low = filteredLeads.filter(lead => lead.InterestLevel === LeadInterestLevel.LOW).length;
-    const medium = filteredLeads.filter(lead => lead.InterestLevel === LeadInterestLevel.MEDIUM).length;
-    const high = filteredLeads.filter(lead => lead.InterestLevel === LeadInterestLevel.HIGH).length;
-    
-    const data = {
-      labels: ['Low Interest', 'Medium Interest', 'High Interest'],
-      datasets: [
-        {
-          data: [low, medium, high],
-          backgroundColor: [
-            '#ff7a45',
-            '#1890ff',
-            '#52c41a',
-          ],
-          borderWidth: 1,
-        },
+      backgroundColor: ['#faad14', '#52c41a', '#f5222d', '#8c8c8c'],
+      borderWidth: 2,
+    }]
+  });
+
+  const getInterestData = () => ({
+    labels: ['Low', 'Medium', 'High'],
+    datasets: [{
+      data: [
+        filteredLeads.filter(l => l.InterestLevel === LeadInterestLevel.LOW).length,
+        filteredLeads.filter(l => l.InterestLevel === LeadInterestLevel.MEDIUM).length,
+        filteredLeads.filter(l => l.InterestLevel === LeadInterestLevel.HIGH).length,
       ],
-    };
-    
-    return data;
-  };
-  
-  // Calculate monthly trend data
+      backgroundColor: ['#ff7a45', '#1890ff', '#52c41a'],
+    }]
+  });
+
   const getMonthlyTrendData = () => {
-    // Group leads by month
-    const monthlyData = {};
-    
+    const monthly = {};
     filteredLeads.forEach(lead => {
-      const date = lead.CreationDate?.toDate?.() || lead.CreationDate;
-      if (date) {
-        const monthYear = dayjs(date).format('MMM YYYY');
-        
-        if (!monthlyData[monthYear]) {
-          monthlyData[monthYear] = {
-            pending: 0,
-            gain: 0,
-            loss: 0
-          };
-        }
-        
-        if (lead.status === LeadStatus.PENDING) {
-          monthlyData[monthYear].pending++;
-        } else if (lead.status === LeadStatus.GAIN) {
-          monthlyData[monthYear].gain++;
-        } else if (lead.status === LeadStatus.LOSS) {
-          monthlyData[monthYear].loss++;
-        }
-      }
+      const date = lead.CreationDate?.toDate?.() || lead.createdAt?.toDate?.() || lead.CreationDate;
+      if (!date) return;
+      const key = dayjs(date).format('MMM YYYY');
+      monthly[key] = (monthly[key] || 0) + 1;
     });
-    
-    // Sort months chronologically
-    const sortedMonths = Object.keys(monthlyData).sort((a, b) => {
-      return dayjs(a, 'MMM YYYY').diff(dayjs(b, 'MMM YYYY'));
-    });
-    
-    // Create chart data
-    const data = {
-      labels: sortedMonths,
-      datasets: [
-        {
-          label: 'Pending',
-          data: sortedMonths.map(month => monthlyData[month].pending),
-          backgroundColor: '#faad14',
-        },
-        {
-          label: 'Gained',
-          data: sortedMonths.map(month => monthlyData[month].gain),
-          backgroundColor: '#52c41a',
-        },
-        {
-          label: 'Lost',
-          data: sortedMonths.map(month => monthlyData[month].loss),
-          backgroundColor: '#f5222d',
-        },
-      ],
+
+    const sortedKeys = Object.keys(monthly).sort((a,b) => dayjs(a,'MMM YYYY').diff(dayjs(b,'MMM YYYY')));
+
+    return {
+      labels: sortedKeys,
+      datasets: [{
+        label: 'Leads per Month',
+        data: sortedKeys.map(key => monthly[key]),
+        backgroundColor: '#1890ff',
+        borderColor: '#1677ff',
+        borderWidth: 2,
+      }]
     };
-    
-    return data;
-  };
-  
-  // Chart options
-  const barOptions = {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'top', // Valid values: 'top', 'left', 'bottom', 'right'
-      },
-      title: {
-        display: true,
-        text: 'Monthly Leads Trend'
-      },
-    },
-    scales: {
-      x: {
-        stacked: false,
-      },
-      y: {
-        stacked: false,
-        beginAtZero: true
-      }
-    }
   };
 
-  // Render empty state when no data
-  const renderEmptyState = () => (
-    <Empty
-      image={Empty.PRESENTED_IMAGE_SIMPLE}
-      description="No lead data available for the selected filters"
-    />
-  );
+  const barOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { position: 'top' } },
+    scales: { y: { beginAtZero: true } }
+  };
 
   return (
     <Drawer
-      title="Lead Statistics"
-      width={720}
+      title="Lead Statistics & Analytics"
+      width={800}
       placement="right"
       onClose={onClose}
-      visible={visible}
-      bodyStyle={{ paddingBottom: 80 }}
+      open={visible}
     >
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
+
         {/* Filters */}
         <Card title="Filters">
           <Row gutter={16}>
             <Col span={12}>
-              <div className="mb-2">
-                <label><CalendarOutlined /> Date Range</label>
-                <RangePicker 
-                  style={{ width: '100%' }}
-                  onChange={handleDateRangeChange}
-                  value={dateRange}
-                />
-              </div>
+              <label>Date Range</label>
+              <RangePicker 
+                style={{ width: '100%' }} 
+                onChange={handleDateRangeChange} 
+                value={dateRange}
+                allowClear
+              />
             </Col>
             <Col span={12}>
-              <div className="mb-2">
-                <label><TeamOutlined /> Filter by Seller</label>
-                <Select
-                  style={{ width: '100%' }}
-                  placeholder="Select a seller"
-                  allowClear
-                  onChange={handleSellerChange}
-                  value={selectedSeller}
-                >
-                  {sellers.map(seller => (
-                    <Select.Option key={seller.id} value={seller.id}>
-                      {seller.firstname} {seller.lastname}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </div>
+              <label>Filter by Seller</label>
+              <Select
+                style={{ width: '100%' }}
+                placeholder="All Sellers"
+                allowClear
+                onChange={handleSellerChange}
+                value={selectedSeller}
+              >
+                {sellers.map(s => (
+                  <Select.Option key={s.id} value={s.id}>
+                    {s.name || `${s.firstname} ${s.lastname}`}
+                  </Select.Option>
+                ))}
+              </Select>
             </Col>
           </Row>
+          <Space style={{ marginTop: 12 }}>
+            <a onClick={handleClearFilters} style={{ color: '#1677ff' }}>Clear Filters</a>
+          </Space>
         </Card>
 
-        {/* Stats Overview */}
-        <div>
-          <TextTitle level={4}><BarChartOutlined /> Leads Overview</TextTitle>
-          <Spin spinning={loading || chartLoading}>
-            <Row gutter={16}>
-              {/* Status Distribution */}
-              <Col span={12}>
-                <Card title="Lead Status Distribution">
-                  {filteredLeads.length > 0 ? (
-                    <div style={{ height: 300 }}>
-                      <Pie data={getStatusData()} />
-                    </div>
-                  ) : renderEmptyState()}
-                </Card>
-              </Col>
-              
-              {/* Interest Level Distribution */}
-              <Col span={12}>
-                <Card title="Interest Level Distribution">
-                  {filteredLeads.length > 0 ? (
-                    <div style={{ height: 300 }}>
-                      <Pie data={getInterestData()} />
-                    </div>
-                  ) : renderEmptyState()}
-                </Card>
-              </Col>
-            </Row>
-          </Spin>
-        </div>
+        {/* Summary Cards */}
+        <Row gutter={16}>
+          <Col span={8}>
+            <Card>
+              <Statistic 
+                title="Total Leads" 
+                value={totalLeads} 
+                prefix={<TeamOutlined />} 
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card>
+              <Statistic 
+                title="Conversion Rate" 
+                value={conversionRate} 
+                suffix="%" 
+                prefix={<RiseOutlined />} 
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Card>
+          </Col>
+          <Col span={8}>
+            <Card>
+              <Statistic 
+                title="Avg Budget" 
+                value={avgBudget ? `AED ${avgBudget.toLocaleString()}` : '—'} 
+                prefix={<DollarOutlined />} 
+              />
+            </Card>
+          </Col>
+        </Row>
 
         <Divider />
-        
-        {/* Monthly Trend */}
-        <div>
-          <TextTitle level={4}><PieChartOutlined /> Monthly Trends</TextTitle>
-          <Spin spinning={loading || chartLoading}>
-            <Card title="Lead Status by Month">
-              {filteredLeads.length > 0 ? (
-                <div style={{ height: 400 }}>
-                  <Bar data={getMonthlyTrendData()} options={barOptions} />
-                </div>
-              ) : renderEmptyState()}
-            </Card>
-          </Spin>
-        </div>
+
+        {/* Charts */}
+        <Spin spinning={loading || chartLoading}>
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Card title="Status Distribution" style={{ height: '100%' }}>
+                {totalLeads > 0 ? (
+                  <div style={{ height: 320 }}>
+                    <Pie data={getStatusData()} />
+                  </div>
+                ) : <Empty description="No data" />}
+              </Card>
+            </Col>
+
+            <Col span={12}>
+              <Card title="Interest Level" style={{ height: '100%' }}>
+                {totalLeads > 0 ? (
+                  <div style={{ height: 320 }}>
+                    <Pie data={getInterestData()} />
+                  </div>
+                ) : <Empty description="No data" />}
+              </Card>
+            </Col>
+
+            <Col span={24}>
+              <Card title="Monthly Lead Trend" style={{ height: '100%' }}>
+                {totalLeads > 0 ? (
+                  <div style={{ height: 420 }}>
+                    <Bar data={getMonthlyTrendData()} options={barOptions} />
+                  </div>
+                ) : <Empty description="No data for selected period" />}
+              </Card>
+            </Col>
+          </Row>
+        </Spin>
       </Space>
     </Drawer>
   );

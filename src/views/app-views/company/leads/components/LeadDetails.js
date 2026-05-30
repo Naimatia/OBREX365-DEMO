@@ -7,7 +7,8 @@ import {
   EditOutlined, PhoneOutlined, MailOutlined, GlobalOutlined,
   CalendarOutlined, UserOutlined, DollarOutlined, TagOutlined,
   MessageOutlined, CopyOutlined, CheckOutlined, InfoCircleOutlined,
-  WhatsAppOutlined, PhoneFilled, HistoryOutlined
+  WhatsAppOutlined, PhoneFilled, HistoryOutlined,
+  EyeOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
@@ -334,6 +335,51 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
             </Card>
           </Col>
         </Row>
+
+       {/* ==================== META LEAD SOURCE ==================== */}
+<Card 
+  title={
+    <Space>
+      <EyeOutlined style={{ color: '#1877F2' }} />
+      Meta Lead Source
+      <Tag 
+        color={lead?.RedirectedFrom === 'Instagram' ? 'magenta' : 'blue'}
+      >
+        {lead?.RedirectedFrom || 'Facebook'}
+      </Tag>
+    </Space>
+  } 
+  style={{ marginBottom: 16 }}
+>
+  <Row gutter={[16, 12]}>
+    <Col span={12}>
+      <Text type="secondary">Form Name</Text><br />
+      <Text strong>{lead.meta_form_name || '—'}</Text>
+    </Col>
+    <Col span={12}>
+      <Text type="secondary">Ad Name</Text><br />
+      <Text strong>{lead.meta_ad_name || '—'}</Text>
+    </Col>
+    <Col span={12}>
+      <Text type="secondary">Campaign</Text><br />
+      <Text strong>{lead.meta_campaign || '—'}</Text>
+    </Col>
+    <Col span={12}>
+      <Text type="secondary">Ad Set</Text><br />
+      <Text strong>{lead.meta_adset || '—'}</Text>
+    </Col>
+    <Col span={12}>
+      <Text type="secondary">Platform</Text><br />
+      <Tag color="blue">{lead.meta_platform || 'fb'}</Tag>
+    </Col>
+    <Col span={24}>
+      <Text type="secondary">Meta Lead ID</Text><br />
+      <Text copyable strong style={{ fontFamily: 'monospace' }}>
+        {lead.meta_lead_id || '—'}
+      </Text>
+    </Col>
+  </Row>
+</Card>
 
         {/* Assigned Seller */}
         <Card title={<><UserOutlined /> Assigned Seller</>} style={{ margin: '16px 0' }}>

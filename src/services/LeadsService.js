@@ -151,6 +151,7 @@ const LeadsService = {
     try {
       const leadToCreate = {
         ...leadData,
+        createdBy: leadData.seller_id,
         CreationDate: serverTimestamp(),
         LastUpdateDate: serverTimestamp(),
         Notes: leadData.Notes || []

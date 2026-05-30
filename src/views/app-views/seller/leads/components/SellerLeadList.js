@@ -9,9 +9,9 @@ import {
   Input,
   Select,
   DatePicker,
-  Dropdown,
   Modal,
   message,
+  Badge,
 } from 'antd';
 import {
   EyeOutlined,
@@ -19,32 +19,24 @@ import {
   DeleteOutlined,
   SearchOutlined,
   FilterOutlined,
-  FileTextOutlined,
-  ExclamationCircleOutlined,
   DollarOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import dayjs from 'dayjs';
-import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
-dayjs.extend(isBetween);
 
 const { Search } = Input;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 const { confirm } = Modal;
 
-/**
- * SellerLeadList – Clean, interactive lead table
- * Only "View" button opens details – row click is disabled
- */
 const SellerLeadList = ({
   leads,
   loading,
   onViewLead,
   onEditLead,
   onDeleteLead,
-  onUpdateStatus,
-  onAddNote,
+  sellerId,
 }) => {
   const [searchText, setSearchText] = useState('');
   const [filteredStatus, setFilteredStatus] = useState(null);
@@ -56,244 +48,167 @@ const SellerLeadList = ({
     let filtered = [...leads];
 
     if (searchText) {
-      filtered = filtered.filter(
-        (lead) =>
-          lead.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-          lead.email?.toLowerCase().includes(searchText.toLowerCase()) ||
-          lead.phoneNumber?.includes(searchText) ||
-          lead.region?.toLowerCase().includes(searchText.toLowerCase())
+      const term = searchText.toLowerCase();
+      filtered = filtered.filter(lead =>
+        lead.name?.toLowerCase().includes(term) ||
+        lead.email?.toLowerCase().includes(term) ||
+        lead.phoneNumber?.includes(term) ||
+        lead.region?.toLowerCase().includes(term)
       );
     }
 
-    if (filteredStatus) {
-      filtered = filtered.filter((lead) => lead.status === filteredStatus);
-    }
-
-    if (filteredInterest) {
-      filtered = filtered.filter((lead) => lead.InterestLevel === filteredInterest);
-    }
+    if (filteredStatus) filtered = filtered.filter(l => l.status === filteredStatus);
+    if (filteredInterest) filtered = filtered.filter(l => l.InterestLevel === filteredInterest);
 
     if (dateRange && dateRange.length === 2) {
-      filtered = filtered.filter((lead) => {
+      filtered = filtered.filter(lead => {
         if (!lead.CreationDate) return false;
-        const leadDate = dayjs(lead.CreationDate);
-        return leadDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
+        return dayjs(lead.CreationDate).isBetween(dateRange[0], dateRange[1], 'day', '[]');
       });
     }
 
     return filtered;
   }, [leads, searchText, filteredStatus, filteredInterest, dateRange]);
 
-  // Delete confirmation
-  const handleDelete = (lead) => {
+  // Strict ownership check based on createdBy
+  const isMyOwnLead = (lead) => {
+    if (!lead || !sellerId) return false;
+    const creatorId = lead.createdBy;
+    if (!creatorId) return false;
+    return String(creatorId) === String(sellerId);
+  };
+
+  const handleDelete = (record) => {
+    if (!isMyOwnLead(record)) {
+      message.warning("You can only edit or delete leads that you personally created.");
+      return;
+    }
+
     confirm({
       title: 'Delete Lead',
-      icon: <ExclamationCircleOutlined />,
-      content: `Are you sure you want to delete "${lead.name}"? This action cannot be undone.`,
+      content: `Are you sure you want to delete "${record.name}"?`,
       okText: 'Delete',
       okType: 'danger',
-      cancelText: 'Cancel',
-      onOk() {
-        onDeleteLead(lead.id);
-      },
+      onOk: () => onDeleteLead(record.id),
     });
   };
 
-  // Status update
-  const handleStatusUpdate = (lead, newStatus) => {
-    onUpdateStatus(lead.id, newStatus);
-  };
-
-  // Get source icon
-  const getSourceIcon = (source) => {
-    switch (source?.toLowerCase()) {
-      case 'facebook':
-        return '📘';
-      case 'instagram':
-        return '📷';
-      case 'website':
-        return '🌐';
-      case 'linkedin':
-        return '💼';
-      case 'tiktok':
-        return '🎵';
-      case 'freelance':
-        return '💪';
-      default:
-        return '🔗';
-    }
-  };
-
-  // Table Columns
   const columns = [
     {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
-      render: (text) => <strong>{text || 'Unknown'}</strong>,
+      render: (text, record) => (
+        <Space>
+          <strong>{text || 'Unknown'}</strong>
+          {isMyOwnLead(record) && (
+            <Badge 
+              color="green" 
+              text="My Lead" 
+              style={{ fontSize: '12px' }}
+            />
+          )}
+        </Space>
+      ),
     },
     {
       title: 'Region',
       dataIndex: 'region',
       key: 'region',
-      render: (text) => text || '-',
+      render: (text) => text || '—',
     },
     {
       title: 'Source',
       dataIndex: 'RedirectedFrom',
       key: 'source',
-      render: (source) =>
-        source ? (
-          <Space>
-            <span>{getSourceIcon(source)}</span>
-            <span>{source}</span>
-          </Space>
-        ) : (
-          '-'
-        ),
+      render: (source) => source ? <Tag color="blue">{source}</Tag> : '—',
     },
     {
       title: 'Interest',
       dataIndex: 'InterestLevel',
       key: 'interest',
-      filters: [
-        { text: 'High', value: LeadInterestLevel.HIGH },
-        { text: 'Medium', value: LeadInterestLevel.MEDIUM },
-        { text: 'Low', value: LeadInterestLevel.LOW },
-      ],
-      onFilter: (value, record) => record.InterestLevel === value,
       render: (level) => {
-        const map = {
-          [LeadInterestLevel.HIGH]: { color: 'red', text: 'High' },
-          [LeadInterestLevel.MEDIUM]: { color: 'orange', text: 'Medium' },
-          [LeadInterestLevel.LOW]: { color: 'blue', text: 'Low' },
-        };
-        const { color, text } = map[level] || { color: 'default', text: level };
-        return <Tag color={color}>{text}</Tag>;
+        const color = level === 'High' ? 'red' : level === 'Medium' ? 'orange' : 'blue';
+        return <Tag color={color}>{level || 'Not Set'}</Tag>;
       },
     },
     {
       title: 'Budget',
       dataIndex: 'Budget',
       key: 'budget',
-      render: (budget) =>
-        budget ? (
-          <Space>
-            <DollarOutlined />
-            <span>{budget.toLocaleString()}</span>
-          </Space>
-        ) : (
-          '-'
-        ),
-    },
- {
-  title: 'Status',
-  dataIndex: 'status',
-  key: 'status',
-  filters: [
-    { text: 'Pending',        value: LeadStatus.PENDING },
-    { text: 'Gain',           value: LeadStatus.GAIN },
-    { text: 'Loss',           value: LeadStatus.LOSS },
-    { text: 'No Response',    value: LeadStatus.NO_RESPONSE },
-    { text: 'Not Interested', value: LeadStatus.NOT_INTERESTED },
-    { text: 'Junk Lead',      value: LeadStatus.JUNK_LEAD },
-  ],
-  onFilter: (value, record) => record.status === value,
-  render: (status, record) => {
-    const getColor = (s) => {
-      switch (s) {
-        case LeadStatus.PENDING:        return 'orange';
-        case LeadStatus.GAIN:           return 'green';
-        case LeadStatus.LOSS:           return 'red';
-        case LeadStatus.NO_RESPONSE:    return 'default';
-        case LeadStatus.NOT_INTERESTED: return 'volcano';
-        case LeadStatus.JUNK_LEAD:      return 'purple';
-        default:                        return 'default';
-      }
-    };
+      render: (budget) => {
+        if (!budget) return '—';
+        
+        const displayBudget = typeof budget === 'string' 
+          ? budget 
+          : `AED ${Number(budget).toLocaleString()}`;
 
-    return (
-      <Dropdown
-        menu={{
-          items: Object.values(LeadStatus).map((s) => ({
-            key: s,
-            label: <Tag color={getColor(s)}>{s}</Tag>,
-            onClick: () => handleStatusUpdate(record, s),
-          })),
-        }}
-        trigger={['click']}
-      >
-        <Tag color={getColor(status)} style={{ cursor: 'pointer' }}>
+        return (
+          <Space>
+            <DollarOutlined style={{ color: '#52c41a' }} />
+            <span style={{ fontWeight: 500 }}>{displayBudget}</span>
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => (
+        <Tag color={status === 'New' ? 'geekblue' : status === 'Contacted' ? 'cyan' : 'default'}>
           {status || 'Unknown'}
         </Tag>
-      </Dropdown>
-    );
-  },
-},
+      ),
+    },
     {
       title: 'Created',
       dataIndex: 'CreationDate',
       key: 'created',
-      sorter: (a, b) => {
-        if (!a.CreationDate || !b.CreationDate) return 0;
-        return dayjs(a.CreationDate).unix() - dayjs(b.CreationDate).unix();
-      },
-      render: (date) => (date ? dayjs(date).format('MMM DD, YYYY') : '-'),
+      render: (date) => date ? dayjs(date).format('DD MMM YYYY') : '—',
     },
     {
       title: 'Actions',
       key: 'actions',
-      width: 160,
-      fixed: 'right', // optional: keep actions column on the right
+      width: 200,
       render: (_, record) => (
         <Space size="middle">
           <Tooltip title="View Details">
-            <Button
-              type="text"
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={(e) => {
-                e.stopPropagation(); // prevent any row click bubbling
-                onViewLead(record);
-              }}
+            <Button 
+              icon={<EyeOutlined />} 
+              onClick={() => onViewLead(record)} 
             />
           </Tooltip>
 
-          <Tooltip title="Edit">
-            <Button
-              type="text"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEditLead(record);
-              }}
-            />
-          </Tooltip>
+          {isMyOwnLead(record) ? (
+            <>
+              <Tooltip title="Edit Lead">
+                <Button 
+                  icon={<EditOutlined />} 
+                  onClick={() => onEditLead(record)} 
+                />
+              </Tooltip>
 
-
-          {/* Uncomment if you want to enable delete again */}
-          {/*
-          <Tooltip title="Delete">
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete(record);
-              }}
-            />
-          </Tooltip>
-          */}
+              <Tooltip title="Delete Lead">
+                <Button 
+                  danger 
+                  icon={<DeleteOutlined />} 
+                  onClick={() => handleDelete(record)} 
+                />
+              </Tooltip>
+            </>
+          ) : (
+            <Tooltip title="Assigned to you">
+              <Tag icon={<UserOutlined />} color="default">
+                Assigned
+              </Tag>
+            </Tooltip>
+          )}
         </Space>
       ),
     },
   ];
 
-  // Clear filters
   const clearFilters = () => {
     setSearchText('');
     setFilteredStatus(null);
@@ -303,54 +218,46 @@ const SellerLeadList = ({
 
   return (
     <div>
-      {/* Filter Bar */}
-      <Space
-        style={{
-          marginBottom: 16,
-          display: 'flex',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-        }}
-      >
+      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
         <Space wrap>
           <Search
-            placeholder="Search leads..."
+            placeholder="Search by name, email, phone..."
             allowClear
-            style={{ width: 250 }}
+            style={{ width: 320 }}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             prefix={<SearchOutlined />}
           />
 
           <Select
-            placeholder="Filter by status"
+            placeholder="Status"
             allowClear
             style={{ width: 150 }}
             value={filteredStatus}
             onChange={setFilteredStatus}
           >
-            <Option value={LeadStatus.PENDING}>Pending</Option>
-            <Option value={LeadStatus.GAIN}>Gain</Option>
-            <Option value={LeadStatus.LOSS}>Loss</Option>
+            {Object.values(LeadStatus).map(s => (
+              <Option key={s} value={s}>{s}</Option>
+            ))}
           </Select>
 
           <Select
-            placeholder="Filter by interest"
+            placeholder="Interest Level"
             allowClear
             style={{ width: 150 }}
             value={filteredInterest}
             onChange={setFilteredInterest}
           >
-            <Option value={LeadInterestLevel.HIGH}>High Interest</Option>
-            <Option value={LeadInterestLevel.MEDIUM}>Medium Interest</Option>
-            <Option value={LeadInterestLevel.LOW}>Low Interest</Option>
+            {Object.values(LeadInterestLevel).map(l => (
+              <Option key={l} value={l}>{l}</Option>
+            ))}
           </Select>
 
           <RangePicker
             placeholder={['Start Date', 'End Date']}
             value={dateRange}
             onChange={setDateRange}
-            style={{ width: 250 }}
+            style={{ width: 240 }}
           />
 
           <Button onClick={clearFilters} icon={<FilterOutlined />}>
@@ -358,30 +265,24 @@ const SellerLeadList = ({
           </Button>
         </Space>
 
-        <Space>
-          <span style={{ color: '#8c8c8c' }}>
-            Total: {filteredLeads.length} leads
-          </span>
-        </Space>
+        <span style={{ color: '#8c8c8c', fontSize: '14px' }}>
+          Showing <strong>{filteredLeads.length}</strong> of <strong>{leads.length}</strong> leads
+        </span>
       </Space>
 
-      {/* Table – NO onRow click handler */}
       <Table
         columns={columns}
         dataSource={filteredLeads}
         rowKey="id"
         loading={loading}
         pagination={{
-          total: filteredLeads.length,
-          pageSize: 10,
+          pageSize: 12,
           showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} leads`,
+          showTotal: (total) => `Total ${total} leads`,
         }}
-        scroll={{ x: 1000 }}
-        // Removed onRow – no row click opens details anymore
-        // Optional: add hover effect via rowClassName
-        rowClassName={() => 'ant-table-row-hover'} // just for visual feedback
+        scroll={{ x: 1200 }}
+        bordered
+        size="middle"
       />
     </div>
   );
