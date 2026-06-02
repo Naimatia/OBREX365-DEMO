@@ -129,50 +129,55 @@ const PayrollPage = () => {
   };
 
   const handlePayrollFormSubmit = async (formData) => {
-    try {
-      const cleanData = { ...formData };
-      Object.keys(cleanData).forEach(key => {
-        if (cleanData[key] === undefined) cleanData[key] = null;
-      });
+try {
+    const cleanData = { ...formData };
+    
+    const monthlySalary = Number(cleanData.monthly_salary || 0);
+    const daysInMonth = Number(cleanData.days_in_month || 30);
+    const hoursPerDay = Number(cleanData.hours_per_day || 8);
+    const workingDays = Number(cleanData.working_days || 0);
+    const overtimeHours = Number(cleanData.overtime_hours || 0);
+    const absentDays = Number(cleanData.absent_days || 0);
+    const otherDeduction = Number(cleanData.other_deduction || 0);
+    const hourlyRate = Number(cleanData.hourly_rate || (monthlySalary / daysInMonth / hoursPerDay));
 
-      console.log('Form data submitted:', cleanData); // Debug: Log submitted data
+    const basicPay = Number((monthlySalary * (workingDays / daysInMonth)).toFixed(2));
+    const overtimePay = Number((hourlyRate * overtimeHours).toFixed(2));
+    const absenceDeduction = Number((monthlySalary / daysInMonth * absentDays).toFixed(2));
+    const totalDeduction = Number((absenceDeduction + otherDeduction).toFixed(2));
 
-      const basicPay = (cleanData.salary_rate_per_day || 0) * (cleanData.working_days || 0);
-      const overtimePay = (cleanData.salary_per_hour || 0) * (cleanData.overtime_hours || 0);
-      const absenceDeduction = (cleanData.absent_per_day || 0) * (cleanData.salary_rate_per_day || 0);
-      const totalDeduction = absenceDeduction + (cleanData.other_deduction || 0);
-      const grossPay = basicPay + overtimePay;
-      const netPay = grossPay - totalDeduction;
+    const grossPay = Number((basicPay + overtimePay).toFixed(2));
+    const netPay = Number((grossPay - totalDeduction).toFixed(2));
 
-      const payrollData = {
-        ...cleanData,
-        basic_pay: Number(basicPay.toFixed(2)),
-        overtime_pay: Number(overtimePay.toFixed(2)),
-        absence_deduction: Number(absenceDeduction.toFixed(2)),
-        total_deduction: Number(totalDeduction.toFixed(2)),
-        gross_pay: Number(grossPay.toFixed(2)),
-        net_pay: Number(netPay.toFixed(2)),
-        company_id: companyId,
-        CreationDate: serverTimestamp(),
-        LastUpdate: serverTimestamp(),
-      };
+    const payrollData = {
+      ...cleanData,
+      monthly_salary: monthlySalary,
+      basic_pay: basicPay,
+      overtime_pay: overtimePay,
+      absence_deduction: absenceDeduction,
+      total_deduction: totalDeduction,
+      gross_pay: grossPay,
+      net_pay: netPay,
+      company_id: companyId,
+      CreationDate: serverTimestamp(),
+      LastUpdate: serverTimestamp(),
+    };
 
-      if (isEditing && selectedPayroll) {
-        const payrollRef = doc(db, 'payroll', selectedPayroll.id);
-        console.log('Updating document:', selectedPayroll.id, payrollData); // Debug: Log update
-        await updateDoc(payrollRef, payrollData);
-        message.success('Payroll updated successfully');
-      } else {
-        await addDoc(collection(db, 'payroll'), payrollData);
-        message.success('Payroll added successfully');
-      }
-      setPayrollFormVisible(false);
-      fetchPayrolls(); // Refresh data
-    } catch (error) {
-      console.error('Error saving payroll:', error);
-      message.error('Failed to save payroll');
+    if (isEditing && selectedPayroll) {
+      await updateDoc(doc(db, 'payroll', selectedPayroll.id), payrollData);
+      message.success('Payroll updated successfully');
+    } else {
+      await addDoc(collection(db, 'payroll'), payrollData);
+      message.success('Payroll added successfully');
     }
-  };
+
+    setPayrollFormVisible(false);
+    fetchPayrolls();
+  } catch (error) {
+    console.error('Error saving payroll:', error);
+    message.error('Failed to save payroll');
+  }
+};
 
   const handleDeletePayroll = async (payrollId) => {
     try {
@@ -185,189 +190,207 @@ const PayrollPage = () => {
     }
   };
 
-  const columns = [
-    {
-      title: 'Employee Name',
-      dataIndex: 'employee_name',
-      key: 'employee_name',
-      sorter: true,
-      sortOrder: sortField === 'employee_name' && sortOrder,
-      render: (text) => (
-        <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#1890ff', marginRight: 8 }} />
-          <Text strong style={{ color: '#1890ff' }}>{text || 'N/A'}</Text>
-        </div>
-      ),
-    },
-    {
-      title: 'Employee ID',
-      dataIndex: 'employee_id',
-      key: 'employee_id',
-      sorter: true,
-      sortOrder: sortField === 'employee_id' && sortOrder,
-      render: (text) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#333' }}>{text || 'N/A'}</Text>
-      ),
-    },
-    {
-      title: 'Position',
-      dataIndex: 'position',
-      key: 'position',
-      sorter: true,
-      sortOrder: sortField === 'position' && sortOrder,
-      render: (text) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#555' }}>{text || 'N/A'}</Text>
-      ),
-    },
-    {
-      title: 'Salary Rate (per day)',
-      dataIndex: 'salary_rate_per_day',
-      key: 'salary_rate_per_day',
-      sorter: true,
-      sortOrder: sortField === 'salary_rate_per_day' && sortOrder,
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#52c41a' }}>AED {value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Working Days',
-      dataIndex: 'working_days',
-      key: 'working_days',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#333' }}>{value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Hours Worked',
-      dataIndex: 'hours_worked',
-      key: 'hours_worked',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#333' }}>{value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Salary (per hr)',
-      dataIndex: 'salary_per_hour',
-      key: 'salary_per_hour',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#52c41a' }}>AED {value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Basic Pay',
-      dataIndex: 'basic_pay',
-      key: 'basic_pay',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#52c41a' }}>AED {value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Overtime Hours',
-      dataIndex: 'overtime_hours',
-      key: 'overtime_hours',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#333' }}>{value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Overtime Pay',
-      dataIndex: 'overtime_pay',
-      key: 'overtime_pay',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#52c41a' }}>AED {value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Absent Days',
-      dataIndex: 'absent_per_day',
-      key: 'absent_per_day',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: value > 0 ? '#faad14' : '#333' }}>
-          {value?.toLocaleString() || '0'} days
-        </Text>
-      ),
-    },
-    {
-      title: 'Absence Deduction',
-      dataIndex: 'absence_deduction',
-      key: 'absence_deduction',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#ff4d4f' }}>AED {value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Other Deduction',
-      dataIndex: 'other_deduction',
-      key: 'other_deduction',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#ff4d4f' }}>AED {value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Total Deduction',
-      dataIndex: 'total_deduction',
-      key: 'total_deduction',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#ff4d4f' }}>AED {value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Gross Pay',
-      dataIndex: 'gross_pay',
-      key: 'gross_pay',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#52c41a' }}>AED {value?.toLocaleString() || '0'}</Text>
-      ),
-    },
-    {
-      title: 'Net Pay',
-      dataIndex: 'net_pay',
-      key: 'net_pay',
-      render: (value) => (
-        <Text style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: value > 0 ? '#1890ff' : '#ff4d4f' }}>
-          AED {value?.toLocaleString() || '0'}
-        </Text>
-      ),
-    },
-    {
-      title: 'Actions',
-      key: 'actions',
-      render: (_, record) => (
-        <Space style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
-          <Tooltip title="Edit Payroll">
-            <Button 
-              icon={<EditOutlined />} 
-              size="small" 
-              style={{ background: '#1890ff', color: '#fff', borderColor: '#1890ff' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                console.log('Selected record for edit:', record);
-                handleAddEditPayroll(false, record); // Pass the record for editing
-              }}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Are you sure you want to delete this payroll record?"
-            onConfirm={(e) => {
+const columns = [
+  {
+    title: 'Employee Name',
+    dataIndex: 'employee_name',
+    key: 'employee_name',
+    sorter: true,
+    sortOrder: sortField === 'employee_name' && sortOrder,
+    render: (text) => (
+      <div style={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+        <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#1890ff', marginRight: 8 }} />
+        <Text strong style={{ color: '#1890ff' }}>{text || 'N/A'}</Text>
+      </div>
+    ),
+  },
+  {
+    title: 'Employee ID',
+    dataIndex: 'employee_id',
+    key: 'employee_id',
+    sorter: true,
+    sortOrder: sortField === 'employee_id' && sortOrder,
+  },
+  {
+    title: 'Position',
+    dataIndex: 'position',
+    key: 'position',
+    sorter: true,
+    sortOrder: sortField === 'position' && sortOrder,
+  },
+  {
+    title: 'Monthly Salary',
+    dataIndex: 'monthly_salary',
+    key: 'monthly_salary',
+    sorter: true,
+    sortOrder: sortField === 'monthly_salary' && sortOrder,
+    render: (value) => (
+      <Text strong style={{ color: '#52c41a' }}>
+        AED {value?.toLocaleString() || '0'}
+      </Text>
+    ),
+  },
+  {
+    title: 'Days in Month',
+    dataIndex: 'days_in_month',
+    key: 'days_in_month',
+    sorter: true,
+    sortOrder: sortField === 'days_in_month' && sortOrder,
+    render: (value) => value || 30,
+  },
+  {
+    title: 'Hours per Day',
+    dataIndex: 'hours_per_day',
+    key: 'hours_per_day',
+    sorter: true,
+    sortOrder: sortField === 'hours_per_day' && sortOrder,
+    render: (value) => value || 8,
+  },
+  {
+    title: 'Working Days',
+    dataIndex: 'working_days',
+    key: 'working_days',
+    sorter: true,
+    sortOrder: sortField === 'working_days' && sortOrder,
+  },
+  {
+    title: 'Basic Pay',
+    dataIndex: 'basic_pay',
+    key: 'basic_pay',
+    sorter: true,
+    sortOrder: sortField === 'basic_pay' && sortOrder,
+    render: (value) => (
+      <Text strong style={{ color: '#52c41a' }}>
+        AED {value?.toLocaleString() || '0'}
+      </Text>
+    ),
+  },
+  {
+    title: 'Overtime Hours',
+    dataIndex: 'overtime_hours',
+    key: 'overtime_hours',
+    sorter: true,
+    sortOrder: sortField === 'overtime_hours' && sortOrder,
+  },
+  {
+    title: 'Overtime Pay',
+    dataIndex: 'overtime_pay',
+    key: 'overtime_pay',
+    sorter: true,
+    sortOrder: sortField === 'overtime_pay' && sortOrder,
+    render: (value) => (
+      <Text style={{ color: '#52c41a' }}>
+        AED {value?.toLocaleString() || '0'}
+      </Text>
+    ),
+  },
+  {
+    title: 'Absent Days',
+    dataIndex: 'absent_days',
+    key: 'absent_days',
+    sorter: true,
+    sortOrder: sortField === 'absent_days' && sortOrder,
+    render: (value) => (
+      <Text style={{ color: value > 0 ? '#faad14' : '#333' }}>
+        {value || 0} days
+      </Text>
+    ),
+  },
+  {
+    title: 'Absence Deduction',
+    dataIndex: 'absence_deduction',
+    key: 'absence_deduction',
+    sorter: true,
+    sortOrder: sortField === 'absence_deduction' && sortOrder,
+    render: (value) => (
+      <Text style={{ color: '#ff4d4f' }}>
+        AED {value?.toLocaleString() || '0'}
+      </Text>
+    ),
+  },
+  {
+    title: 'Other Deduction',
+    dataIndex: 'other_deduction',
+    key: 'other_deduction',
+    sorter: true,
+    sortOrder: sortField === 'other_deduction' && sortOrder,
+    render: (value) => (
+      <Text style={{ color: '#ff4d4f' }}>
+        AED {value?.toLocaleString() || '0'}
+      </Text>
+    ),
+  },
+  {
+    title: 'Total Deduction',
+    dataIndex: 'total_deduction',
+    key: 'total_deduction',
+    sorter: true,
+    sortOrder: sortField === 'total_deduction' && sortOrder,
+    render: (value) => (
+      <Text strong style={{ color: '#ff4d4f' }}>
+        AED {value?.toLocaleString() || '0'}
+      </Text>
+    ),
+  },
+  {
+    title: 'Gross Pay',
+    dataIndex: 'gross_pay',
+    key: 'gross_pay',
+    sorter: true,
+    sortOrder: sortField === 'gross_pay' && sortOrder,
+    render: (value) => (
+      <Text strong style={{ color: '#52c41a' }}>
+        AED {value?.toLocaleString() || '0'}
+      </Text>
+    ),
+  },
+  {
+    title: 'Net Pay',
+    dataIndex: 'net_pay',
+    key: 'net_pay',
+    sorter: true,
+    sortOrder: sortField === 'net_pay' && sortOrder,
+    render: (value) => (
+      <Text strong style={{ color: value > 0 ? '#1890ff' : '#ff4d4f' }}>
+        AED {value?.toLocaleString() || '0'}
+      </Text>
+    ),
+  },
+  {
+    title: 'Actions',
+    key: 'actions',
+    fixed: 'right',
+    render: (_, record) => (
+      <Space>
+        <Tooltip title="Edit">
+          <Button 
+            icon={<EditOutlined />} 
+            size="small" 
+            style={{ background: '#1890ff', color: '#fff', borderColor: '#1890ff' }}
+            onClick={(e) => {
               e.stopPropagation();
-              handleDeletePayroll(record.id);
+              handleAddEditPayroll(false, record);
             }}
-            okText="Yes"
-            cancelText="No"
-          >
-            <Tooltip title="Delete Payroll">
-              <Button 
-                icon={<DeleteOutlined />} 
-                size="small" 
-                danger
-                onClick={(e) => e.stopPropagation()}
-              />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
+          />
+        </Tooltip>
+        <Popconfirm
+          title="Delete this payroll record?"
+          onConfirm={(e) => {
+            e.stopPropagation();
+            handleDeletePayroll(record.id);
+          }}
+        >
+          <Button 
+            icon={<DeleteOutlined />} 
+            size="small" 
+            danger
+            onClick={(e) => e.stopPropagation()}
+          />
+        </Popconfirm>
+      </Space>
+    ),
+  },
+];
 
   return (
     <div className="employees-container">
