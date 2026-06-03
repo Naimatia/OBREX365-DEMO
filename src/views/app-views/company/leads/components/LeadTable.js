@@ -15,27 +15,27 @@ import dayjs from 'dayjs';
 const { Text } = Typography;
 
 const statusColors = {
-  [LeadStatus.PENDING]:        'processing',
-  [LeadStatus.GAIN]:           'success',
-  [LeadStatus.LOSS]:           'error',
-  [LeadStatus.NO_RESPONSE]:    'default',
+  [LeadStatus.PENDING]: 'processing',
+  [LeadStatus.GAIN]: 'success',
+  [LeadStatus.LOSS]: 'error',
+  [LeadStatus.NO_RESPONSE]: 'default',
   [LeadStatus.NOT_INTERESTED]: 'warning',
-  [LeadStatus.JUNK_LEAD]:      'purple',
+  [LeadStatus.JUNK_LEAD]: 'purple',
 };
 
 const statusDotColors = {
-  [LeadStatus.PENDING]:        '#1677ff',
-  [LeadStatus.GAIN]:           '#52c41a',
-  [LeadStatus.LOSS]:           '#ff4d4f',
-  [LeadStatus.NO_RESPONSE]:    '#8c8c8c',
+  [LeadStatus.PENDING]: '#1677ff',
+  [LeadStatus.GAIN]: '#52c41a',
+  [LeadStatus.LOSS]: '#ff4d4f',
+  [LeadStatus.NO_RESPONSE]: '#8c8c8c',
   [LeadStatus.NOT_INTERESTED]: '#fa8c16',
-  [LeadStatus.JUNK_LEAD]:      '#722ed1',
+  [LeadStatus.JUNK_LEAD]: '#722ed1',
 };
 
 const interestLevelColors = {
-  [LeadInterestLevel.LOW]:    'orange',
+  [LeadInterestLevel.LOW]: 'orange',
   [LeadInterestLevel.MEDIUM]: 'blue',
-  [LeadInterestLevel.HIGH]:   'green',
+  [LeadInterestLevel.HIGH]: 'green',
 };
 
 const LeadTable = ({
@@ -169,50 +169,50 @@ const LeadTable = ({
       onFilter: (value, record) => record.InterestLevel === value,
     },
     {
-  title: 'Looking For',
-  dataIndex: 'lookingFor',
-  key: 'lookingFor',
-  ellipsis: true,
-  render: (text) => text ? <Text>{text}</Text> : <Text type="secondary">—</Text>,
-  responsive: ['lg'],
-},
+      title: 'Looking For',
+      dataIndex: 'lookingFor',
+      key: 'lookingFor',
+      ellipsis: true,
+      render: (text) => text ? <Text>{text}</Text> : <Text type="secondary">—</Text>,
+      responsive: ['lg'],
+    },
 
- {
-  title: 'Budget',
-  dataIndex: 'Budget',
-  key: 'Budget',
-  width: 160,
-  render: (budget, record) => {
-    if (!budget) {
-      return <Text type="secondary">—</Text>;
-    }
+    {
+      title: 'Budget',
+      dataIndex: 'Budget',
+      key: 'Budget',
+      width: 160,
+      render: (budget, record) => {
+        if (!budget) {
+          return <Text type="secondary">—</Text>;
+        }
 
-    // Case 1: Numeric budget (from manual entry)
-    if (typeof budget === 'number' || !isNaN(Number(budget))) {
-      const num = Number(budget);
-      return (
-        <Text strong style={{ color: '#1677ff' }}>
-          AED {num.toLocaleString()}
-        </Text>
-      );
-    }
+        // Case 1: Numeric budget (from manual entry)
+        if (typeof budget === 'number' || !isNaN(Number(budget))) {
+          const num = Number(budget);
+          return (
+            <Text strong style={{ color: '#1677ff' }}>
+              AED {num.toLocaleString()}
+            </Text>
+          );
+        }
 
-    // Case 2: String budget (from Meta/Facebook leads)
-    return (
-      <Tooltip title={budget}>
-        <Text strong style={{ color: '#1677ff', cursor: 'help' }}>
-          {budget.length > 25 ? budget.substring(0, 25) + '...' : budget}
-        </Text>
-      </Tooltip>
-    );
-  },
-  sorter: (a, b) => {
-    const valA = typeof a.Budget === 'number' ? a.Budget : 0;
-    const valB = typeof b.Budget === 'number' ? b.Budget : 0;
-    return valA - valB;
-  },
-  responsive: ['md'],
-},
+        // Case 2: String budget (from Meta/Facebook leads)
+        return (
+          <Tooltip title={budget}>
+            <Text strong style={{ color: '#1677ff', cursor: 'help' }}>
+              {budget.length > 25 ? budget.substring(0, 25) + '...' : budget}
+            </Text>
+          </Tooltip>
+        );
+      },
+      sorter: (a, b) => {
+        const valA = typeof a.Budget === 'number' ? a.Budget : 0;
+        const valB = typeof b.Budget === 'number' ? b.Budget : 0;
+        return valA - valB;
+      },
+      responsive: ['md'],
+    },
     {
       title: 'Created',
       dataIndex: 'CreationDate',
@@ -230,7 +230,7 @@ const LeadTable = ({
         if (!a.CreationDate) return -1;
         if (!b.CreationDate) return 1;
         return (a.CreationDate.toDate?.() || new Date(a.CreationDate)) -
-               (b.CreationDate.toDate?.() || new Date(b.CreationDate));
+          (b.CreationDate.toDate?.() || new Date(b.CreationDate));
       },
       responsive: ['lg'],
     },

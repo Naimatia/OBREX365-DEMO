@@ -262,8 +262,7 @@ const TodoForm = ({
         >
           <TextArea 
             rows={4} 
-            placeholder="Write your note here..." 
-            maxLength={800} 
+            placeholder="Write your note here..."  
             showCount 
           />
         </Form.Item>
