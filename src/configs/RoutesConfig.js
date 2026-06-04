@@ -60,6 +60,12 @@ export const protectedRoutes = [
         component: React.lazy(() => import('views/app-views/company/dashboard/index')),
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
     },
+      {
+        key: 'seller-performance',
+        path: `${APP_PREFIX_PATH}/analytics`,
+        component: React.lazy(() => import('views/app-views/analytics/index')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
+    },
     {
         key: 'my-company',
         path: `${APP_PREFIX_PATH}/my-company`,

@@ -11,7 +11,8 @@ import {
   orderBy, 
   serverTimestamp,
   writeBatch,
-  Timestamp 
+  Timestamp, 
+  increment
 } from 'firebase/firestore';
 import { db } from 'configs/FirebaseConfig';
 import { message } from 'antd';
@@ -357,6 +358,166 @@ const LeadsService = {
       return count;
     } catch (error) {
       console.error('Error in bulkTransferSpecificLeads:', error);
+      throw error;
+    }
+  },
+  
+
+  /**
+   * Mark a lead as viewed/revealed by a seller
+   * This tracks when a seller first views/opens a lead
+   * @param {string} leadId - Lead ID
+   * @param {string} sellerId - Seller ID who is viewing the lead
+   * @returns {Promise<Object>} Object containing success status and whether it was first view
+   */
+  async markLeadAsViewed(leadId, sellerId) {
+    try {
+      const leadRef = doc(db, 'leads', leadId);
+      const leadDoc = await getDoc(leadRef);
+      
+      if (!leadDoc.exists()) {
+        throw new Error('Lead not found');
+      }
+      
+      const leadData = leadDoc.data();
+      
+      // Check if this seller has viewed before
+      const hasViewedBefore = leadData.lastViewedBy?.[sellerId] !== undefined;
+      
+      // Prepare update data
+      const updateData = {
+        viewCount: increment(1),
+        lastViewedAt: serverTimestamp(),
+        isRevealed: true,
+        revealedAt: serverTimestamp(),
+        LastUpdateDate: serverTimestamp(),
+        [`lastViewedBy.${sellerId}`]: serverTimestamp(),
+      };
+      
+      // If first time this seller views, set firstViewedAt
+      if (!hasViewedBefore) {
+        updateData.firstViewedAt = serverTimestamp();
+      }
+      
+      await updateDoc(leadRef, updateData);
+      
+      // Log to history if you want to track view events
+      try {
+        await LeadHistoryService.logLeadEvent(leadId, {
+          eventType: 'LEAD_VIEWED',
+          userId: sellerId,
+          timestamp: new Date(),
+          details: {
+            isFirstView: !hasViewedBefore,
+            viewCount: (leadData.viewCount || 0) + 1
+          }
+        });
+      } catch (historyError) {
+        console.warn('Failed to log view history:', historyError);
+        // Don't throw - history logging is optional
+      }
+      
+      return { 
+        success: true, 
+        isFirstView: !hasViewedBefore,
+        viewCount: (leadData.viewCount || 0) + 1
+      };
+    } catch (error) {
+      console.error('Error marking lead as viewed:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get view statistics for a seller's leads
+   * @param {string} companyId - Company ID
+   * @param {string} sellerId - Seller ID
+   * @returns {Promise<Object>} Statistics about viewed/unviewed leads
+   */
+  async getSellerViewStats(companyId, sellerId) {
+    try {
+      const leads = await this.getSellerLeads(companyId, sellerId);
+      
+      const stats = {
+        total: leads.length,
+        viewed: 0,
+        notViewed: 0,
+        firstViewDates: [],
+        lastViewDates: [],
+        averageResponseTime: null,
+      };
+      
+      let totalResponseTime = 0;
+      let responseTimeCount = 0;
+      
+      leads.forEach(lead => {
+        const viewedAt = lead.lastViewedBy?.[sellerId];
+        const createdAt = lead.CreationDate;
+        
+        if (viewedAt) {
+          stats.viewed++;
+          stats.lastViewDates.push(viewedAt);
+          
+          if (lead.firstViewedAt) {
+            stats.firstViewDates.push(lead.firstViewedAt);
+          }
+          
+          // Calculate response time (time between lead creation and first view)
+          if (createdAt && lead.firstViewedAt) {
+            const responseTime = lead.firstViewedAt - createdAt;
+            if (responseTime > 0) {
+              totalResponseTime += responseTime;
+              responseTimeCount++;
+            }
+          }
+        } else {
+          stats.notViewed++;
+        }
+      });
+      
+      if (responseTimeCount > 0) {
+        const avgResponseTimeMs = totalResponseTime / responseTimeCount;
+        const avgResponseTimeHours = avgResponseTimeMs / (1000 * 60 * 60);
+        stats.averageResponseTime = Math.round(avgResponseTimeHours * 10) / 10; // in hours
+      }
+      
+      stats.viewPercentage = stats.total > 0 ? (stats.viewed / stats.total) * 100 : 0;
+      
+      return stats;
+    } catch (error) {
+      console.error('Error getting seller view stats:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get leads that haven't been viewed yet by this seller
+   * @param {string} companyId - Company ID
+   * @param {string} sellerId - Seller ID
+   * @returns {Promise<Array>} Array of unviewed leads
+   */
+  async getUnviewedLeads(companyId, sellerId) {
+    try {
+      const leads = await this.getSellerLeads(companyId, sellerId);
+      return leads.filter(lead => !lead.lastViewedBy?.[sellerId]);
+    } catch (error) {
+      console.error('Error getting unviewed leads:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get leads that have been viewed by this seller
+   * @param {string} companyId - Company ID
+   * @param {string} sellerId - Seller ID
+   * @returns {Promise<Array>} Array of viewed leads
+   */
+  async getViewedLeads(companyId, sellerId) {
+    try {
+      const leads = await this.getSellerLeads(companyId, sellerId);
+      return leads.filter(lead => lead.lastViewedBy?.[sellerId]);
+    } catch (error) {
+      console.error('Error getting viewed leads:', error);
       throw error;
     }
   },

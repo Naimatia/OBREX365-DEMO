@@ -28,6 +28,7 @@ import LeadStats        from './components/LeadStats';
 import LeadStatsDrawer  from './components/LeadStatsDrawer';
 import { UserRoles }    from 'models/UserModel';
 import API_BASE_URL     from '../../../../constants/ApiConstant';
+import { APP_NAME } from 'configs/AppConfig';
 
 const { Title, Text } = Typography;
 const { confirm }     = Modal;
@@ -236,9 +237,11 @@ const LeadsPage = () => {
         .map(u => ({
           id:   u.id,
           name: `${u.firstname ?? ''} ${u.lastname ?? ''}${u.country ? ` (${u.country})` : ''}`.trim(),
+          phoneNumber: u.phoneNumber || u.phone || '', // Include phone number
         }));
       setSellers(list);
     } catch (error) {
+      console.error('Error fetching sellers:', error);
       message.error('Failed to fetch sellers');
     }
   };
@@ -353,29 +356,158 @@ const LeadsPage = () => {
       },
     });
 
-  // Single assign
+  // Helper function to send WhatsApp message by opening WhatsApp Web/App
+  const sendWhatsAppMessage = (phoneNumber, message) => {
+    if (!phoneNumber) {
+      message.warning('Seller does not have a phone number configured');
+      return false;
+    }
+
+    // Clean phone number (remove spaces, dashes, etc.)
+    let cleanNumber = phoneNumber.toString().replace(/\D/g, '');
+    
+    // Remove leading zero if present
+    if (cleanNumber.startsWith('0')) {
+      cleanNumber = cleanNumber.substring(1);
+    }
+    
+    // Add country code if not present (default to UAE +971)
+    if (!cleanNumber.startsWith('971') && !cleanNumber.startsWith('966')) {
+      cleanNumber = '971' + cleanNumber;
+    }
+    
+    // Encode message for URL
+    const encodedMessage = encodeURIComponent(message);
+    
+    // Create WhatsApp URL (works on both mobile and desktop)
+    const whatsappUrl = `https://wa.me/${cleanNumber}?text=${encodedMessage}`;
+    
+    // Open WhatsApp in new tab
+    window.open(whatsappUrl, '_blank');
+    return true;
+  };
+
+  // Create WhatsApp message for single lead assignment
+  const createWhatsAppMessage = (sellerName, leadData, companyName) => {
+    const currentDate = new Date().toLocaleString();
+    
+    return `🔔 *New Lead Assigned to You!*\n\n` +
+      `Hi ${sellerName},\n\n` +
+      `You have been assigned a new lead from ${companyName || APP_NAME}.\n\n` +
+      `*Lead Details:*\n` +
+      `👤 Name: ${leadData.name || 'N/A'}\n` +
+      `📍 Region: ${leadData.region || 'Not specified'}\n\n` +
+      `*Next Steps:*\n` +
+      `1. Contact the lead within 24 hours\n` +
+      `2. Update lead status in CRM\n` +
+      `3. Schedule property viewing if interested\n\n` +
+      `📅 Assigned on: ${currentDate}\n\n` +
+      `Please login to the CRM for more details.\n\n` +
+      `Best regards,\n${companyName || APP_NAME} Team`;
+  };
+
+  // Create WhatsApp message for bulk lead assignment
+  const createBulkWhatsAppMessage = (sellerName, leadsCount, leadNames, companyName) => {
+    const currentDate = new Date().toLocaleString();
+    const leadsList = leadNames.slice(0, 5).map((name, idx) => `${idx + 1}. ${name}`).join('\n');
+    const moreLeads = leadNames.length > 5 ? `\n... and ${leadNames.length - 5} more leads` : '';
+    
+    return `🔔 *${leadsCount} New Leads Assigned to You!*\n\n` +
+      `Hi ${sellerName},\n\n` +
+      `You have been assigned ${leadsCount} new lead${leadsCount > 1 ? 's' : ''} from ${companyName || APP_NAME}.\n\n` +
+      `*Lead${leadsCount > 1 ? 's' : ''} Assigned:*\n${leadsList}${moreLeads}\n\n` +
+      `*Next Steps:*\n` +
+      `1. Review all leads in the CRM\n` +
+      `2. Prioritize follow-ups based on interest level\n` +
+      `3. Contact each lead within 24 hours\n` +
+      `4. Update status for each lead after contact\n\n` +
+      `📅 Assigned on: ${currentDate}\n\n` +
+      `Please login to the CRM to view complete lead details.\n\n` +
+      `Best regards,\n${companyName || APP_NAME} Team`;
+  };
+
+  // Single Lead Assignment
   const handleAssignSeller = async (leadId, sellerId) => {
+    setConfirmLoading(true);
     try {
       const seller = sellers.find(s => s.id === sellerId);
       if (!seller) throw new Error('Seller not found');
-      await LeadService.assignTo(leadId, { id: sellerId, firstName: '', lastName: '' });
-      message.success(`Lead assigned to ${seller.name}`);
+      
+      // Get the lead data
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) throw new Error('Lead not found');
+      
+      // Assign lead to seller in database
+      await LeadService.assignTo(leadId, { 
+        id: sellerId, 
+        firstName: seller.name.split(' ')[0] || '', 
+        lastName: seller.name.split(' ').slice(1).join(' ') || '' 
+      });
+      
+      // Create and send WhatsApp message
+      const message = createWhatsAppMessage(seller.name, lead, user?.companyName);
+      const whatsappOpened = sendWhatsAppMessage(seller.phoneNumber, message);
+      
+      if (whatsappOpened) {
+        message.success(`Lead assigned to ${seller.name} and WhatsApp opened`);
+      } else {
+        message.warning(`Lead assigned to ${seller.name} but could not open WhatsApp`);
+      }
+      
       fetchLeads();
-    } catch { message.error('Failed to assign seller'); }
+      if (selectedLead?.id === leadId) {
+        setSelectedLead(await LeadService.getById(leadId));
+      }
+    } catch (error) {
+      console.error('Assignment error:', error);
+      message.error('Failed to assign seller: ' + error.message);
+    } finally {
+      setConfirmLoading(false);
+      setAssignSellerVisible(false);
+      setAssigningLead(null);
+    }
   };
 
-  // Bulk assign
+  // Bulk Assignment
   const handleBulkAssignSeller = async (leadIds, sellerId) => {
     setConfirmLoading(true);
     try {
       const seller = sellers.find(s => s.id === sellerId);
-      await Promise.all(leadIds.map(id => LeadService.assignTo(id, { id: sellerId, firstName: '', lastName: '' })));
-      message.success(`${leadIds.length} leads assigned to ${seller?.name || 'seller'}`);
+      if (!seller) throw new Error('Seller not found');
+      
+      // Get all leads data
+      const leadsToAssign = leads.filter(l => leadIds.includes(l.id));
+      if (leadsToAssign.length === 0) throw new Error('No leads found to assign');
+      
+      // Assign all leads in database
+      await Promise.all(leadIds.map(id => 
+        LeadService.assignTo(id, { 
+          id: sellerId, 
+          firstName: seller.name.split(' ')[0] || '', 
+          lastName: seller.name.split(' ').slice(1).join(' ') || '' 
+        })
+      ));
+      
+      // Create and send bulk WhatsApp message
+      const leadNames = leadsToAssign.map(l => l.name);
+      const message = createBulkWhatsAppMessage(seller.name, leadIds.length, leadNames, user?.companyName);
+      const whatsappOpened = sendWhatsAppMessage(seller.phoneNumber, message);
+      
+      if (whatsappOpened) {
+        message.success(`${leadIds.length} leads assigned to ${seller.name} and WhatsApp opened`);
+      } else {
+        message.warning(`${leadIds.length} leads assigned to ${seller.name} but could not open WhatsApp`);
+      }
+      
       setBulkAssignVisible(false);
       setBulkLeadIds([]);
       fetchLeads();
-    } catch { message.error('Failed to bulk assign'); }
-    finally { setConfirmLoading(false); }
+    } catch (error) {
+      console.error('Bulk assignment error:', error);
+      message.error('Failed to bulk assign leads: ' + error.message);
+    } finally {
+      setConfirmLoading(false);
+    }
   };
 
   const handleShowAssignSeller = (lead) => {

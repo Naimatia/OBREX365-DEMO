@@ -28,6 +28,16 @@ export const LeadModel = {
   meta_platform: '',
   raw_meta_fields: {},
   sourceDetails: {},
+
+  // View tracking
+  lastViewedBy: null,        // Object with sellerId and timestamp
+  viewCount: 0,              // Total number of times viewed
+  firstViewedAt: null,       // First time this seller viewed the lead
+  lastViewedAt: null,        // Last time this seller viewed the lead
+  
+  // For hiding sensitive info until viewed
+  isRevealed: false,         // Whether seller has "unlocked" the lead
+  revealedAt: null,          // When the lead was revealed
 };
 
 /**
