@@ -68,207 +68,200 @@ const LeadTable = ({
     columnWidth: 40,
   };
 
-  const columns = [
-    {
-      title: 'Lead',
-      dataIndex: 'name',
-      key: 'name',
-      ellipsis: true,
-      render: (text, record) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Avatar
-            size={32}
-            style={{
-              background: stringToColor(text || 'U'),
-              fontSize: 13,
-              fontWeight: 700,
-              flexShrink: 0,
-            }}
+const columns = [
+  {
+    title: 'Lead',
+    dataIndex: 'name',
+    key: 'name',
+    ellipsis: true,
+    render: (text, record) => (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Avatar
+          size={32}
+          style={{
+            background: stringToColor(text || 'U'),
+            fontSize: 13,
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          {(text || 'U')[0].toUpperCase()}
+        </Avatar>
+        <div style={{ minWidth: 0 }}>
+          <a
+            onClick={() => onViewDetails(record)}
+            style={{ fontWeight: 600, color: '#1d1d1d', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
           >
-            {(text || 'U')[0].toUpperCase()}
-          </Avatar>
-          <div style={{ minWidth: 0 }}>
-            <a
-              onClick={() => onViewDetails(record)}
-              style={{ fontWeight: 600, color: '#1d1d1d', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-            >
-              {text}
-            </a>
-            {record.region && (
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                <GlobalOutlined style={{ marginRight: 3 }} />
-                {record.region}
-              </Text>
-            )}
-          </div>
+            {text}
+          </a>
+          {record.region && (
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              <GlobalOutlined style={{ marginRight: 3 }} />
+              {record.region}
+            </Text>
+          )}
         </div>
-      ),
-      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
-    },
-    {
-      title: 'Contact',
-      key: 'contact',
-      width: 90,
-      render: (_, record) => (
-        <Space size={2}>
-          {record.email && (
-            <Tooltip title={record.email}>
-              <Button
-                type="text"
-                size="small"
-                icon={<MailOutlined style={{ color: '#1677ff' }} />}
-                href={`mailto:${record.email}`}
-                onClick={e => e.stopPropagation()}
-              />
-            </Tooltip>
-          )}
-          {record.phoneNumber && (
-            <Tooltip title={record.phoneNumber}>
-              <Button
-                type="text"
-                size="small"
-                icon={<PhoneOutlined style={{ color: '#52c41a' }} />}
-                href={`tel:${record.phoneNumber}`}
-                onClick={e => e.stopPropagation()}
-              />
-            </Tooltip>
-          )}
-        </Space>
-      ),
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      width: 130,
-      render: status => (
-        <Tag
-          color={statusColors[status] || 'default'}
-          style={{ borderRadius: 20, fontWeight: 500, fontSize: 11 }}
-        >
-          {status || '—'}
-        </Tag>
-      ),
-      filters: Object.values(LeadStatus).map(s => ({ text: s, value: s })),
-      onFilter: (value, record) => record.status === value,
-    },
-    {
-      title: 'Interest',
-      dataIndex: 'InterestLevel',
-      key: 'InterestLevel',
-      width: 100,
-      render: level => (
-        <Tag
-          color={interestLevelColors[level] || 'default'}
-          style={{ borderRadius: 20, fontWeight: 500, fontSize: 11 }}
-        >
-          {level || '—'}
-        </Tag>
-      ),
-      filters: Object.values(LeadInterestLevel).map(l => ({ text: l, value: l })),
-      onFilter: (value, record) => record.InterestLevel === value,
-    },
-    {
-      title: 'Looking For',
-      dataIndex: 'lookingFor',
-      key: 'lookingFor',
-      ellipsis: true,
-      render: (text) => text ? <Text>{text}</Text> : <Text type="secondary">—</Text>,
-      responsive: ['lg'],
-    },
-
-    {
-      title: 'Budget',
-      dataIndex: 'Budget',
-      key: 'Budget',
-      width: 160,
-      render: (budget, record) => {
-        if (!budget) {
-          return <Text type="secondary">—</Text>;
-        }
-
-        // Case 1: Numeric budget (from manual entry)
-        if (typeof budget === 'number' || !isNaN(Number(budget))) {
-          const num = Number(budget);
-          return (
-            <Text strong style={{ color: '#1677ff' }}>
-              AED {num.toLocaleString()}
-            </Text>
-          );
-        }
-
-        // Case 2: String budget (from Meta/Facebook leads)
+      </div>
+    ),
+    sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
+  },
+  {
+    title: 'Contact',
+    key: 'contact',
+    width: 90,
+    render: (_, record) => (
+      <Space size={2}>
+        {record.email && (
+          <Tooltip title={record.email}>
+            <Button
+              type="text"
+              size="small"
+              icon={<MailOutlined style={{ color: '#1677ff' }} />}
+              href={`mailto:${record.email}`}
+              onClick={e => e.stopPropagation()}
+            />
+          </Tooltip>
+        )}
+        {record.phoneNumber && (
+          <Tooltip title={record.phoneNumber}>
+            <Button
+              type="text"
+              size="small"
+              icon={<PhoneOutlined style={{ color: '#52c41a' }} />}
+              href={`tel:${record.phoneNumber}`}
+              onClick={e => e.stopPropagation()}
+            />
+          </Tooltip>
+        )}
+      </Space>
+    ),
+  },
+  {
+    title: 'Status',
+    dataIndex: 'status',
+    key: 'status',
+    width: 130,
+    render: status => (
+      <Tag
+        color={statusColors[status] || 'default'}
+        style={{ borderRadius: 20, fontWeight: 500, fontSize: 11 }}
+      >
+        {status || '—'}
+      </Tag>
+    ),
+    // Remove filters from here - they're handled at parent level
+  },
+  {
+    title: 'Interest',
+    dataIndex: 'InterestLevel',
+    key: 'InterestLevel',
+    width: 100,
+    render: level => (
+      <Tag
+        color={interestLevelColors[level] || 'default'}
+        style={{ borderRadius: 20, fontWeight: 500, fontSize: 11 }}
+      >
+        {level || '—'}
+      </Tag>
+    ),
+    // Remove filters from here - they're handled at parent level
+  },
+  {
+    title: 'Looking For',
+    dataIndex: 'lookingFor',
+    key: 'lookingFor',
+    ellipsis: true,
+    render: (text) => text ? <Text>{text}</Text> : <Text type="secondary">—</Text>,
+    responsive: ['lg'],
+  },
+  {
+    title: 'Budget',
+    dataIndex: 'Budget',
+    key: 'Budget',
+    width: 160,
+    render: (budget, record) => {
+      if (!budget) {
+        return <Text type="secondary">—</Text>;
+      }
+      if (typeof budget === 'number' || !isNaN(Number(budget))) {
+        const num = Number(budget);
         return (
-          <Tooltip title={budget}>
-            <Text strong style={{ color: '#1677ff', cursor: 'help' }}>
-              {budget.length > 25 ? budget.substring(0, 25) + '...' : budget}
-            </Text>
-          </Tooltip>
-        );
-      },
-      sorter: (a, b) => {
-        const valA = typeof a.Budget === 'number' ? a.Budget : 0;
-        const valB = typeof b.Budget === 'number' ? b.Budget : 0;
-        return valA - valB;
-      },
-      responsive: ['md'],
-    },
-    {
-      title: 'Created',
-      dataIndex: 'CreationDate',
-      key: 'CreationDate',
-      width: 110,
-      render: date =>
-        date ? (
-          <Text style={{ fontSize: 12 }}>
-            {dayjs(date.toDate?.() || date).format('MMM DD, YYYY')}
+          <Text strong style={{ color: '#1677ff' }}>
+            AED {num.toLocaleString()}
           </Text>
-        ) : (
-          <Text type="secondary">—</Text>
-        ),
-      sorter: (a, b) => {
-        if (!a.CreationDate) return -1;
-        if (!b.CreationDate) return 1;
-        return (a.CreationDate.toDate?.() || new Date(a.CreationDate)) -
-          (b.CreationDate.toDate?.() || new Date(b.CreationDate));
-      },
-      responsive: ['lg'],
+        );
+      }
+      return (
+        <Tooltip title={budget}>
+          <Text strong style={{ color: '#1677ff', cursor: 'help' }}>
+            {budget.length > 25 ? budget.substring(0, 25) + '...' : budget}
+          </Text>
+        </Tooltip>
+      );
     },
-    {
-      title: '',
-      key: 'actions',
-      width: 110,
-      render: (_, record) => (
-        <Space size={2}>
-          <Tooltip title="Edit">
-            <Button
-              type="text"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={e => { e.stopPropagation(); onEdit(record); }}
-            />
-          </Tooltip>
-          <Tooltip title="Assign Seller">
-            <Button
-              type="text"
-              size="small"
-              icon={<UserAddOutlined style={{ color: '#722ed1' }} />}
-              onClick={e => { e.stopPropagation(); onAssignSeller(record); }}
-            />
-          </Tooltip>
-          <Tooltip title="Delete">
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={e => { e.stopPropagation(); onDelete(record); }}
-            />
-          </Tooltip>
-        </Space>
+    sorter: (a, b) => {
+      const valA = typeof a.Budget === 'number' ? a.Budget : 0;
+      const valB = typeof b.Budget === 'number' ? b.Budget : 0;
+      return valA - valB;
+    },
+    responsive: ['md'],
+  },
+  {
+    title: 'Created',
+    dataIndex: 'CreationDate',
+    key: 'CreationDate',
+    width: 110,
+    render: date =>
+      date ? (
+        <Text style={{ fontSize: 12 }}>
+          {dayjs(date.toDate?.() || date).format('MMM DD, YYYY')}
+        </Text>
+      ) : (
+        <Text type="secondary">—</Text>
       ),
+    sorter: (a, b) => {
+      if (!a.CreationDate) return -1;
+      if (!b.CreationDate) return 1;
+      return (a.CreationDate.toDate?.() || new Date(a.CreationDate)) -
+        (b.CreationDate.toDate?.() || new Date(b.CreationDate));
     },
-  ];
+    responsive: ['lg'],
+  },
+  {
+    title: '',
+    key: 'actions',
+    width: 110,
+    render: (_, record) => (
+      <Space size={2}>
+        <Tooltip title="Edit">
+          <Button
+            type="text"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={e => { e.stopPropagation(); onEdit(record); }}
+          />
+        </Tooltip>
+        <Tooltip title="Assign Seller">
+          <Button
+            type="text"
+            size="small"
+            icon={<UserAddOutlined style={{ color: '#722ed1' }} />}
+            onClick={e => { e.stopPropagation(); onAssignSeller(record); }}
+          />
+        </Tooltip>
+        <Tooltip title="Delete">
+          <Button
+            type="text"
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={e => { e.stopPropagation(); onDelete(record); }}
+          />
+        </Tooltip>
+      </Space>
+    ),
+  },
+];
 
   return (
     <div>

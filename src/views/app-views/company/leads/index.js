@@ -207,26 +207,87 @@ const LeadsPage = () => {
   }, [companyId]);
 
   // ─── Fetch ────────────────────────────────────────────────────────────────
-  const fetchLeads = useCallback(async () => {
-    setLoading(true);
-    try {
-      let leadsData = filters.search
-        ? await LeadService.searchLeads(companyId, filters.search)
-        : await LeadService.getLeadsByCompany(companyId);
+// Replace the fetchLeads function and add a useEffect for filters
 
-      if (filters.status)        leadsData = leadsData.filter(l => l.status        === filters.status);
-      if (filters.InterestLevel) leadsData = leadsData.filter(l => l.InterestLevel === filters.InterestLevel);
-      if (filters.region)        leadsData = leadsData.filter(l => l.region        === filters.region);
-      if (filters.seller_id)     leadsData = leadsData.filter(l => l.seller_id     === filters.seller_id);
+const fetchLeads = useCallback(async () => {
+  if (!companyId) return;
+  
+  setLoading(true);
+  try {
+    // Fetch leads based on search term (server-side search for better performance)
+    let leadsData = filters.search
+      ? await LeadService.searchLeads(companyId, filters.search)
+      : await LeadService.getLeadsByCompany(companyId);
 
-      setLeads(leadsData);
-    } catch (error) {
-      console.error('Error fetching leads:', error);
-      message.error('Failed to fetch leads');
-    } finally {
-      setLoading(false);
+    // Apply client-side filters
+    if (filters.status && filters.status !== '') {
+      leadsData = leadsData.filter(l => l.status === filters.status);
     }
-  }, [companyId, filters]);
+    
+    if (filters.InterestLevel && filters.InterestLevel !== '') {
+      leadsData = leadsData.filter(l => l.InterestLevel === filters.InterestLevel);
+    }
+    
+    if (filters.region && filters.region !== '') {
+      leadsData = leadsData.filter(l => l.region === filters.region);
+    }
+    
+    if (filters.seller_id && filters.seller_id !== '') {
+      leadsData = leadsData.filter(l => l.seller_id === filters.seller_id);
+    }
+
+    setLeads(leadsData);
+  } catch (error) {
+    console.error('Error fetching leads:', error);
+    message.error('Failed to fetch leads');
+  } finally {
+    setLoading(false);
+  }
+}, [companyId, filters.search, filters.status, filters.InterestLevel, filters.region, filters.seller_id]);
+
+// Trigger fetch when filters change
+useEffect(() => {
+  if (companyId) {
+    fetchLeads();
+  }
+}, [fetchLeads, companyId]);
+
+// Update the handleFilter, handleClearFilters, and handleSearch functions:
+
+const handleFilter = (values) => {
+  // Remove empty values from filters
+  const cleanedFilters = {};
+  Object.keys(values).forEach(key => {
+    if (values[key] && values[key] !== '' && values[key] !== undefined && values[key] !== null) {
+      cleanedFilters[key] = values[key];
+    }
+  });
+  
+  // Update filters state - this will trigger the useEffect above
+  setFilters(prevFilters => ({ 
+    ...prevFilters, 
+    ...cleanedFilters 
+  }));
+};
+
+const handleClearFilters = () => {
+  setFilters(initialFilters);
+};
+
+const handleSearch = (value) => {
+  setFilters(prevFilters => ({ 
+    ...prevFilters, 
+    search: value || '' 
+  }));
+};
+
+// Remove the initial useEffect that fetches leads on mount since we have the new useEffect
+// Keep this useEffect only for fetching sellers
+useEffect(() => {
+  if (companyId) {
+    fetchSellers();
+  }
+}, [companyId]);
 
   const fetchSellers = async () => {
     try {
@@ -426,68 +487,29 @@ const LeadsPage = () => {
       `Best regards,\n${companyName || APP_NAME} Team`;
   };
 
-  // Single Lead Assignment
-  const handleAssignSeller = async (leadId, sellerId) => {
-    setConfirmLoading(true);
-    try {
-      const seller = sellers.find(s => s.id === sellerId);
-      if (!seller) throw new Error('Seller not found');
-      
-      // Get the lead data
-      const lead = leads.find(l => l.id === leadId);
-      if (!lead) throw new Error('Lead not found');
-      
-      // Assign lead to seller in database
-      await LeadService.assignTo(leadId, { 
+
+
+const handleBulkAssignSeller = async (leadIds, sellerId, whatsappEnabled = true) => {
+  setConfirmLoading(true);
+  try {
+    const seller = sellers.find(s => s.id === sellerId);
+    if (!seller) throw new Error('Seller not found');
+    
+    // Get all leads data
+    const leadsToAssign = leads.filter(l => leadIds.includes(l.id));
+    if (leadsToAssign.length === 0) throw new Error('No leads found to assign');
+    
+    // Assign all leads in database
+    await Promise.all(leadIds.map(id => 
+      LeadService.assignTo(id, { 
         id: sellerId, 
         firstName: seller.name.split(' ')[0] || '', 
         lastName: seller.name.split(' ').slice(1).join(' ') || '' 
-      });
-      
-      // Create and send WhatsApp message
-      const message = createWhatsAppMessage(seller.name, lead, user?.companyName);
-      const whatsappOpened = sendWhatsAppMessage(seller.phoneNumber, message);
-      
-      if (whatsappOpened) {
-        message.success(`Lead assigned to ${seller.name} and WhatsApp opened`);
-      } else {
-        message.warning(`Lead assigned to ${seller.name} but could not open WhatsApp`);
-      }
-      
-      fetchLeads();
-      if (selectedLead?.id === leadId) {
-        setSelectedLead(await LeadService.getById(leadId));
-      }
-    } catch (error) {
-      console.error('Assignment error:', error);
-      message.error('Failed to assign seller: ' + error.message);
-    } finally {
-      setConfirmLoading(false);
-      setAssignSellerVisible(false);
-      setAssigningLead(null);
-    }
-  };
-
-  // Bulk Assignment
-  const handleBulkAssignSeller = async (leadIds, sellerId) => {
-    setConfirmLoading(true);
-    try {
-      const seller = sellers.find(s => s.id === sellerId);
-      if (!seller) throw new Error('Seller not found');
-      
-      // Get all leads data
-      const leadsToAssign = leads.filter(l => leadIds.includes(l.id));
-      if (leadsToAssign.length === 0) throw new Error('No leads found to assign');
-      
-      // Assign all leads in database
-      await Promise.all(leadIds.map(id => 
-        LeadService.assignTo(id, { 
-          id: sellerId, 
-          firstName: seller.name.split(' ')[0] || '', 
-          lastName: seller.name.split(' ').slice(1).join(' ') || '' 
-        })
-      ));
-      
+      })
+    ));
+    
+    // Only send WhatsApp if enabled and seller has phone number
+    if (whatsappEnabled && seller.phoneNumber && seller.phoneNumber.trim() !== '') {
       // Create and send bulk WhatsApp message
       const leadNames = leadsToAssign.map(l => l.name);
       const message = createBulkWhatsAppMessage(seller.name, leadIds.length, leadNames, user?.companyName);
@@ -498,17 +520,70 @@ const LeadsPage = () => {
       } else {
         message.warning(`${leadIds.length} leads assigned to ${seller.name} but could not open WhatsApp`);
       }
-      
-      setBulkAssignVisible(false);
-      setBulkLeadIds([]);
-      fetchLeads();
-    } catch (error) {
-      console.error('Bulk assignment error:', error);
-      message.error('Failed to bulk assign leads: ' + error.message);
-    } finally {
-      setConfirmLoading(false);
+    } else if (whatsappEnabled && (!seller.phoneNumber || seller.phoneNumber.trim() === '')) {
+      message.warning(`${leadIds.length} leads assigned to ${seller.name} but no phone number available for WhatsApp`);
+    } else {
+      message.success(`${leadIds.length} leads assigned to ${seller.name} successfully (WhatsApp notification skipped)`);
     }
-  };
+    
+    setBulkAssignVisible(false);
+    setBulkLeadIds([]);
+    fetchLeads();
+  } catch (error) {
+    console.error('Bulk assignment error:', error);
+    message.error('Failed to bulk assign leads: ' + error.message);
+  } finally {
+    setConfirmLoading(false);
+  }
+};
+
+const handleAssignSeller = async (leadId, sellerId, whatsappEnabled = true) => {
+  setConfirmLoading(true);
+  try {
+    const seller = sellers.find(s => s.id === sellerId);
+    if (!seller) throw new Error('Seller not found');
+    
+    // Get the lead data
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) throw new Error('Lead not found');
+    
+    // Assign lead to seller in database
+    await LeadService.assignTo(leadId, { 
+      id: sellerId, 
+      firstName: seller.name.split(' ')[0] || '', 
+      lastName: seller.name.split(' ').slice(1).join(' ') || '' 
+    });
+    
+    // Only send WhatsApp if enabled and seller has phone number
+    if (whatsappEnabled && seller.phoneNumber && seller.phoneNumber.trim() !== '') {
+      // Create and send WhatsApp message
+      const message = createWhatsAppMessage(seller.name, lead, user?.companyName);
+      const whatsappOpened = sendWhatsAppMessage(seller.phoneNumber, message);
+      
+      if (whatsappOpened) {
+        message.success(`Lead assigned to ${seller.name} and WhatsApp opened`);
+      } else {
+        message.warning(`Lead assigned to ${seller.name} but could not open WhatsApp`);
+      }
+    } else if (whatsappEnabled && (!seller.phoneNumber || seller.phoneNumber.trim() === '')) {
+      message.warning(`Lead assigned to ${seller.name} but no phone number available for WhatsApp`);
+    } else {
+      message.success(`Lead assigned to ${seller.name} successfully (WhatsApp notification skipped)`);
+    }
+    
+    fetchLeads();
+    if (selectedLead?.id === leadId) {
+      setSelectedLead(await LeadService.getById(leadId));
+    }
+  } catch (error) {
+    console.error('Assignment error:', error);
+    message.error('Failed to assign seller: ' + error.message);
+  } finally {
+    setConfirmLoading(false);
+    setAssignSellerVisible(false);
+    setAssigningLead(null);
+  }
+};
 
   const handleShowAssignSeller = (lead) => {
     if (!sellers.length) { message.warning('No sellers available.'); return; }
@@ -535,10 +610,7 @@ const LeadsPage = () => {
 
   const handleViewDetails  = (lead)   => { setSelectedLead(lead); setDetailsVisible(true); };
   const handleEditLead     = (lead)   => { setEditingLead(lead);   setFormVisible(true);   };
-  const handleFilter       = (values) => { setFilters(values);     fetchLeads(); };
-  const handleClearFilters = ()       => { setFilters(initialFilters); fetchLeads(); };
-  const handleSearch       = (value)  => { setFilters({ ...filters, search: value }); fetchLeads(); };
-  const handleFormSubmit   = (values) => editingLead ? handleUpdateLead(values) : handleAddLead(values);
+ const handleFormSubmit   = (values) => editingLead ? handleUpdateLead(values) : handleAddLead(values);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];

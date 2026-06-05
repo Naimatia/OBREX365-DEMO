@@ -43,21 +43,31 @@ const LeadFilters = ({
     }
   }, [filters, form]);
 
-  const handleApplyFilters = () => {
-    const values = form.getFieldsValue();
-    onFilter(values);
-    setDrawerVisible(false);
-  };
+// Update the handleApplyFilters function in LeadFilters.js:
 
-  const handleClearFilters = () => {
-    form.resetFields();
-    onClear();
-    setDrawerVisible(false);
-  };
+const handleApplyFilters = () => {
+  const values = form.getFieldsValue();
+  // Remove undefined or empty string values
+  const cleanedValues = {};
+  Object.keys(values).forEach(key => {
+    if (values[key] && values[key] !== '') {
+      cleanedValues[key] = values[key];
+    }
+  });
+  onFilter(cleanedValues);
+  setDrawerVisible(false);
+};
 
-  const handleSearch = (value) => {
-    onSearch(value);
-  };
+const handleClearFilters = () => {
+  form.resetFields();
+  onClear();
+  setDrawerVisible(false);
+};
+
+// Update the handleSearch function:
+const handleSearch = (value) => {
+  onSearch(value || '');
+};
 
   const FilterFormContent = (
     <Form form={form} layout="vertical">
