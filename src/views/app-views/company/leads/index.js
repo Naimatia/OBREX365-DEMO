@@ -57,7 +57,6 @@ const mapMetaLeadToModel = (metaLead, companyId) => {
 
   const nationality = raw.nationality || raw.country || '';
 
-  // Determine source based on platform
   let redirectedFrom = 'Facebook';
   if (metaLead.platform === 'ig' || metaLead.meta_platform === 'ig') {
     redirectedFrom = 'Instagram';
@@ -74,24 +73,17 @@ const mapMetaLeadToModel = (metaLead, companyId) => {
     InterestLevel:   LeadInterestLevel.MEDIUM,
     Budget:          budget ? String(budget) : null,
     lookingFor:      lookingFor || null,
-    
-    // ✅ Dynamic source based on platform
     RedirectedFrom:  redirectedFrom,
-    
     company_id:      companyId,
     Notes:           [],
     CreationDate:    metaLead.created_time ? new Date(metaLead.created_time) : new Date(),
-    
     meta_lead_id:    metaLead.lead_id,
     meta_form_id:    metaLead.form_id,
     meta_form_name:  metaLead.form_name,
     meta_ad_name:    metaLead.ad_name || '',
     meta_campaign:   metaLead.campaign_name || '',
     meta_adset:      metaLead.adset_name || '',
-    
-    // Keep original platform for reference
     meta_platform:   metaLead.platform || metaLead.meta_platform || 'facebook',
-    
     raw_meta_fields: raw,
     sourceDetails: {
       formName: metaLead.form_name,
@@ -100,6 +92,9 @@ const mapMetaLeadToModel = (metaLead, companyId) => {
     },
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    // ✅ ADDED: Track when lead was assigned
+    assignedAt: null,
+    assignedBy: null
   };
 };
 
@@ -190,11 +185,9 @@ const LeadsPage = () => {
   const [filters, setFilters]                       = useState(initialFilters);
   const [statsDrawerVisible, setStatsDrawerVisible] = useState(false);
 
-  // Bulk assign state
   const [bulkAssignVisible, setBulkAssignVisible]   = useState(false);
   const [bulkLeadIds, setBulkLeadIds]               = useState([]);
 
-  // Meta sync state
   const [syncModalVisible, setSyncModalVisible]     = useState(false);
   const [syncing, setSyncing]                       = useState(false);
   const [syncResult, setSyncResult]                 = useState(null);
@@ -207,87 +200,69 @@ const LeadsPage = () => {
   }, [companyId]);
 
   // ─── Fetch ────────────────────────────────────────────────────────────────
-// Replace the fetchLeads function and add a useEffect for filters
-
-const fetchLeads = useCallback(async () => {
-  if (!companyId) return;
-  
-  setLoading(true);
-  try {
-    // Fetch leads based on search term (server-side search for better performance)
-    let leadsData = filters.search
-      ? await LeadService.searchLeads(companyId, filters.search)
-      : await LeadService.getLeadsByCompany(companyId);
-
-    // Apply client-side filters
-    if (filters.status && filters.status !== '') {
-      leadsData = leadsData.filter(l => l.status === filters.status);
-    }
+  const fetchLeads = useCallback(async () => {
+    if (!companyId) return;
     
-    if (filters.InterestLevel && filters.InterestLevel !== '') {
-      leadsData = leadsData.filter(l => l.InterestLevel === filters.InterestLevel);
+    setLoading(true);
+    try {
+      let leadsData = filters.search
+        ? await LeadService.searchLeads(companyId, filters.search)
+        : await LeadService.getLeadsByCompany(companyId);
+
+      if (filters.status && filters.status !== '') {
+        leadsData = leadsData.filter(l => l.status === filters.status);
+      }
+      
+      if (filters.InterestLevel && filters.InterestLevel !== '') {
+        leadsData = leadsData.filter(l => l.InterestLevel === filters.InterestLevel);
+      }
+      
+      if (filters.region && filters.region !== '') {
+        leadsData = leadsData.filter(l => l.region === filters.region);
+      }
+      
+      if (filters.seller_id && filters.seller_id !== '') {
+        leadsData = leadsData.filter(l => l.seller_id === filters.seller_id);
+      }
+
+      setLeads(leadsData);
+    } catch (error) {
+      console.error('Error fetching leads:', error);
+      message.error('Failed to fetch leads');
+    } finally {
+      setLoading(false);
     }
-    
-    if (filters.region && filters.region !== '') {
-      leadsData = leadsData.filter(l => l.region === filters.region);
+  }, [companyId, filters.search, filters.status, filters.InterestLevel, filters.region, filters.seller_id]);
+
+  useEffect(() => {
+    if (companyId) {
+      fetchLeads();
     }
-    
-    if (filters.seller_id && filters.seller_id !== '') {
-      leadsData = leadsData.filter(l => l.seller_id === filters.seller_id);
+  }, [fetchLeads, companyId]);
+
+  const handleFilter = (values) => {
+    const cleanedFilters = {};
+    Object.keys(values).forEach(key => {
+      if (values[key] && values[key] !== '' && values[key] !== undefined && values[key] !== null) {
+        cleanedFilters[key] = values[key];
+      }
+    });
+    setFilters(prevFilters => ({ ...prevFilters, ...cleanedFilters }));
+  };
+
+  const handleClearFilters = () => {
+    setFilters(initialFilters);
+  };
+
+  const handleSearch = (value) => {
+    setFilters(prevFilters => ({ ...prevFilters, search: value || '' }));
+  };
+
+  useEffect(() => {
+    if (companyId) {
+      fetchSellers();
     }
-
-    setLeads(leadsData);
-  } catch (error) {
-    console.error('Error fetching leads:', error);
-    message.error('Failed to fetch leads');
-  } finally {
-    setLoading(false);
-  }
-}, [companyId, filters.search, filters.status, filters.InterestLevel, filters.region, filters.seller_id]);
-
-// Trigger fetch when filters change
-useEffect(() => {
-  if (companyId) {
-    fetchLeads();
-  }
-}, [fetchLeads, companyId]);
-
-// Update the handleFilter, handleClearFilters, and handleSearch functions:
-
-const handleFilter = (values) => {
-  // Remove empty values from filters
-  const cleanedFilters = {};
-  Object.keys(values).forEach(key => {
-    if (values[key] && values[key] !== '' && values[key] !== undefined && values[key] !== null) {
-      cleanedFilters[key] = values[key];
-    }
-  });
-  
-  // Update filters state - this will trigger the useEffect above
-  setFilters(prevFilters => ({ 
-    ...prevFilters, 
-    ...cleanedFilters 
-  }));
-};
-
-const handleClearFilters = () => {
-  setFilters(initialFilters);
-};
-
-const handleSearch = (value) => {
-  setFilters(prevFilters => ({ 
-    ...prevFilters, 
-    search: value || '' 
-  }));
-};
-
-// Remove the initial useEffect that fetches leads on mount since we have the new useEffect
-// Keep this useEffect only for fetching sellers
-useEffect(() => {
-  if (companyId) {
-    fetchSellers();
-  }
-}, [companyId]);
+  }, [companyId]);
 
   const fetchSellers = async () => {
     try {
@@ -298,7 +273,8 @@ useEffect(() => {
         .map(u => ({
           id:   u.id,
           name: `${u.firstname ?? ''} ${u.lastname ?? ''}${u.country ? ` (${u.country})` : ''}`.trim(),
-          phoneNumber: u.phoneNumber || u.phone || '', // Include phone number
+          phoneNumber: u.phoneNumber || u.phone || '',
+          email: u.email || '',
         }));
       setSellers(list);
     } catch (error) {
@@ -372,6 +348,8 @@ useEffect(() => {
         Notes:          [],
         secondaryEmail: values.secondaryEmail || '',
         phoneNumber2:   values.phoneNumber2   || '',
+        assignedAt:     null,
+        assignedBy:     null
       });
       message.success('Lead created successfully');
       setFormVisible(false);
@@ -417,38 +395,29 @@ useEffect(() => {
       },
     });
 
-  // Helper function to send WhatsApp message by opening WhatsApp Web/App
-  const sendWhatsAppMessage = (phoneNumber, message) => {
+  // ─── WhatsApp Helpers ──────────────────────────────────────────────────────
+  const sendWhatsAppMessage = (phoneNumber, messageText) => {
     if (!phoneNumber) {
       message.warning('Seller does not have a phone number configured');
       return false;
     }
 
-    // Clean phone number (remove spaces, dashes, etc.)
     let cleanNumber = phoneNumber.toString().replace(/\D/g, '');
     
-    // Remove leading zero if present
     if (cleanNumber.startsWith('0')) {
       cleanNumber = cleanNumber.substring(1);
     }
     
-    // Add country code if not present (default to UAE +971)
     if (!cleanNumber.startsWith('971') && !cleanNumber.startsWith('966')) {
       cleanNumber = '971' + cleanNumber;
     }
     
-    // Encode message for URL
-    const encodedMessage = encodeURIComponent(message);
-    
-    // Create WhatsApp URL (works on both mobile and desktop)
+    const encodedMessage = encodeURIComponent(messageText);
     const whatsappUrl = `https://wa.me/${cleanNumber}?text=${encodedMessage}`;
-    
-    // Open WhatsApp in new tab
     window.open(whatsappUrl, '_blank');
     return true;
   };
 
-  // Create WhatsApp message for single lead assignment
   const createWhatsAppMessage = (sellerName, leadData, companyName) => {
     const currentDate = new Date().toLocaleString();
     
@@ -457,7 +426,7 @@ useEffect(() => {
       `You have been assigned a new lead from ${companyName || APP_NAME}.\n\n` +
       `*Lead Details:*\n` +
       `👤 Name: ${leadData.name || 'N/A'}\n` +
-      `📍 Region: ${leadData.region || 'Not specified'}\n\n` +
+      `📍 Region: ${leadData.region || 'Not specified'}\n` +
       `*Next Steps:*\n` +
       `1. Contact the lead within 24 hours\n` +
       `2. Update lead status in CRM\n` +
@@ -467,7 +436,6 @@ useEffect(() => {
       `Best regards,\n${companyName || APP_NAME} Team`;
   };
 
-  // Create WhatsApp message for bulk lead assignment
   const createBulkWhatsAppMessage = (sellerName, leadsCount, leadNames, companyName) => {
     const currentDate = new Date().toLocaleString();
     const leadsList = leadNames.slice(0, 5).map((name, idx) => `${idx + 1}. ${name}`).join('\n');
@@ -487,103 +455,100 @@ useEffect(() => {
       `Best regards,\n${companyName || APP_NAME} Team`;
   };
 
-
-
-const handleBulkAssignSeller = async (leadIds, sellerId, whatsappEnabled = true) => {
-  setConfirmLoading(true);
-  try {
-    const seller = sellers.find(s => s.id === sellerId);
-    if (!seller) throw new Error('Seller not found');
-    
-    // Get all leads data
-    const leadsToAssign = leads.filter(l => leadIds.includes(l.id));
-    if (leadsToAssign.length === 0) throw new Error('No leads found to assign');
-    
-    // Assign all leads in database
-    await Promise.all(leadIds.map(id => 
-      LeadService.assignTo(id, { 
+  // ✅ MODIFIED: Handle single lead assignment with timestamp tracking
+  const handleAssignSeller = async (leadId, sellerId, whatsappEnabled = true) => {
+    setConfirmLoading(true);
+    try {
+      const seller = sellers.find(s => s.id === sellerId);
+      if (!seller) throw new Error('Seller not found');
+      
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) throw new Error('Lead not found');
+      
+      // ✅ ADDED: Track assignment timestamp and assigner
+      const assignmentData = { 
         id: sellerId, 
         firstName: seller.name.split(' ')[0] || '', 
-        lastName: seller.name.split(' ').slice(1).join(' ') || '' 
-      })
-    ));
-    
-    // Only send WhatsApp if enabled and seller has phone number
-    if (whatsappEnabled && seller.phoneNumber && seller.phoneNumber.trim() !== '') {
-      // Create and send bulk WhatsApp message
-      const leadNames = leadsToAssign.map(l => l.name);
-      const message = createBulkWhatsAppMessage(seller.name, leadIds.length, leadNames, user?.companyName);
-      const whatsappOpened = sendWhatsAppMessage(seller.phoneNumber, message);
+        lastName: seller.name.split(' ').slice(1).join(' ') || '',
+        assignedAt: new Date().toISOString(),
+        assignedBy: {
+          id: user?.uid,
+          name: `${user?.firstname || ''} ${user?.lastname || ''}`.trim()
+        }
+      };
       
-      if (whatsappOpened) {
-        message.success(`${leadIds.length} leads assigned to ${seller.name} and WhatsApp opened`);
-      } else {
-        message.warning(`${leadIds.length} leads assigned to ${seller.name} but could not open WhatsApp`);
-      }
-    } else if (whatsappEnabled && (!seller.phoneNumber || seller.phoneNumber.trim() === '')) {
-      message.warning(`${leadIds.length} leads assigned to ${seller.name} but no phone number available for WhatsApp`);
-    } else {
-      message.success(`${leadIds.length} leads assigned to ${seller.name} successfully (WhatsApp notification skipped)`);
-    }
-    
-    setBulkAssignVisible(false);
-    setBulkLeadIds([]);
-    fetchLeads();
-  } catch (error) {
-    console.error('Bulk assignment error:', error);
-    message.error('Failed to bulk assign leads: ' + error.message);
-  } finally {
-    setConfirmLoading(false);
-  }
-};
-
-const handleAssignSeller = async (leadId, sellerId, whatsappEnabled = true) => {
-  setConfirmLoading(true);
-  try {
-    const seller = sellers.find(s => s.id === sellerId);
-    if (!seller) throw new Error('Seller not found');
-    
-    // Get the lead data
-    const lead = leads.find(l => l.id === leadId);
-    if (!lead) throw new Error('Lead not found');
-    
-    // Assign lead to seller in database
-    await LeadService.assignTo(leadId, { 
-      id: sellerId, 
-      firstName: seller.name.split(' ')[0] || '', 
-      lastName: seller.name.split(' ').slice(1).join(' ') || '' 
-    });
-    
-    // Only send WhatsApp if enabled and seller has phone number
-    if (whatsappEnabled && seller.phoneNumber && seller.phoneNumber.trim() !== '') {
-      // Create and send WhatsApp message
-      const message = createWhatsAppMessage(seller.name, lead, user?.companyName);
-      const whatsappOpened = sendWhatsAppMessage(seller.phoneNumber, message);
+      await LeadService.assignTo(leadId, assignmentData);
       
-      if (whatsappOpened) {
+      if (whatsappEnabled && seller.phoneNumber && seller.phoneNumber.trim() !== '') {
+        const message = createWhatsAppMessage(seller.name, lead, user?.companyName);
+        sendWhatsAppMessage(seller.phoneNumber, message);
         message.success(`Lead assigned to ${seller.name} and WhatsApp opened`);
+      } else if (whatsappEnabled && (!seller.phoneNumber || seller.phoneNumber.trim() === '')) {
+        message.warning(`Lead assigned to ${seller.name} but no phone number available for WhatsApp`);
       } else {
-        message.warning(`Lead assigned to ${seller.name} but could not open WhatsApp`);
+        message.success(`Lead assigned to ${seller.name} successfully`);
       }
-    } else if (whatsappEnabled && (!seller.phoneNumber || seller.phoneNumber.trim() === '')) {
-      message.warning(`Lead assigned to ${seller.name} but no phone number available for WhatsApp`);
-    } else {
-      message.success(`Lead assigned to ${seller.name} successfully (WhatsApp notification skipped)`);
+      
+      fetchLeads();
+      if (selectedLead?.id === leadId) {
+        const updatedLead = await LeadService.getById(leadId);
+        setSelectedLead(updatedLead);
+      }
+    } catch (error) {
+      console.error('Assignment error:', error);
+      message.error('Failed to assign seller: ' + error.message);
+    } finally {
+      setConfirmLoading(false);
+      setAssignSellerVisible(false);
+      setAssigningLead(null);
     }
-    
-    fetchLeads();
-    if (selectedLead?.id === leadId) {
-      setSelectedLead(await LeadService.getById(leadId));
+  };
+
+  // ✅ MODIFIED: Handle bulk lead assignment with timestamp tracking
+  const handleBulkAssignSeller = async (leadIds, sellerId, whatsappEnabled = true) => {
+    setConfirmLoading(true);
+    try {
+      const seller = sellers.find(s => s.id === sellerId);
+      if (!seller) throw new Error('Seller not found');
+      
+      const leadsToAssign = leads.filter(l => leadIds.includes(l.id));
+      if (leadsToAssign.length === 0) throw new Error('No leads found to assign');
+      
+      // ✅ ADDED: Track assignment timestamp for each lead
+      const assignmentData = {
+        id: sellerId,
+        firstName: seller.name.split(' ')[0] || '',
+        lastName: seller.name.split(' ').slice(1).join(' ') || '',
+        assignedAt: new Date().toISOString(),
+        assignedBy: {
+          id: user?.uid,
+          name: `${user?.firstname || ''} ${user?.lastname || ''}`.trim()
+        }
+      };
+      
+      await Promise.all(leadIds.map(id => LeadService.assignTo(id, assignmentData)));
+      
+      if (whatsappEnabled && seller.phoneNumber && seller.phoneNumber.trim() !== '') {
+        const leadNames = leadsToAssign.map(l => l.name);
+        const message = createBulkWhatsAppMessage(seller.name, leadIds.length, leadNames, user?.companyName);
+        sendWhatsAppMessage(seller.phoneNumber, message);
+        message.success(`${leadIds.length} leads assigned to ${seller.name} and WhatsApp opened`);
+      } else if (whatsappEnabled && (!seller.phoneNumber || seller.phoneNumber.trim() === '')) {
+        message.warning(`${leadIds.length} leads assigned to ${seller.name} but no phone number available for WhatsApp`);
+      } else {
+        message.success(`${leadIds.length} leads assigned to ${seller.name} successfully`);
+      }
+      
+      setBulkAssignVisible(false);
+      setBulkLeadIds([]);
+      fetchLeads();
+    } catch (error) {
+      console.error('Bulk assignment error:', error);
+      message.error('Failed to bulk assign leads: ' + error.message);
+    } finally {
+      setConfirmLoading(false);
     }
-  } catch (error) {
-    console.error('Assignment error:', error);
-    message.error('Failed to assign seller: ' + error.message);
-  } finally {
-    setConfirmLoading(false);
-    setAssignSellerVisible(false);
-    setAssigningLead(null);
-  }
-};
+  };
 
   const handleShowAssignSeller = (lead) => {
     if (!sellers.length) { message.warning('No sellers available.'); return; }
@@ -610,7 +575,7 @@ const handleAssignSeller = async (leadId, sellerId, whatsappEnabled = true) => {
 
   const handleViewDetails  = (lead)   => { setSelectedLead(lead); setDetailsVisible(true); };
   const handleEditLead     = (lead)   => { setEditingLead(lead);   setFormVisible(true);   };
- const handleFormSubmit   = (values) => editingLead ? handleUpdateLead(values) : handleAddLead(values);
+  const handleFormSubmit   = (values) => editingLead ? handleUpdateLead(values) : handleAddLead(values);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -634,6 +599,7 @@ const handleAssignSeller = async (leadId, sellerId, whatsappEnabled = true) => {
               secondaryEmail: row['Secondary Email'] || '', RedirectedFrom: row['Lead Source'],
               phoneNumber2: row['Secondary Phone'] || '', CreationDate: new Date(),
               company_id: companyId, Notes: [],
+              assignedAt: null, assignedBy: null
             };
           })
           .filter(Boolean);
@@ -650,132 +616,127 @@ const handleAssignSeller = async (leadId, sellerId, whatsappEnabled = true) => {
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="leads-page" style={{ padding: '0 0 24px' }}>
-     <Row gutter={[24, 24]}>
-  {/* ==================== HEADER ==================== */}
-  <Col span={24}>
-    <Card
-      bordered={false}
-      style={{ 
-        borderRadius: 16, 
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-        background: 'linear-gradient(145deg, #ffffff 0%, #fafafa 100%)'
-      }}
-      bodyStyle={{ padding: '20px 24px' }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-        
-        <div>
-          <Title level={3} style={{ margin: 0, fontWeight: 600 }}>
-            Leads Management
-          </Title>
-          <Text type="secondary">Manage and track all your real estate leads</Text>
-        </div>
-
-        <Space wrap size={10}>
-          {/* Meta Sync Button */}
-          <Tooltip title="Sync leads from Facebook Meta Forms">
-            <Button
-              icon={<FacebookOutlined />}
-              onClick={openSyncModal}
-              style={{ 
-                background: '#1877F2', 
-                borderColor: '#1877F2', 
-                color: '#fff', 
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6
-              }}
-            >
-              Sync Meta Leads
-            </Button>
-          </Tooltip>
-
-          {/* Import Button */}
-          <Button
-            icon={<UploadOutlined />}
-            onClick={() => document.getElementById('csv-upload').click()}
-          >
-            Import CSV / Excel
-          </Button>
-
-          <input
-            id="csv-upload"
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            style={{ display: 'none' }}
-            onChange={handleFileUpload}
-          />
-
-          {/* Add New Lead */}
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => { 
-              setEditingLead(null); 
-              setFormVisible(true); 
+      <Row gutter={[24, 24]}>
+        {/* HEADER */}
+        <Col span={24}>
+          <Card
+            bordered={false}
+            style={{ 
+              borderRadius: 16, 
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              background: 'linear-gradient(145deg, #ffffff 0%, #fafafa 100%)'
             }}
-            style={{ height: 40, padding: '0 20px' }}
+            bodyStyle={{ padding: '20px 24px' }}
           >
-            Add New Lead
-          </Button>
-        </Space>
-      </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+              <div>
+                <Title level={3} style={{ margin: 0, fontWeight: 600 }}>
+                  Leads Management
+                </Title>
+                <Text type="secondary">Manage and track all your real estate leads</Text>
+              </div>
 
-      <Divider style={{ margin: '18px 0 12px 0' }} />
+              <Space wrap size={10}>
+                <Tooltip title="Sync leads from Facebook Meta Forms">
+                  <Button
+                    icon={<FacebookOutlined />}
+                    onClick={openSyncModal}
+                    style={{ 
+                      background: '#1877F2', 
+                      borderColor: '#1877F2', 
+                      color: '#fff', 
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    Sync Meta Leads
+                  </Button>
+                </Tooltip>
 
-      {/* Filters */}
-      <LeadFilters
-        onSearch={handleSearch}
-        onFilter={handleFilter}
-        onClear={handleClearFilters}
-        sellers={sellers}
-        loading={loading}
-        filters={filters}
-      />
-    </Card>
-  </Col>
+                <Button
+                  icon={<UploadOutlined />}
+                  onClick={() => document.getElementById('csv-upload').click()}
+                >
+                  Import CSV / Excel
+                </Button>
 
-  {/* ==================== QUICK STATS ==================== */}
-  <Col span={24}>
-    <LeadStats
-      leads={leads}
-      loading={loading}
-      onShowDetailStats={() => setStatsDrawerVisible(true)}
-    />
-  </Col>
+                <input
+                  id="csv-upload"
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  style={{ display: 'none' }}
+                  onChange={handleFileUpload}
+                />
 
-  {/* ==================== MAIN TABLE ==================== */}
-  <Col span={24}>
-    <Card
-      bordered={false}
-      style={{ 
-        borderRadius: 16, 
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)' 
-      }}
-      bodyStyle={{ padding: 0 }}
-    >
-      <div style={{ padding: '16px 24px', borderBottom: '1px solid #f0f0f0' }}>
-        <Title level={5} style={{ margin: 0 }}>
-          All Leads 
-          <Text type="secondary" style={{ marginLeft: 8, fontSize: 14 }}>
-            ({leads.length} total)
-          </Text>
-        </Title>
-      </div>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => { 
+                    setEditingLead(null); 
+                    setFormVisible(true); 
+                  }}
+                  style={{ height: 40, padding: '0 20px' }}
+                >
+                  Add New Lead
+                </Button>
+              </Space>
+            </div>
 
-      <LeadTable
-        leads={leads}
-        loading={loading}
-        onEdit={handleEditLead}
-        onDelete={handleDeleteLead}
-        onAssignSeller={handleShowAssignSeller}
-        onViewDetails={handleViewDetails}
-        onBulkAssign={handleBulkAssignOpen}
-      />
-    </Card>
-  </Col>
-</Row>
+            <Divider style={{ margin: '18px 0 12px 0' }} />
+
+            <LeadFilters
+              onSearch={handleSearch}
+              onFilter={handleFilter}
+              onClear={handleClearFilters}
+              sellers={sellers}
+              loading={loading}
+              filters={filters}
+            />
+          </Card>
+        </Col>
+
+        {/* QUICK STATS */}
+        <Col span={24}>
+          <LeadStats
+            leads={leads}
+            loading={loading}
+            onShowDetailStats={() => setStatsDrawerVisible(true)}
+          />
+        </Col>
+
+        {/* MAIN TABLE */}
+        <Col span={24}>
+          <Card
+            bordered={false}
+            style={{ 
+              borderRadius: 16, 
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)' 
+            }}
+            bodyStyle={{ padding: 0 }}
+          >
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid #f0f0f0' }}>
+              <Title level={5} style={{ margin: 0 }}>
+                All Leads 
+                <Text type="secondary" style={{ marginLeft: 8, fontSize: 14 }}>
+                  ({leads.length} total)
+                </Text>
+              </Title>
+            </div>
+
+            <LeadTable
+              leads={leads}
+              loading={loading}
+              onEdit={handleEditLead}
+              onDelete={handleDeleteLead}
+              onAssignSeller={handleShowAssignSeller}
+              onViewDetails={handleViewDetails}
+              onBulkAssign={handleBulkAssignOpen}
+            />
+          </Card>
+        </Col>
+      </Row>
 
       {/* Modals & Drawers */}
       <LeadForm
@@ -795,7 +756,6 @@ const handleAssignSeller = async (leadId, sellerId, whatsappEnabled = true) => {
         onAddNote={handleAddNote}
       />
 
-      {/* Single assign */}
       <AssignSellerForm
         visible={assignSellerVisible}
         onCancel={() => { setAssignSellerVisible(false); setAssigningLead(null); }}
@@ -805,7 +765,6 @@ const handleAssignSeller = async (leadId, sellerId, whatsappEnabled = true) => {
         sellers={sellers}
       />
 
-      {/* Bulk assign */}
       <AssignSellerForm
         visible={bulkAssignVisible}
         onCancel={() => { setBulkAssignVisible(false); setBulkLeadIds([]); }}

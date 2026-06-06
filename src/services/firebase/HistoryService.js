@@ -1,5 +1,7 @@
+// HistoryService.js - Version corrigée
+
 import BaseFirebaseService from './BaseFirebaseService';
-import { convertToHistoryModel, HistoryType } from 'models/HistoryModel';
+import { convertToHistoryModel, HistoryAction } from 'models/HistoryModel';
 import { serverTimestamp } from 'configs/FirebaseConfig';
 
 /**
@@ -222,12 +224,12 @@ class HistoryService extends BaseFirebaseService {
    */
   async logCreation(entityType, entityId, companyId, user, data = {}) {
     return this.logActivity({
-      type: HistoryType.CREATED,
+      type: HistoryAction.CREATED,
       entityType,
       entityId,
       companyId,
       userId: user.id,
-      userName: user.firstName + ' ' + user.lastName,
+      userName: (user.firstName || user.firstname || '') + ' ' + (user.lastName || user.lastname || ''),
       data,
       timestamp: new Date()
     });
@@ -244,12 +246,12 @@ class HistoryService extends BaseFirebaseService {
    */
   async logUpdate(entityType, entityId, companyId, user, data = {}) {
     return this.logActivity({
-      type: HistoryType.UPDATED,
+      type: HistoryAction.UPDATED,
       entityType,
       entityId,
       companyId,
       userId: user.id,
-      userName: user.firstName + ' ' + user.lastName,
+      userName: (user.firstName || user.firstname || '') + ' ' + (user.lastName || user.lastname || ''),
       data,
       timestamp: new Date()
     });
@@ -266,12 +268,12 @@ class HistoryService extends BaseFirebaseService {
    */
   async logDeletion(entityType, entityId, companyId, user, data = {}) {
     return this.logActivity({
-      type: HistoryType.DELETED,
+      type: HistoryAction.DELETED,
       entityType,
       entityId,
       companyId,
       userId: user.id,
-      userName: user.firstName + ' ' + user.lastName,
+      userName: (user.firstName || user.firstname || '') + ' ' + (user.lastName || user.lastname || ''),
       data,
       timestamp: new Date()
     });
@@ -289,12 +291,12 @@ class HistoryService extends BaseFirebaseService {
    */
   async logStatusChange(entityType, entityId, companyId, user, oldStatus, newStatus) {
     return this.logActivity({
-      type: HistoryType.STATUS_CHANGED,
+      type: HistoryAction.STATUS_CHANGED,
       entityType,
       entityId,
       companyId,
       userId: user.id,
-      userName: user.firstName + ' ' + user.lastName,
+      userName: (user.firstName || user.firstname || '') + ' ' + (user.lastName || user.lastname || ''),
       data: {
         oldStatus,
         newStatus
@@ -314,15 +316,15 @@ class HistoryService extends BaseFirebaseService {
    */
   async logAssignment(entityType, entityId, companyId, user, assignedTo) {
     return this.logActivity({
-      type: HistoryType.ASSIGNED,
+      type: HistoryAction.ASSIGNED,
       entityType,
       entityId,
       companyId,
       userId: user.id,
-      userName: user.firstName + ' ' + user.lastName,
+      userName: (user.firstName || user.firstname || '') + ' ' + (user.lastName || user.lastname || ''),
       data: {
         assignedToId: assignedTo.id,
-        assignedToName: assignedTo.firstName + ' ' + assignedTo.lastName
+        assignedToName: (assignedTo.firstName || assignedTo.firstname || '') + ' ' + (assignedTo.lastName || assignedTo.lastname || '')
       },
       timestamp: new Date()
     });
@@ -340,12 +342,12 @@ class HistoryService extends BaseFirebaseService {
    */
   async logEmailSent(entityType, entityId, companyId, user, recipient, subject) {
     return this.logActivity({
-      type: HistoryType.EMAIL_SENT,
+      type: HistoryAction.EMAIL_SENT,
       entityType,
       entityId,
       companyId,
       userId: user.id,
-      userName: user.firstName + ' ' + user.lastName,
+      userName: (user.firstName || user.firstname || '') + ' ' + (user.lastName || user.lastname || ''),
       data: {
         recipient,
         subject
@@ -369,12 +371,12 @@ class HistoryService extends BaseFirebaseService {
       noteContent.substring(0, 97) + '...' : noteContent;
       
     return this.logActivity({
-      type: HistoryType.NOTE_ADDED,
+      type: HistoryAction.NOTE_ADDED,
       entityType,
       entityId,
       companyId,
       userId: user.id,
-      userName: user.firstName + ' ' + user.lastName,
+      userName: (user.firstName || user.firstname || '') + ' ' + (user.lastName || user.lastname || ''),
       data: {
         noteContent: truncatedContent
       },

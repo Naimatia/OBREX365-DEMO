@@ -350,7 +350,7 @@ async assignTo(leadId, user) {
 
   const updateData = {
     seller_id: user.id,                        // flat ID for fast queries
-    assignedAt: now,                           // ← NEW: timestamp of assignment/reassignment
+    assignedAt: now,                           // ✅ ADDED: timestamp of assignment/reassignment
     updatedAt: now,
     assignedTo: {                              // keep your existing nested object
       id: user.id,

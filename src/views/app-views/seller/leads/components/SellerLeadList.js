@@ -36,6 +36,8 @@ import {
   EyeInvisibleOutlined,
   TrophyOutlined,
   StarOutlined,
+  CalendarOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import dayjs from 'dayjs';
@@ -61,7 +63,7 @@ const SellerLeadList = ({
   const [filteredInterest, setFilteredInterest] = useState(null);
   const [dateRange, setDateRange] = useState(null);
   const [revealingLeadId, setRevealingLeadId] = useState(null);
-  const [leadTypeFilter, setLeadTypeFilter] = useState('all'); // 'all', 'myLeads', 'assigned', 'revealed', 'hidden'
+  const [leadTypeFilter, setLeadTypeFilter] = useState('all');
   
   // Track local revealed state for leads assigned to seller
   const [revealedLeads, setRevealedLeads] = useState({});
@@ -80,14 +82,12 @@ const SellerLeadList = ({
   // Check if lead is created by the current seller (their own lead)
   const isMyOwnLead = (lead) => {
     if (!lead || !sellerId) return false;
-    // ONLY check createdBy - not seller_id
     return String(lead.createdBy) === String(sellerId);
   };
 
   // Check if lead is assigned to current seller (but not created by them)
   const isAssignedToMe = (lead) => {
     if (!lead || !sellerId) return false;
-    // Lead is assigned to seller if seller_id matches AND it's NOT created by them
     const isSellerAssigned = String(lead.seller_id) === String(sellerId);
     const isCreator = String(lead.createdBy) === String(sellerId);
     return isSellerAssigned && !isCreator;
@@ -95,34 +95,69 @@ const SellerLeadList = ({
 
   // Check if lead is revealed
   const isRevealed = (lead) => {
-    if (isMyOwnLead(lead)) return true; // Own leads are always considered revealed
+    if (isMyOwnLead(lead)) return true;
     return revealedLeads[lead.id] === true;
   };
 
   // Helper to check if lead info should be hidden
   const isHidden = (lead) => {
-    // Own leads are always visible
     if (isMyOwnLead(lead)) return false;
-    // Revealed leads are visible
     if (revealedLeads[lead.id]) return false;
-    // Leads assigned to seller are hidden until revealed
     if (isAssignedToMe(lead)) return true;
-    // Default: not hidden
     return false;
   };
 
-  // Calculate stats for assigned leads only (not own leads)
+  // ✅ Helper to get the relevant date (Created vs Assigned)
+  const getLeadDate = (lead) => {
+    if (isMyOwnLead(lead)) {
+      // For own leads: show CreationDate
+      return lead.CreationDate;
+    }
+    if (isAssignedToMe(lead)) {
+      // For assigned leads: show assignedAt timestamp
+      return lead.assignedAt;
+    }
+    // Fallback to CreationDate
+    return lead.CreationDate;
+  };
+
+  // ✅ Helper to get date label
+  const getDateLabel = (lead) => {
+    if (isMyOwnLead(lead)) {
+      return 'Created';
+    }
+    if (isAssignedToMe(lead)) {
+      return 'Assigned';
+    }
+    return 'Date';
+  };
+
+  // Helper to format the date display
+  const formatLeadDate = (lead) => {
+    const date = getLeadDate(lead);
+    if (!date) return '—';
+    
+    const dateObj = date?.toDate ? date.toDate() : new Date(date);
+    return dayjs(dateObj).format('DD MMM YYYY');
+  };
+
+  // Helper to get tooltip text for date
+  const getDateTooltip = (lead) => {
+    const date = getLeadDate(lead);
+    if (!date) return '';
+    
+    const dateObj = date?.toDate ? date.toDate() : new Date(date);
+    const label = getDateLabel(lead);
+    return `${label} on ${dayjs(dateObj).format('DD MMM YYYY HH:mm')}`;
+  };
+
+  // Calculate stats
   const stats = useMemo(() => {
-    // Get leads assigned to seller (not created by them)
     const assignedLeads = leads.filter(lead => isAssignedToMe(lead));
     const totalAssigned = assignedLeads.length;
-    
-    // Count revealed among assigned leads
     const revealedCount = assignedLeads.filter(lead => revealedLeads[lead.id] === true).length;
     const hiddenCount = totalAssigned - revealedCount;
     const percentage = totalAssigned > 0 ? (revealedCount / totalAssigned) * 100 : 0;
-    
-    // Also count own leads separately (leads they created)
     const ownLeadsCount = leads.filter(lead => isMyOwnLead(lead)).length;
     
     return { 
@@ -135,11 +170,10 @@ const SellerLeadList = ({
     };
   }, [leads, revealedLeads]);
 
-  // Filter leads based on all criteria
+  // Filter leads
   const filteredLeads = useMemo(() => {
     let filtered = [...leads];
 
-    // Filter by lead type (My Leads, Assigned, Revealed, Hidden)
     if (leadTypeFilter === 'myLeads') {
       filtered = filtered.filter(lead => isMyOwnLead(lead));
     } else if (leadTypeFilter === 'assigned') {
@@ -150,7 +184,6 @@ const SellerLeadList = ({
       filtered = filtered.filter(lead => isHidden(lead));
     }
 
-    // Search filter
     if (searchText) {
       const term = searchText.toLowerCase();
       filtered = filtered.filter(lead =>
@@ -161,23 +194,33 @@ const SellerLeadList = ({
       );
     }
 
-    // Status filter
     if (filteredStatus) {
       filtered = filtered.filter(l => l.status === filteredStatus);
     }
     
-    // Interest filter
     if (filteredInterest) {
       filtered = filtered.filter(l => l.InterestLevel === filteredInterest);
     }
 
-    // Date range filter
     if (dateRange && dateRange.length === 2) {
       filtered = filtered.filter(lead => {
-        if (!lead.CreationDate) return false;
-        return dayjs(lead.CreationDate).isBetween(dateRange[0], dateRange[1], 'day', '[]');
+        const date = getLeadDate(lead);
+        if (!date) return false;
+        const dateObj = date?.toDate ? date.toDate() : new Date(date);
+        return dayjs(dateObj).isBetween(dateRange[0], dateRange[1], 'day', '[]');
       });
     }
+
+    // Sort: newest first (by CreationDate for own leads, assignedAt for assigned leads)
+    filtered.sort((a, b) => {
+      const dateA = getLeadDate(a);
+      const dateB = getLeadDate(b);
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      const timeA = dateA?.toDate ? dateA.toDate().getTime() : new Date(dateA).getTime();
+      const timeB = dateB?.toDate ? dateB.toDate().getTime() : new Date(dateB).getTime();
+      return timeB - timeA;
+    });
 
     return filtered;
   }, [leads, searchText, filteredStatus, filteredInterest, dateRange, leadTypeFilter]);
@@ -199,7 +242,6 @@ const SellerLeadList = ({
 
   const handleRevealLead = async (lead) => {
     if (revealedLeads[lead.id]) {
-      // Already revealed, just view details
       onViewLead(lead);
       return;
     }
@@ -208,20 +250,8 @@ const SellerLeadList = ({
     try {
       if (onRevealLead && typeof onRevealLead === 'function') {
         await onRevealLead(lead.id);
-      } else {
-        console.warn('onRevealLead is not a function or not provided');
-        setRevealedLeads(prev => ({
-          ...prev,
-          [lead.id]: true
-        }));
-        message.success(`Lead "${lead.name}" revealed locally!`);
-        setTimeout(() => {
-          onViewLead(lead);
-        }, 500);
-        return;
       }
       
-      // Update local state
       setRevealedLeads(prev => ({
         ...prev,
         [lead.id]: true
@@ -241,7 +271,6 @@ const SellerLeadList = ({
     }
   };
 
-  // Render hidden content (blurred/placeholder)
   const renderHiddenContent = (lead, fieldName, actualContent, placeholder = '•••••') => {
     if (!isHidden(lead)) return actualContent;
     
@@ -402,16 +431,66 @@ const SellerLeadList = ({
         return <Tag color={config.color}>{config.text}</Tag>;
       },
     },
+    // ✅ MODIFIED: Date column with dynamic label based on lead type
     {
-      title: 'Created',
-      dataIndex: 'CreationDate',
-      key: 'created',
-      width: 110,
-      render: (date, record) => {
-        if (isHidden(record)) {
-          return <Text type="secondary" style={{ filter: 'blur(3px)' }}>•••</Text>;
+      title: () => (
+        <Tooltip title="'Created' for leads you added / 'Assigned' for leads assigned to you">
+          <span>
+            <CalendarOutlined style={{ marginRight: 4 }} />
+            Date <InfoCircleOutlined style={{ fontSize: 12, color: '#8c8c8c' }} />
+          </span>
+        </Tooltip>
+      ),
+      key: 'date',
+      width: 130,
+      render: (_, record) => {
+        const isHiddenLead = isHidden(record);
+        const label = getDateLabel(record);
+        const date = getLeadDate(record);
+        
+        if (isHiddenLead) {
+          return (
+            <Tooltip title="Reveal to see date">
+              <Space>
+                <Tag color="orange" style={{ fontSize: 11 }}>{label}</Tag>
+                <span style={{ filter: 'blur(3px)' }}>•••</span>
+              </Space>
+            </Tooltip>
+          );
         }
-        return date ? dayjs(date).format('DD MMM YYYY') : '—';
+        
+        if (!date) {
+          return (
+            <Space>
+              <Tag color="default" style={{ fontSize: 11 }}>{label}</Tag>
+              <Text type="secondary">—</Text>
+            </Space>
+          );
+        }
+        
+        const dateObj = date?.toDate ? date.toDate() : new Date(date);
+        
+        return (
+          <Tooltip title={`${label} on ${dayjs(dateObj).format('DD MMM YYYY HH:mm:ss')}`}>
+            <Space>
+              <Tag color={isMyOwnLead(record) ? 'green' : 'blue'} style={{ fontSize: 11 }}>
+                {label}
+              </Tag>
+              <span>
+                {dayjs(dateObj).format('DD MMM YYYY')}
+              </span>
+            </Space>
+          </Tooltip>
+        );
+      },
+      sorter: (a, b) => {
+        const dateA = getLeadDate(a);
+        const dateB = getLeadDate(b);
+        if (!dateA) return 1;
+        if (!dateB) return -1;
+        const timeA = dateA?.toDate ? dateA.toDate().getTime() : new Date(dateA).getTime();
+        const timeB = dateB?.toDate ? dateB.toDate().getTime() : new Date(dateB).getTime();
+        return timeA - timeB;
       },
     },
     {
@@ -530,7 +609,6 @@ const SellerLeadList = ({
           </Col>
         </Row>
         
-        {/* Progress bar for assigned leads only */}
         {stats.totalAssigned > 0 && (
           <div style={{ marginTop: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
