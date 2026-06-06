@@ -70,40 +70,56 @@ const LeadsService = {
    * @param {string} sellerId - Seller ID
    * @returns {Promise<Array>} Array of leads
    */
-  async getSellerLeads(companyId, sellerId) {
-    try {
-      const q = query(
-        collection(db, 'leads'),
-        where('company_id', '==', companyId),
-        where('seller_id', '==', sellerId),
-        orderBy('CreationDate', 'desc')
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const leads = [];
-      
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        leads.push({
-          id: doc.id,
-          ...data,
-          // Convert Firestore timestamps to JS Date objects
-          CreationDate: data.CreationDate?.toDate ? data.CreationDate.toDate() : data.CreationDate,
-          LastUpdateDate: data.LastUpdateDate?.toDate ? data.LastUpdateDate.toDate() : data.LastUpdateDate,
-          // Ensure Notes array has proper date conversion
-          Notes: data.Notes?.map(note => ({
-            ...note,
-            CreationDate: note.CreationDate?.toDate ? note.CreationDate.toDate() : note.CreationDate
-          })) || []
-        });
-      });
-      
-      return leads;
-    } catch (error) {
-      console.error('Error fetching seller leads:', error);
-      throw error;
-    }
-  },
+async getSellerLeads(companyId, sellerId) {
+  try {
+    // Requête 1: leads avec seller_id
+    const q1 = query(
+      collection(db, 'leads'),
+      where('company_id', '==', companyId),
+      where('seller_id', '==', sellerId),
+      orderBy('CreationDate', 'desc')
+    );
+    
+    // Requête 2: leads avec assignedTo.id
+    const q2 = query(
+      collection(db, 'leads'),
+      where('company_id', '==', companyId),
+      where('assignedTo.id', '==', sellerId),
+      orderBy('CreationDate', 'desc')
+    );
+    
+    const [snapshot1, snapshot2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+    
+    // Fusionner les résultats sans doublons
+    const leadsMap = new Map();
+    
+    snapshot1.forEach((doc) => {
+      leadsMap.set(doc.id, { id: doc.id, ...doc.data() });
+    });
+    
+    snapshot2.forEach((doc) => {
+      if (!leadsMap.has(doc.id)) {
+        leadsMap.set(doc.id, { id: doc.id, ...doc.data() });
+      }
+    });
+    
+    const leads = Array.from(leadsMap.values()).map(data => ({
+      ...data,
+      CreationDate: data.CreationDate?.toDate ? data.CreationDate.toDate() : data.CreationDate,
+      LastUpdateDate: data.LastUpdateDate?.toDate ? data.LastUpdateDate.toDate() : data.LastUpdateDate,
+      Notes: data.Notes?.map(note => ({
+        ...note,
+        CreationDate: note.CreationDate?.toDate ? note.CreationDate.toDate() : note.CreationDate
+      })) || []
+    }));
+    
+    console.log(`getSellerLeads for ${sellerId}: found ${leads.length} leads`);
+    return leads;
+  } catch (error) {
+    console.error('Error fetching seller leads:', error);
+    throw error;
+  }
+},
 
   /**
    * Get leads by seller_id and date range
