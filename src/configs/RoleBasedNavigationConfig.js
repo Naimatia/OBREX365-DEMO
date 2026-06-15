@@ -215,7 +215,27 @@ const ceoNavigation = [
     title: 'Dashboard',
     icon: DashboardOutlined,
     breadcrumb: false,
-    submenu: []
+    submenu: [
+      
+           {
+        key: 'seller-performance',
+        path: `${APP_PREFIX_PATH}/sales-dashboard`,
+        title: 'Saller Dashboard',
+        icon: DashboardOutlined ,
+        breadcrumb: true,
+        submenu: []
+      },
+
+       {
+        key: 'leads-performance',
+        path: `${APP_PREFIX_PATH}/analytics`,
+        title: 'Leads Dashboard',
+        icon: DashboardOutlined ,
+        breadcrumb: true,
+        submenu: []
+      },
+
+    ]
   },
 
   // Company Management
@@ -238,14 +258,6 @@ const ceoNavigation = [
         path: `${APP_PREFIX_PATH}/sellers`,
         title: 'Sales Team Members',
         icon: ShopOutlined,
-        breadcrumb: true,
-        submenu: []
-      },
-        {
-        key: 'seller-performance',
-        path: `${APP_PREFIX_PATH}/analytics`,
-        title: 'Sales Team Performance',
-        icon: DashboardOutlined ,
         breadcrumb: true,
         submenu: []
       },

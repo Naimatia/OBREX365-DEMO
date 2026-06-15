@@ -1,0 +1,541 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Drawer, Button, Typography, Tag, Space, Divider, Form, Input, Avatar, Card, Tooltip, message, Row, Col, Timeline, Modal,
+  Select, InputNumber
+} from 'antd';
+import {
+  EditOutlined, PhoneOutlined, MailOutlined, GlobalOutlined,
+  CalendarOutlined, UserOutlined, DollarOutlined, TagOutlined,
+  MessageOutlined, CopyOutlined, CheckOutlined, InfoCircleOutlined,
+  WhatsAppOutlined, PhoneFilled, HistoryOutlined,
+  EyeOutlined
+} from '@ant-design/icons';
+import { useSelector } from 'react-redux';
+import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
+import UserService from 'services/firebase/UserService';
+import LeadHistoryService from 'services/firebase/LeadHistoryService';
+import dayjs from 'dayjs';
+
+const { Title, Text } = Typography;
+const { TextArea } = Input;
+const { Option } = Select;
+
+// Professional Templates
+const WHATSAPP_TEMPLATES = {
+  intro: `Hi {{name}},
+
+I'm {{seller}} from {{company}} – your dedicated property advisor.
+
+You recently showed interest in a {{budget}} AED property in Dubai.
+
+Are you free for a quick 5-min call to discuss your needs?
+
+Looking forward!
+{{seller}}`,
+
+  follow_up: `Hi {{name}},
+
+Just checking in – still looking for a {{budget}} AED property in Dubai?
+
+We have new listings matching your criteria.
+
+Best,
+{{seller}}`,
+
+  offer: `Hi {{name}}! Great news!
+
+We found a **perfect match** for you:
+
+AED {{budget}} | Dubai
+
+View details: [Insert Property Link]
+
+{{seller}} | {{company}}`
+};
+
+const EMAIL_TEMPLATES = {
+  intro: `Dear {{name}},
+
+Thank you for your interest in properties with us.
+
+I'm {{seller}}, your dedicated real estate advisor at {{company}}.
+
+I noticed you're looking for a property around **AED {{budget}}** in **Dubai**.
+
+I'd love to understand your needs better. Could we schedule a quick call?
+
+You can reach me directly at:
+Phone: {{sellerPhone}}
+Email: {{sellerEmail}}
+
+Looking forward to helping you find your dream home.
+
+Best regards,
+{{seller}}
+Real Estate Advisor
+{{company}}
+{{sellerPhone}} | {{sellerEmail}}`,
+
+  offer: `Hi {{name}},
+
+We have an **exclusive property match** for you:
+
+**Price:** AED {{budget}}
+**Location:** Dubai
+**Type:** [Villa/Apartment/Penthouse]
+
+[View Full Details]
+
+This unit won’t last long. Reply to this email or call me at {{sellerPhone}} to book a viewing.
+
+Best,
+{{seller}}
+{{sellerPhone}} | {{sellerEmail}}`
+};
+
+const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
+  const [sellerInfo, setSellerInfo] = useState(null);
+  const [companyInfo, setCompanyInfo] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [noteForm] = Form.useForm();
+  const [whatsappForm] = Form.useForm();
+  const [emailForm] = Form.useForm();
+  const [callForm] = Form.useForm();
+
+  const [copied, setCopied] = useState({});
+  const [whatsappVisible, setWhatsappVisible] = useState(false);
+  const [emailVisible, setEmailVisible] = useState(false);
+  const [callVisible, setCallVisible] = useState(false);
+
+  const currentUser = useSelector(state => state.auth.user);
+
+  // Load seller + company
+  useEffect(() => {
+    if (visible && lead) {
+      // Load assigned seller
+      if (lead.seller_id) {
+        UserService.getUserById(lead.seller_id).then(setSellerInfo);
+      }
+
+      // Load company from lead.company_id
+      if (lead.company_id) {
+        LeadHistoryService.getCompanyData(lead.company_id).then(setCompanyInfo);
+      }
+    }
+  }, [visible, lead]);
+
+  // Load history
+  useEffect(() => {
+    if (visible && lead?.id) {
+      const unsubscribe = LeadHistoryService.listenToHistory(lead.id,lead.seller_id, setHistory);
+      return () => unsubscribe();
+    }
+  }, [visible, lead?.id]);
+
+  // Copy to clipboard
+  const copyToClipboard = (text, key) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopied({ ...copied, [key]: true });
+    setTimeout(() => setCopied({ ...copied, [key]: false }), 2000);
+    message.success('Copied!');
+  };
+
+  // Add note
+  const handleAddNote = () => {
+    noteForm.validateFields().then(async ({ note }) => {
+      await LeadHistoryService.addHistory(lead.id, {
+        type: 'note',
+        message: note,
+              sellerId: currentUser.id,               // ← important new field
+
+        createdBy: { id: currentUser.id, name: `${currentUser.firstname} ${currentUser.lastname}` }
+      });
+      noteForm.resetFields();
+      message.success('Note added');
+    });
+  };
+
+  // Send WhatsApp
+  const sendWhatsApp = async (values) => {
+    const seller = sellerInfo || currentUser;
+    const sellerName = `${seller.firstname} ${seller.lastname}`;
+    const sellerPhone = (seller.phone || '').replace(/[^\d]/g, '') || '1234567890';
+    const companyName = companyInfo?.name || '[Your Company]';
+
+    const message = WHATSAPP_TEMPLATES[values.template]
+      .replace(/{{name}}/g, lead.name)
+      .replace(/{{seller}}/g, sellerName)
+      .replace(/{{budget}}/g, lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : 'your budget')
+      .replace(/Dubai/g, lead.region || 'your area')
+      .replace(/{{company}}/g, companyName);
+
+    const url = `https://wa.me/${lead.phoneNumber.replace(/[^\d]/g, '')}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+
+    // Use assigned seller name in history
+    const historyName = sellerInfo
+      ? await LeadHistoryService.getSellerName(lead.seller_id)
+      : `${currentUser.firstname} ${currentUser.lastname}`;
+
+    await LeadHistoryService.addHistory(lead.id, {
+      type: 'whatsapp',
+      message,
+      templateId: values.template,
+      createdBy: { id: currentUser.id, name: historyName }
+    });
+
+    setWhatsappVisible(false);
+    message.success('WhatsApp opened & logged');
+  };
+
+  // Send Email
+  const sendEmail = async (values) => {
+    const seller = sellerInfo || currentUser;
+    const sellerName = `${seller.firstname} ${seller.lastname}`;
+    const sellerEmail = seller.email || '';
+    const sellerPhone = seller.phoneNumber || '';
+    const companyName = companyInfo?.name || '';
+
+    const body = EMAIL_TEMPLATES[values.template]
+      .replace(/{{name}}/g, lead.name)
+      .replace(/{{seller}}/g, sellerName)
+      .replace(/{{budget}}/g, lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : '')
+      .replace(/Dubai/g, lead.region || '')
+      .replace(/{{sellerEmail}}/g, sellerEmail)
+      .replace(/{{sellerPhone}}/g, sellerPhone)
+      .replace(/{{company}}/g, companyName);
+
+    const subject = values.template === 'intro'
+      ? 'Your Property Inquiry – Let’s Find Your Dream Home'
+      : 'Exclusive Property Match Just for You';
+
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(lead.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const newWindow = window.open(gmailUrl, '_blank');
+
+    // Use assigned seller name in history
+    const historyName = sellerInfo
+      ? await LeadHistoryService.getSellerName(lead.seller_id)
+      : `${currentUser.firstname} ${currentUser.lastname}`;
+
+    await LeadHistoryService.addHistory(lead.id, {
+      type: 'email',
+      message: body,
+      templateId: values.template,
+            sellerId: currentUser.id,               // ← important new field
+      createdBy: { id: currentUser.id, name: historyName }
+    });
+
+    setEmailVisible(false);
+    if (newWindow) {
+      message.success('Gmail opened – click Send to deliver!');
+    } else {
+      message.warning('Please allow pop-ups for Gmail');
+    }
+  };
+
+  // Log Call
+  const logCall = async (values) => {
+    const historyName = sellerInfo
+      ? await LeadHistoryService.getSellerName(lead.seller_id)
+      : `${currentUser.firstname} ${currentUser.lastname}`;
+
+    await LeadHistoryService.addHistory(lead.id, {
+      type: 'call',
+      duration: values.duration,
+      outcome: values.outcome,
+            sellerId: currentUser.id,               // ← important new field
+
+      createdBy: { id: currentUser.id, name: historyName }
+    });
+    callForm.resetFields();
+    setCallVisible(false);
+    message.success('Call logged');
+  };
+
+  // Status Change
+  const handleStatusChange = async (newStatus) => {
+    await onStatusChange(lead.id, newStatus);
+    const historyName = sellerInfo
+      ? await LeadHistoryService.getSellerName(lead.seller_id)
+      : `${currentUser.firstname} ${currentUser.lastname}`;
+
+    await LeadHistoryService.addHistory(lead.id, {
+      type: 'status',
+      message: `Status changed to ${newStatus}`,
+            sellerId: currentUser.id,               // ← important new field
+
+      createdBy: { id: currentUser.id, name: historyName }
+    });
+  };
+
+  if (!lead) return null;
+
+  const statusColors = { [LeadStatus.PENDING]: 'blue', [LeadStatus.GAIN]: 'green', [LeadStatus.LOSS]: 'red' };
+  const interestColors = { [LeadInterestLevel.LOW]: 'orange', [LeadInterestLevel.MEDIUM]: 'blue', [LeadInterestLevel.HIGH]: 'green' };
+
+  return (
+    <Drawer
+  title={
+  <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+    <Title level={4} style={{ margin: 0 }}>
+      {lead.name}
+    </Title>
+    <Button type="primary" icon={<EditOutlined />} onClick={() => onEdit(lead)}>
+      Edit
+    </Button>
+  </Space>
+}
+      width={720}
+      placement="right"
+      onClose={onClose}
+      open={visible}
+    >
+      <div style={{ padding: '0 8px' }}>
+        {/* Contact Card */}
+        <Card title={<><InfoCircleOutlined /> Contact</>} style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Text type="secondary"><GlobalOutlined /> Region</Text><br />
+              <Text strong>{lead.region || '—'}</Text>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary"><MailOutlined /> Email</Text><br />
+              <Space>
+                <a href={`mailto:${lead.email}`}>{lead.email}</a>
+                <Button size="small" icon={copied.email ? <CheckOutlined style={{ color: 'green' }} /> : <CopyOutlined />}
+                  onClick={() => copyToClipboard(lead.email, 'email')} />
+              </Space>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary"><PhoneOutlined /> Phone</Text><br />
+              <Space>
+                <a href={`tel:${lead.phoneNumber}`}>{lead.phoneNumber}</a>
+                <Button size="small" icon={copied.phone ? <CheckOutlined style={{ color: 'green' }} /> : <CopyOutlined />}
+                  onClick={() => copyToClipboard(lead.phoneNumber, 'phone')} />
+                <Button type="primary" size="small" icon={<WhatsAppOutlined />} onClick={() => setWhatsappVisible(true)} />
+                <Button icon={<PhoneFilled />} size="small" onClick={() => setCallVisible(true)} />
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* Lead Info */}
+        <Row gutter={16}>
+          <Col span={12}>
+            <Card title="Budget">
+              <Text strong style={{ fontSize: 18, color: '#1890ff' }}>
+                {lead.Budget ? `AED ${lead.Budget.toLocaleString()}` : '—'}
+              </Text>
+            </Card>
+          </Col>
+          <Col span={12}>
+            <Card title="Interest">
+              <Tag color={interestColors[lead.InterestLevel]}>{lead.InterestLevel}</Tag>
+            </Card>
+          </Col>
+        </Row>
+
+       {/* ==================== META LEAD SOURCE ==================== */}
+<Card 
+  title={
+    <Space>
+      <EyeOutlined style={{ color: '#1877F2' }} />
+      Meta Lead Source
+      <Tag 
+        color={lead?.RedirectedFrom === 'Instagram' ? 'magenta' : 'blue'}
+      >
+        {lead?.RedirectedFrom || 'Facebook'}
+      </Tag>
+    </Space>
+  } 
+  style={{ marginBottom: 16 }}
+>
+  <Row gutter={[16, 12]}>
+    <Col span={12}>
+      <Text type="secondary">Form Name</Text><br />
+      <Text strong>{lead.meta_form_name || '—'}</Text>
+    </Col>
+    <Col span={12}>
+      <Text type="secondary">Ad Name</Text><br />
+      <Text strong>{lead.meta_ad_name || '—'}</Text>
+    </Col>
+    <Col span={12}>
+      <Text type="secondary">Campaign</Text><br />
+      <Text strong>{lead.meta_campaign || '—'}</Text>
+    </Col>
+    <Col span={12}>
+      <Text type="secondary">Ad Set</Text><br />
+      <Text strong>{lead.meta_adset || '—'}</Text>
+    </Col>
+    <Col span={12}>
+      <Text type="secondary">Platform</Text><br />
+      <Tag color="blue">{lead.meta_platform || 'fb'}</Tag>
+    </Col>
+    <Col span={24}>
+      <Text type="secondary">Meta Lead ID</Text><br />
+      <Text copyable strong style={{ fontFamily: 'monospace' }}>
+        {lead.meta_lead_id || '—'}
+      </Text>
+    </Col>
+  </Row>
+</Card>
+
+        {/* Assigned Seller */}
+        <Card title={<><UserOutlined /> Assigned Seller</>} style={{ margin: '16px 0' }}>
+          {sellerInfo ? (
+            <Space>
+              <Avatar style={{ backgroundColor: '#1890ff' }}>{sellerInfo.firstname[0]}</Avatar>
+              <div>
+                <Text strong>{sellerInfo.firstname} {sellerInfo.lastname}</Text><br />
+                <Text type="secondary">{sellerInfo.email}</Text>
+              </div>
+            </Space>
+          ) : (
+            <Text type="secondary">Not assigned</Text>
+          )}
+        </Card>
+
+        {/* Quick Actions */}
+        <Space style={{ width: '100%', marginBottom: 16 }} wrap>
+          <Button icon={<WhatsAppOutlined />} onClick={() => setWhatsappVisible(true)}>WhatsApp</Button>
+          <Button icon={<MailOutlined />} onClick={() => setEmailVisible(true)}>Email</Button>
+          <Button icon={<PhoneFilled />} onClick={() => setCallVisible(true)}>Log Call</Button>
+        </Space>
+
+        {/* History Timeline */}
+        <Card title={<><HistoryOutlined /> Activity History</>} style={{ marginTop: 16 }}>
+          {history.length > 0 ? (
+            <Timeline>
+              {history.map((h, i) => (
+                <Timeline.Item
+                  key={i}
+                  color={
+                    h.type === 'whatsapp' ? '#25D366' :
+                    h.type === 'email' ? '#1890ff' :
+                    h.type === 'call' ? '#722ed1' :
+                    h.type === 'status' ? '#1890ff' :
+                    h.type === 'note' ? '#8c8c8c' : 'gray'
+                  }
+                  dot={
+                    h.type === 'whatsapp' ? <WhatsAppOutlined style={{ fontSize: 16 }} /> :
+                    h.type === 'email' ? <MailOutlined style={{ fontSize: 16 }} /> :
+                    h.type === 'call' ? <PhoneFilled style={{ fontSize: 16 }} /> :
+                    h.type === 'status' ? <TagOutlined style={{ fontSize: 16 }} /> :
+                    h.type === 'note' ? <MessageOutlined style={{ fontSize: 16 }} /> : null
+                  }
+                >
+                  <div>
+                    <Text strong>{h.createdBy?.name || 'Unknown'}</Text>
+                    <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                      {dayjs(h.createdAt).format('MMM DD, HH:mm')}
+                    </Text>
+                  </div>
+
+                  <div style={{ marginTop: 8, padding: '8px 12px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0', whiteSpace: 'pre-wrap' }}>
+                    {h.type === 'status' && (
+                      <Tag color="blue">Status → {h.message.split('to ')[1]}</Tag>
+                    )}
+                    {h.type === 'note' && <Text>{h.message}</Text>}
+                    {h.type === 'call' && (
+                      <Text>
+                        <PhoneFilled /> Call ({h.duration}Min) – <Tag color={h.outcome === 'answered' ? 'green' : 'red'}>{h.outcome}</Tag>
+                      </Text>
+                    )}
+                    {h.type === 'whatsapp' && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>WhatsApp Message:</Text><br />
+                        <Text style={{ fontSize: 14, color: '#25D366', fontWeight: 500, whiteSpace: 'pre-line' }}>{h.message}</Text>
+                      </div>
+                    )}
+                    {h.type === 'email' && (
+                      <div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>Email Sent:</Text><br />
+                        <Text style={{ fontSize: 14, color: '#1890ff', fontWeight: 500, whiteSpace: 'pre-line' }}>{h.message}</Text>
+                      </div>
+                    )}
+                  </div>
+                </Timeline.Item>
+              ))}
+            </Timeline>
+          ) : (
+            <Text type="secondary" style={{ display: 'block', textAlign: 'center', padding: '20px 0' }}>
+              No activity yet
+            </Text>
+          )}
+        </Card>
+
+        {/* Add Note */}
+        <Card title="Add Note" style={{ marginTop: 16 }}>
+          <Form form={noteForm} layout="vertical">
+            <Form.Item name="note" rules={[{ required: true }]}>
+              <TextArea rows={3} placeholder="Type your note..." />
+            </Form.Item>
+            <Button type="primary" onClick={handleAddNote}>Add Note</Button>
+          </Form>
+        </Card>
+      </div>
+
+      {/* WhatsApp Modal */}
+      <Modal
+        title="Send WhatsApp"
+        open={whatsappVisible}
+        onCancel={() => { setWhatsappVisible(false); whatsappForm.resetFields(); }}
+        onOk={() => whatsappForm.submit()}
+        destroyOnClose
+      >
+        <Form form={whatsappForm} onFinish={sendWhatsApp} layout="vertical">
+          <Form.Item name="template" label="Template" initialValue="intro">
+            <Select>
+              <Option value="intro">Introduction</Option>
+              <Option value="follow_up">Follow Up</Option>
+              <Option value="offer">Property Offer</Option>
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Email Modal */}
+      <Modal
+        title="Send Email"
+        open={emailVisible}
+        onCancel={() => { setEmailVisible(false); emailForm.resetFields(); }}
+        onOk={() => emailForm.submit()}
+        destroyOnClose
+      >
+        <Form form={emailForm} onFinish={sendEmail} layout="vertical">
+          <Form.Item name="template" label="Template" initialValue="intro">
+            <Select>
+              <Option value="intro">Introduction</Option>
+              <Option value="offer">Property Match</Option>
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Call Modal */}
+      <Modal
+        title="Log Call"
+        open={callVisible}
+        onCancel={() => { setCallVisible(false); callForm.resetFields(); }}
+        onOk={() => callForm.submit()}
+        destroyOnClose
+      >
+        <Form form={callForm} onFinish={logCall} layout="vertical">
+          <Form.Item name="duration" label="Duration (munites)" initialValue={2}>
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="outcome" label="Outcome" initialValue="answered">
+            <Select>
+              <Option value="answered">Answered</Option>
+              <Option value="no-answer">No Answer</Option>
+              <Option value="voicemail">Voicemail</Option>
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+    </Drawer>
+  );
+};
+
+export default LeadDetailsPro;

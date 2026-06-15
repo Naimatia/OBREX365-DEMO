@@ -1,460 +1,710 @@
-// pages/SellerPerformanceAnalytics.js - Complete with Lead Type Filter Cards
-import React, { useState, useEffect, useCallback } from 'react';
+// pages/LeadsPerformanceAnalytics.js — Upgraded: charts, UI, date filter, bug fixes
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card, Table, Tag, Space, Button, Input, Modal,
-  message, Tooltip, Typography, Row, Col,
-  Statistic, Avatar, Badge, Timeline, Empty, Progress,
-  Drawer, Divider, Select, Radio, Alert,
-  Skeleton, ConfigProvider, Grid, Tabs
+  message, Typography, Row, Col, Avatar, Badge,
+  Timeline, Empty, Progress, Drawer, Divider, Select,
+  Skeleton, Grid, DatePicker, Tooltip,
 } from 'antd';
 import {
-  UserOutlined, EyeOutlined, ClockCircleOutlined, CheckCircleOutlined,
+  UserOutlined, EyeOutlined, ClockCircleOutlined,
   CloseCircleOutlined, WarningOutlined, TrophyOutlined,
   ReloadOutlined, SearchOutlined, TeamOutlined, HistoryOutlined,
-  MailOutlined, PhoneOutlined, DollarOutlined,
-  FilterOutlined, UnlockOutlined, PlusOutlined,
-  FileTextOutlined, TagOutlined, RiseOutlined, FallOutlined,
-  DashboardOutlined, CrownOutlined, RocketOutlined,
-  PercentageOutlined, HourglassOutlined, StarOutlined,
-  CalendarOutlined, AppstoreOutlined, BellOutlined,
-  PieChartOutlined
+  MailOutlined, PhoneOutlined, FilterOutlined, UnlockOutlined,
+  PlusOutlined, FileTextOutlined, TagOutlined,
+  RiseOutlined, FallOutlined, DashboardOutlined,
+  AppstoreOutlined, BellOutlined, PieChartOutlined,
+  HeatMapOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import isBetween from 'dayjs/plugin/isBetween';
 import * as XLSX from 'xlsx';
 import {
   PieChart, Pie, Cell, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
-  Legend, ResponsiveContainer
+  Legend, ResponsiveContainer,
 } from 'recharts';
 
 import UserService from 'services/firebase/UserService';
 import LeadsService from 'services/LeadsService';
 import LeadHistoryService from 'services/firebase/LeadHistoryService';
 import { UserRoles } from 'models/UserModel';
-import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
+import { LeadStatus } from 'models/LeadModel';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from 'configs/FirebaseConfig';
 
 dayjs.extend(relativeTime);
+dayjs.extend(isBetween);
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
-const { Option } = Select;
+const { RangePicker } = DatePicker;
 
-// ─── Color Palette ───────────────────────────────────────────────────────────
-const COLORS = {
-  primary: '#1890ff',
-  success: '#52c41a',
-  warning: '#faad14',
-  error: '#ff4d4f',
-  purple: '#722ed1',
-  cyan: '#13c2c2',
-  pink: '#eb2f96',
-  orange: '#fa8c16',
-  geekblue: '#2f54eb',
-  gold: '#fadb14',
-  gray: '#8c8c8c',
-  lightGray: '#f5f5f5',
-  dark: '#0f2044',
+// ─── Palette ──────────────────────────────────────────────────────────────────
+const C = {
+  blue:    '#1d6fa8',
+  green:   '#16a34a',
+  red:     '#dc2626',
+  yellow:  '#ca8a04',
+  purple:  '#7c3aed',
+  gray:    '#6b7280',
+  orange:  '#ea580c',
+  excellent: '#16a34a',
+  good:      '#ca8a04',
+  average:   '#ea580c',
+  poor:      '#dc2626',
 };
 
-// ─── Status Config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-  [LeadStatus.PENDING]: { color: COLORS.primary, text: 'Pending', icon: <ClockCircleOutlined />, tagClass: 'tag-pending' },
-  [LeadStatus.GAIN]: { color: COLORS.success, text: 'Gain', icon: <TrophyOutlined />, tagClass: 'tag-gain' },
-  [LeadStatus.LOSS]: { color: COLORS.error, text: 'Loss', icon: <CloseCircleOutlined />, tagClass: 'tag-loss' },
-  [LeadStatus.NO_RESPONSE]: { color: COLORS.gray, text: 'No Response', icon: <BellOutlined />, tagClass: 'tag-noresponse' },
-  [LeadStatus.NOT_INTERESTED]: { color: COLORS.warning, text: 'Not Interested', icon: <CloseCircleOutlined />, tagClass: 'tag-notinterested' },
-  [LeadStatus.JUNK_LEAD]: { color: COLORS.purple, text: 'Junk', icon: <WarningOutlined />, tagClass: 'tag-junk' },
+  [LeadStatus.PENDING]:       { color: C.blue,   text: 'Pending',       icon: <ClockCircleOutlined /> },
+  [LeadStatus.GAIN]:          { color: C.green,  text: 'Won',           icon: <TrophyOutlined /> },
+  [LeadStatus.LOSS]:          { color: C.red,    text: 'Lost',          icon: <CloseCircleOutlined /> },
+  [LeadStatus.NO_RESPONSE]:   { color: C.gray,   text: 'No Response',   icon: <BellOutlined /> },
+  [LeadStatus.NOT_INTERESTED]:{ color: C.yellow, text: 'Not Interested',icon: <CloseCircleOutlined /> },
+  [LeadStatus.JUNK_LEAD]:     { color: C.purple, text: 'Junk',          icon: <WarningOutlined /> },
 };
 
-const ALL_STATUSES = [
-  { value: 'all', label: 'All', color: COLORS.primary, icon: <AppstoreOutlined /> },
-  { value: LeadStatus.PENDING, label: 'Pending', color: COLORS.primary, icon: <ClockCircleOutlined /> },
-  { value: LeadStatus.GAIN, label: 'Gain', color: COLORS.success, icon: <TrophyOutlined /> },
-  { value: LeadStatus.LOSS, label: 'Loss', color: COLORS.error, icon: <CloseCircleOutlined /> },
-  { value: LeadStatus.NO_RESPONSE, label: 'No Response', color: COLORS.gray, icon: <BellOutlined /> },
-  { value: LeadStatus.NOT_INTERESTED, label: 'Not Interested', color: COLORS.warning, icon: <CloseCircleOutlined /> },
-  { value: LeadStatus.JUNK_LEAD, label: 'Junk', color: COLORS.purple, icon: <WarningOutlined /> },
+const STATUS_LIST = [
+  { value: 'all',                      label: 'All',          color: C.blue,   icon: <AppstoreOutlined /> },
+  { value: LeadStatus.PENDING,         label: 'Pending',      color: C.blue,   icon: <ClockCircleOutlined /> },
+  { value: LeadStatus.GAIN,            label: 'Won',          color: C.green,  icon: <TrophyOutlined /> },
+  { value: LeadStatus.LOSS,            label: 'Lost',         color: C.red,    icon: <CloseCircleOutlined /> },
+  { value: LeadStatus.NO_RESPONSE,     label: 'No Response',  color: C.gray,   icon: <BellOutlined /> },
+  { value: LeadStatus.NOT_INTERESTED,  label: 'Not Interested',color:C.yellow, icon: <CloseCircleOutlined /> },
+  { value: LeadStatus.JUNK_LEAD,       label: 'Junk',         color: C.purple, icon: <WarningOutlined /> },
 ];
 
-// ─── Chart Colors ─────────────────────────────────────────────────────────────
-const CHART_COLORS = [
-  COLORS.primary, COLORS.success, COLORS.error, COLORS.warning, COLORS.gray, COLORS.purple, COLORS.cyan
-];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 const formatTime = (seconds) => {
   if (!seconds || seconds <= 0) return '—';
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+  if (seconds < 60)    return `${Math.round(seconds)}s`;
+  if (seconds < 3600)  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
   if (seconds < 86400) return `${(seconds / 3600).toFixed(1)}h`;
   return `${(seconds / 86400).toFixed(1)}d`;
 };
 
-const getStatusConfig = (status) =>
-  STATUS_CONFIG[status] || { color: COLORS.gray, text: status || 'Unknown', icon: <WarningOutlined /> };
+const perfColor = (rate) =>
+  rate >= 70 ? C.excellent : rate >= 50 ? C.good : rate >= 30 ? C.average : C.poor;
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const inlineStyles = `
-  .spa-stat-card { position:relative; border-radius:14px!important; overflow:hidden; transition:transform .15s,box-shadow .15s; }
-  .spa-stat-card:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(0,0,0,.10)!important; }
-  .spa-stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:4px; }
-  .spa-stat-card.blue::before { background:linear-gradient(90deg,#1890ff,#096dd9); }
-  .spa-stat-card.cyan::before { background:linear-gradient(90deg,#13c2c2,#006d75); }
-  .spa-stat-card.green::before { background:linear-gradient(90deg,#52c41a,#389e0d); }
-  .spa-stat-card.purple::before { background:linear-gradient(90deg,#722ed1,#531dab); }
+const perfBg = (rate) =>
+  rate >= 70 ? '#f0fdf4' : rate >= 50 ? '#fefce8' : rate >= 30 ? '#fff7ed' : '#fef2f2';
 
-  .spa-status-card { background:#fafafa; border:2px solid #f0f0f0; border-radius:12px; padding:12px 8px; text-align:center; cursor:pointer; transition:all .18s; }
-  .spa-status-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.08); }
-  .spa-status-card.active { background:#fff; border-color:#1890ff; box-shadow:0 2px 8px rgba(24,144,255,.2); }
-  .spa-status-card .sc-icon { font-size:20px; margin-bottom:6px; }
-  .spa-status-card .sc-count { font-size:22px; font-weight:700; font-family:monospace; }
-  .spa-status-card .sc-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.4px; margin-top:4px; }
+// ─── Inline styles ────────────────────────────────────────────────────────────
+const CSS = `
+  .spa-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 
-  .spa-seller-card { background:#fafafa; border:1.5px solid #f0f0f0; border-radius:14px; padding:14px 16px; margin-bottom:10px; cursor:pointer; transition:all .15s; }
-  .spa-seller-card:hover { border-color:#1890ff; transform:translateY(-2px); box-shadow:0 6px 18px rgba(24,144,255,.10); }
-  .spa-seller-card.selected { border-color:#1890ff; background:#e6f7ff; }
+  /* KPI cards */
+  .kpi-card {
+    border-radius: 14px !important;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform .18s, box-shadow .18s;
+    border: none !important;
+  }
+  .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.12) !important; }
+  .kpi-card::after {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .kpi-blue::after   { background: linear-gradient(90deg,#1d6fa8,#2563eb); }
+  .kpi-green::after  { background: linear-gradient(90deg,#16a34a,#15803d); }
+  .kpi-yellow::after { background: linear-gradient(90deg,#ca8a04,#d97706); }
+  .kpi-purple::after { background: linear-gradient(90deg,#7c3aed,#6d28d9); }
+  .kpi-red::after    { background: linear-gradient(90deg,#dc2626,#b91c1c); }
+  .kpi-orange::after { background: linear-gradient(90deg,#ea580c,#c2410c); }
 
-  .spa-mini-stat { background:#fff; border:1px solid #f0f0f0; border-radius:10px; padding:8px 6px; text-align:center; }
-  .spa-mini-stat .val { font-size:14px; font-weight:700; font-family:monospace; }
-  .spa-mini-stat .lbl { font-size:9px; color:#8c8c8c; text-transform:uppercase; margin-top:2px; }
+  /* Status pills */
+  .status-pill {
+    background: #f8f9fb;
+    border: 1.5px solid #e8eaed;
+    border-radius: 12px;
+    padding: 10px 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .16s;
+    min-width: 76px;
+  }
+  .status-pill:hover  { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.09); }
+  .status-pill.active { background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.1); }
 
-  .spa-lead-card { background:#fff; border:1px solid #f0f0f0; border-radius:12px; padding:12px 14px; margin-bottom:8px; transition:box-shadow .15s; cursor:pointer; }
-  .spa-lead-card:hover { box-shadow:0 3px 10px rgba(0,0,0,.08); border-color:#1890ff; }
+  /* Seller cards (mobile) */
+  .seller-card {
+    background: #fff;
+    border: 1.5px solid #f0f0f0;
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .seller-card:hover  { border-color: #1d6fa8; box-shadow: 0 6px 18px rgba(29,111,168,.12); }
+  .seller-card.active { border-color: #1d6fa8; background: #eff6ff; }
 
-  .tag-pill { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; padding:3px 10px; border-radius:20px; border:1px solid transparent; }
-  .tag-pending { background:#e6f4ff; color:#0958d9; border-color:#91caff; }
-  .tag-gain { background:#f6ffed; color:#237804; border-color:#b7eb8f; }
-  .tag-loss { background:#fff2f0; color:#a8071a; border-color:#ffccc7; }
-  .tag-noresponse { background:#f5f5f5; color:#434343; border-color:#d9d9d9; }
-  .tag-notinterested { background:#fffbe6; color:#ad4e00; border-color:#ffe58f; }
-  .tag-junk { background:#f9f0ff; color:#391085; border-color:#d3adf7; }
+  /* Lead card */
+  .lead-card {
+    background: #fff;
+    border: 1px solid #f0f0f0;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: box-shadow .15s;
+  }
+  .lead-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.09); border-color: #1d6fa8; }
 
-  .seller-table .ant-table-thead>tr>th { background:#f8f9fb; font-weight:600; border-bottom:2px solid #e8f0fe; }
-  .seller-table .ant-table-tbody>tr:hover>td { background:#e6f4ff20; }
-  .lead-table .ant-table-thead>tr>th { background:#f8f9fb; font-weight:600; }
+  /* Chart card */
+  .chart-card {
+    border-radius: 16px !important;
+    border: 1px solid #f0f0f0 !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,.05) !important;
+  }
+
+  /* Tag pill */
+  .tag-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px;
+  }
+
+  /* Header gradient */
+  .spa-header {
+    background: linear-gradient(135deg,#0c1f44 0%,#164070 60%,#1a5296 100%);
+    border-radius: 18px;
+    padding: 22px 28px;
+    margin-bottom: 20px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .spa-header::before {
+    content:''; position:absolute; top:-70px; right:-70px;
+    width:220px; height:220px; border-radius:50%;
+    background: rgba(29,111,168,.18);
+  }
+  .spa-header::after {
+    content:''; position:absolute; bottom:-80px; left:-60px;
+    width:260px; height:260px; border-radius:50%;
+    background: rgba(124,58,237,.14);
+  }
+
+  /* Date range filter bar */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: #fff;
+    border: 1px solid #f0f0f0;
+    border-radius: 14px;
+    padding: 12px 18px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  }
+  .period-btn {
+    padding: 5px 16px;
+    border-radius: 20px;
+    border: 1.5px solid #e5e7eb;
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    transition: all .15s;
+  }
+  .period-btn.active {
+    background: #1d6fa8;
+    border-color: #1d6fa8;
+    color: #fff;
+  }
+
+  /* My performance card */
+  .my-perf-card {
+    background: linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);
+    border-radius: 18px !important;
+    border: none !important;
+    margin-bottom: 20px;
+  }
+  .my-perf-stat { text-align:center; cursor:pointer; padding: 8px; border-radius: 10px; transition: background .15s; }
+  .my-perf-stat:hover { background: rgba(255,255,255,.12); }
 `;
 
-// ─── Stat Card Component ──────────────────────────────────────────────────────
-const StatCard = ({ title, value, suffix, icon, colorKey, loading, onClick }) => (
-  <Card className={`spa-stat-card ${colorKey}`} bodyStyle={{ padding: '20px' }} onClick={onClick}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-      <div>
-        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.5px' }}>
-          {title}
-        </Text>
-        <div style={{ fontSize: 30, fontWeight: 700, color: COLORS[colorKey === 'blue' ? 'primary' : colorKey === 'green' ? 'success' : colorKey === 'purple' ? 'purple' : 'cyan'], marginTop: 6, fontFamily: 'monospace' }}>
-          {loading ? <Skeleton.Input active size="small" /> : value}
-          {suffix && <span style={{ fontSize: 15, fontWeight: 400, color: COLORS.gray }}> {suffix}</span>}
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+const KpiCard = ({ title, value, icon, colorKey, loading, onClick, trend, trendVal }) => {
+  const iconBg  = { blue:'#eff6ff', green:'#f0fdf4', yellow:'#fefce8', purple:'#faf5ff', red:'#fef2f2', orange:'#fff7ed' };
+  const iconClr = { blue:C.blue,   green:C.green,   yellow:C.yellow,  purple:C.purple,  red:C.red,   orange:C.orange };
+  return (
+    <Card
+      className={`kpi-card kpi-${colorKey}`}
+      bodyStyle={{ padding: '18px 20px', position: 'relative' }}
+      onClick={onClick}
+      style={{ background: '#fff', position: 'relative' }}
+    >
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+        <div style={{ flex:1, minWidth:0 }}>
+          <Text style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.6px', color:'#9ca3af' }}>
+            {title}
+          </Text>
+          <div style={{ fontSize:30, fontWeight:700, marginTop:6, fontFamily:'monospace', color:'#111827' }}>
+            {loading ? <Skeleton.Input active size="small" style={{ width:60 }} /> : value}
+          </div>
+          {trend && (
+            <div style={{ marginTop:6 }}>
+              <Tag
+                color={trend === 'up' ? 'success' : 'error'}
+                style={{ borderRadius:10, fontSize:10 }}
+              >
+                {trend === 'up' ? <RiseOutlined /> : <FallOutlined />} {trendVal}
+              </Tag>
+            </div>
+          )}
+        </div>
+        <div style={{
+          width:44, height:44, borderRadius:12, flexShrink:0,
+          background: iconBg[colorKey] || '#f3f4f6',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          fontSize:20, color: iconClr[colorKey] || C.gray,
+        }}>
+          {icon}
         </div>
       </div>
-      <div style={{
-        width: 44, height: 44, borderRadius: 12,
-        background: colorKey === 'blue' ? '#e6f4ff' : colorKey === 'cyan' ? '#e6fffb' : colorKey === 'green' ? '#f6ffed' : '#f9f0ff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
-        color: colorKey === 'blue' ? COLORS.primary : colorKey === 'cyan' ? COLORS.cyan : colorKey === 'green' ? COLORS.success : COLORS.purple,
-      }}>
-        {icon}
-      </div>
-    </div>
-  </Card>
-);
+    </Card>
+  );
+};
 
-// ─── Status Filter Card Component ─────────────────────────────────────────────
-const StatusFilterCard = ({ status, config, count, isActive, onClick }) => (
+const StatusPill = ({ status, config, count, isActive, onClick }) => (
   <div
-    className={`spa-status-card ${isActive ? 'active' : ''}`}
-    style={{ borderColor: isActive ? config?.color : '#f0f0f0' }}
-    onClick={() => onClick(status === 'all' ? 'all' : status)}
+    className={`status-pill ${isActive ? 'active' : ''}`}
+    style={{ borderColor: isActive ? config?.color : '#e8eaed' }}
+    onClick={() => onClick(status)}
   >
-    <div className="sc-icon" style={{ color: config?.color || COLORS.primary }}>
-      {config?.icon || <AppstoreOutlined />}
-    </div>
-    <div className="sc-count" style={{ color: config?.color || COLORS.primary }}>
-      {count}
-    </div>
-    <div className="sc-label" style={{ color: config?.color || COLORS.primary }}>
+    <div style={{ color: config?.color || C.blue, fontSize: 18 }}>{config?.icon || <AppstoreOutlined />}</div>
+    <div style={{ color: config?.color || C.blue, fontSize: 20, fontWeight: 700, margin: '2px 0' }}>{count}</div>
+    <div style={{ color: config?.color || C.blue, fontSize: 10, fontWeight: 600, lineHeight: 1.2 }}>
       {config?.text || (status === 'all' ? 'All' : status)}
     </div>
   </div>
 );
 
-// ─── Pie Chart Component ──────────────────────────────────────────────────────
-const StatusPieChart = ({ statusCounts, totalLeads, onSliceClick }) => {
-  const chartData = ALL_STATUSES.filter(s => s.value !== 'all').map(status => ({
-    name: status.label,
-    value: statusCounts[status.value] || 0,
-    color: status.color,
-    statusValue: status.value
-  }));
+// Monthly pipeline bar chart
+const PipelineChart = ({ leads, dateRange }) => {
+  const data = useMemo(() => {
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const m = dayjs().subtract(i, 'month');
+      const label = m.format('MMM');
+      const monthLeads = leads.filter(l => {
+        const d = l.CreationDate?.toDate?.() || l.CreationDate;
+        return d && dayjs(d).format('YYYY-MM') === m.format('YYYY-MM');
+      });
+      months.push({
+        month: label,
+        Assigned: monthLeads.filter(l => l.seller_id && l.seller_id !== 'unassigned').length,
+        Won:      monthLeads.filter(l => l.status === LeadStatus.GAIN).length,
+        Lost:     monthLeads.filter(l => l.status === LeadStatus.LOSS).length,
+      });
+    }
+    return months;
+  }, [leads]);
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height={240}>
+      <BarChart data={data} barCategoryGap="30%" barGap={2}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+        <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+        <RechartsTooltip
+          contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 16px rgba(0,0,0,.12)', fontSize: 12 }}
+        />
+        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+        <Bar dataKey="Assigned" fill="#bfdbfe" radius={[4,4,0,0]} />
+        <Bar dataKey="Won"      fill="#bbf7d0" radius={[4,4,0,0]} />
+        <Bar dataKey="Lost"     fill="#fecaca" radius={[4,4,0,0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+};
+
+// View rate horizontal bar chart
+const ViewRateChart = ({ sellers }) => {
+  const data = [...sellers]
+    .sort((a, b) => b.viewRate - a.viewRate)
+    .slice(0, 8)
+    .map(s => ({
+      name: s.name.split(' ')[0],
+      rate: s.viewRate,
+      fill: perfColor(s.viewRate),
+    }));
+
+  return (
+    <ResponsiveContainer width="100%" height={Math.max(data.length * 36 + 40, 200)}>
+      <BarChart data={data} layout="vertical" margin={{ left: 0, right: 20 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+        <XAxis type="number" domain={[0,100]} tick={{ fontSize:11, fill:'#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
+        <YAxis type="category" dataKey="name" tick={{ fontSize:11, fill:'#374151' }} axisLine={false} tickLine={false} width={64} />
+        <RechartsTooltip
+          formatter={v => [`${v}%`, 'View rate']}
+          contentStyle={{ borderRadius:10, border:'none', boxShadow:'0 4px 16px rgba(0,0,0,.12)', fontSize:12 }}
+        />
+        <Bar dataKey="rate" radius={[0,4,4,0]}>
+          {data.map((entry, i) => (
+            <Cell key={i} fill={entry.fill} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+};
+
+// Avg response time chart
+const ResponseChart = ({ sellers }) => {
+  const data = [...sellers]
+    .filter(s => s.avgResponse > 0)
+    .sort((a, b) => a.avgResponse - b.avgResponse)
+    .slice(0, 8)
+    .map(s => ({
+      name: s.name.split(' ')[0],
+      hours: parseFloat((s.avgResponse / 3600).toFixed(1)),
+    }));
+
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={data} barCategoryGap="40%">
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+        <XAxis dataKey="name" tick={{ fontSize:11, fill:'#9ca3af' }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fontSize:11, fill:'#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v=>`${v}h`} />
+        <RechartsTooltip
+          formatter={v => [`${v}h`, 'Avg response']}
+          contentStyle={{ borderRadius:10, border:'none', boxShadow:'0 4px 16px rgba(0,0,0,.12)', fontSize:12 }}
+        />
+        <Bar dataKey="hours" fill="#bfdbfe" radius={[4,4,0,0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+};
+
+// Conversion trend line chart
+const TrendChart = ({ leads }) => {
+  const data = useMemo(() => {
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const m = dayjs().subtract(i, 'month');
+      const monthLeads = leads.filter(l => {
+        const d = l.CreationDate?.toDate?.() || l.CreationDate;
+        return d && dayjs(d).format('YYYY-MM') === m.format('YYYY-MM');
+      });
+      const total = monthLeads.length;
+      const won   = monthLeads.filter(l => l.status === LeadStatus.GAIN).length;
+      months.push({
+        month: m.format('MMM'),
+        rate: total > 0 ? Math.round((won / total) * 100) : 0,
+      });
+    }
+    return months;
+  }, [leads]);
+
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+        <XAxis dataKey="month" tick={{ fontSize:11, fill:'#9ca3af' }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fontSize:11, fill:'#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v=>`${v}%`} domain={[0,100]} />
+        <RechartsTooltip
+          formatter={v => [`${v}%`, 'Conversion']}
+          contentStyle={{ borderRadius:10, border:'none', boxShadow:'0 4px 16px rgba(0,0,0,.12)', fontSize:12 }}
+        />
+        <Line
+          type="monotone" dataKey="rate" stroke={C.green}
+          strokeWidth={2.5} dot={{ fill:C.green, r:4 }} activeDot={{ r:6 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+};
+
+// Status donut
+const StatusDonut = ({ counts }) => {
+  const data = STATUS_LIST
+    .filter(s => s.value !== 'all' && (counts[s.value] || 0) > 0)
+    .map(s => ({ name: s.label, value: counts[s.value] || 0, color: s.color }));
+
+  return (
+    <ResponsiveContainer width="100%" height={220}>
       <PieChart>
         <Pie
-          data={chartData}
-          cx="50%"
-          cy="50%"
-          innerRadius={60}
-          outerRadius={90}
-          paddingAngle={2}
-          dataKey="value"
-          label={({ name, percent }) => percent > 0 ? `${name}: ${(percent * 100).toFixed(0)}%` : ''}
-          labelLine={{ stroke: COLORS.gray, strokeWidth: 1 }}
-          onClick={(data) => onSliceClick(data.statusValue)}
-          cursor="pointer"
+          data={data} cx="50%" cy="50%"
+          innerRadius={55} outerRadius={85}
+          paddingAngle={2} dataKey="value"
+          label={({ percent }) => percent > 0.05 ? `${(percent*100).toFixed(0)}%` : ''}
+          labelLine={false}
         >
-          {chartData.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={entry.color} stroke={COLORS.white} strokeWidth={2} />
+          {data.map((entry, i) => (
+            <Cell key={i} fill={entry.color} stroke="#fff" strokeWidth={2} />
           ))}
         </Pie>
-        <RechartsTooltip formatter={(value, name) => [`${value} leads`, name]} />
-        <Legend verticalAlign="bottom" height={36} />
+        <RechartsTooltip
+          contentStyle={{ borderRadius:10, border:'none', boxShadow:'0 4px 16px rgba(0,0,0,.12)', fontSize:12 }}
+        />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
       </PieChart>
     </ResponsiveContainer>
   );
 };
 
-// ─── Seller Card Component ────────────────────────────────────────────────────
-const SellerCard = ({ seller, rank, onClick, isSelected }) => {
-  const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null;
-  const avatarColors = ['#1890ff', '#722ed1', '#13c2c2', '#52c41a', '#fa8c16', '#eb2f96'];
-  const avatarColor = avatarColors[(rank - 1) % avatarColors.length];
-  const initials = seller.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+// Performance distribution donut (by seller view rate tier)
+const PerfDonut = ({ sellers }) => {
+  const tiers = [
+    { name:'Excellent ≥70%', value: sellers.filter(s=>s.viewRate>=70).length,  color:C.excellent },
+    { name:'Good 50–69%',    value: sellers.filter(s=>s.viewRate>=50&&s.viewRate<70).length, color:C.good },
+    { name:'Average 30–49%', value: sellers.filter(s=>s.viewRate>=30&&s.viewRate<50).length, color:C.average },
+    { name:'Poor <30%',      value: sellers.filter(s=>s.viewRate<30).length,   color:C.poor },
+  ].filter(t => t.value > 0);
 
   return (
-    <div className={`spa-seller-card ${isSelected ? 'selected' : ''}`} onClick={() => onClick(seller)}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 10, background: avatarColor,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontWeight: 700, fontSize: 14, marginRight: 12, flexShrink: 0,
-        }}>
-          {initials}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {rankIcon && <span>{rankIcon}</span>}
-            {seller.name}
-          </div>
-          <Text type="secondary" style={{ fontSize: 11 }}>{seller.role}</Text>
-        </div>
-        <Badge count={seller.totalAssigned} showZero color={avatarColor} />
-      </div>
-
-      <Row gutter={[8, 8]} style={{ marginBottom: 10 }}>
-        <Col span={8}>
-          <div className="spa-mini-stat">
-            <div className="val" style={{ color: COLORS.primary }}>{seller.totalAssigned}</div>
-            <div className="lbl">Assigned</div>
-          </div>
-        </Col>
-        <Col span={8}>
-          <div className="spa-mini-stat">
-            <div className="val" style={{ color: COLORS.success }}>{seller.viewedCount}/{seller.totalAssigned}</div>
-            <div className="lbl">Viewed</div>
-          </div>
-        </Col>
-        <Col span={8}>
-          <div className="spa-mini-stat">
-            <div className="val" style={{ color: seller.avgResponse <= 7200 ? COLORS.success : COLORS.warning }}>
-              {seller.avgResponse > 0 ? formatTime(seller.avgResponse) : '—'}
-            </div>
-            <div className="lbl">Avg Resp.</div>
-          </div>
-        </Col>
-      </Row>
-
-      <div style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 10, padding: '8px 10px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-          <Text type="secondary" style={{ fontSize: 11 }}>View Rate</Text>
-          <Text style={{ fontSize: 12, fontWeight: 600, color: COLORS.success }}>{seller.viewRate}%</Text>
-        </div>
-        <Progress percent={seller.viewRate} size="small" strokeColor={{ from: '#52c41a', to: '#73d13d' }} showInfo={false} />
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
-        {Object.entries(seller.statusCount || {}).filter(([_, count]) => count > 0).slice(0, 3).map(([status, count]) => {
-          const cfg = getStatusConfig(status);
-          return (
-            <span key={status} className={`tag-pill ${STATUS_CONFIG[status]?.tagClass || ''}`}>
-              {cfg.icon} {cfg.text}: {count}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-// ─── Lead Card Component ──────────────────────────────────────────────────────
-const LeadCard = ({ lead, onViewHistory, leadType }) => {
-  const config = getStatusConfig(lead.status);
-  const isOwnLead = leadType === 'own';
-
-  return (
-    <div className="spa-lead-card" onClick={(e) => { e.stopPropagation(); onViewHistory(lead); }}>
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-          {lead.name || 'Unknown'}
-          {isOwnLead && <span className="tag-pill tag-gain" style={{ fontSize: 10 }}>My Lead</span>}
-        </div>
-        <Text type="secondary" style={{ fontSize: 11 }}>{lead.email}</Text>
-        {lead.phoneNumber && !isOwnLead && (
-          <div style={{ fontSize: 11, color: COLORS.success, marginTop: 3 }}>
-            <PhoneOutlined /> {lead.phoneNumber}
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span className={`tag-pill ${config.tagClass || ''}`}>
-          {config.icon} {config.text}
-        </span>
-        {!isOwnLead && (
-          <Badge status={lead.isViewed ? 'success' : 'warning'} text={lead.isViewed ? 'Revealed' : 'Hidden'} />
-        )}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        {!isOwnLead && lead.responseTime > 0 && (
-          <Tag color={lead.responseTime <= 7200 ? 'success' : 'warning'} style={{ borderRadius: 12, fontSize: 11 }}>
-            {formatTime(lead.responseTime)}
-          </Tag>
-        )}
-        <Text type="secondary" style={{ fontSize: 11 }}>
-          {lead.assignedAt || lead.CreationDate ? dayjs(lead.assignedAt || lead.CreationDate).format('MMM DD') : '—'}
-        </Text>
-        <Button size="small" icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); onViewHistory(lead); }} style={{ borderRadius: 20 }} />
-      </div>
-    </div>
+    <ResponsiveContainer width="100%" height={200}>
+      <PieChart>
+        <Pie
+          data={tiers} cx="50%" cy="50%"
+          innerRadius={50} outerRadius={80}
+          paddingAngle={2} dataKey="value"
+          label={({ percent }) => percent > 0.05 ? `${(percent*100).toFixed(0)}%` : ''}
+          labelLine={false}
+        >
+          {tiers.map((t, i) => <Cell key={i} fill={t.color} stroke="#fff" strokeWidth={2} />)}
+        </Pie>
+        <RechartsTooltip contentStyle={{ borderRadius:10, border:'none', boxShadow:'0 4px 16px rgba(0,0,0,.12)', fontSize:12 }} />
+      </PieChart>
+    </ResponsiveContainer>
   );
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-const SellerPerformanceAnalytics = () => {
-  const [sellers, setSellers] = useState([]);
-  const [allLeads, setAllLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchText, setSearchText] = useState('');
-  const [selectedSeller, setSelectedSeller] = useState(null);
-  const [drawerVisible, setDrawerVisible] = useState(false);
-  const [sellerLeads, setSellerLeads] = useState([]);
-  const [sellerOwnLeads, setSellerOwnLeads] = useState([]);
-  const [selectedLead, setSelectedLead] = useState(null);
-  const [leadHistory, setLeadHistory] = useState([]);
-  const [historyModalVisible, setHistoryModalVisible] = useState(false);
-  const [leadTypeFilter, setLeadTypeFilter] = useState('assigned');
-  const [statusFilter, setStatusFilter] = useState('all');
-  
-  // Modal states
-  const [filteredLeadsList, setFilteredLeadsList] = useState([]);
-  const [showLeadsModal, setShowLeadsModal] = useState(false);
-  const [modalTitle, setModalTitle] = useState('');
-  const [leadTypeModalFilter, setLeadTypeModalFilter] = useState('all');
-  const [currentModalStatus, setCurrentModalStatus] = useState('all');
+const LeadsPerformanceAnalytics = () => {
+  const [sellers, setSellers]                   = useState([]);
+  const [allLeads, setAllLeads]                 = useState([]);
+  const [loading, setLoading]                   = useState(true);
+  const [searchText, setSearchText]             = useState('');
+  const [selectedSeller, setSelectedSeller]     = useState(null);
+  const [drawerVisible, setDrawerVisible]       = useState(false);
+  const [sellerLeads, setSellerLeads]           = useState([]);
+  const [sellerOwnLeads, setSellerOwnLeads]     = useState([]);
+  const [selectedLead, setSelectedLead]         = useState(null);
+  const [leadHistory, setLeadHistory]           = useState([]);
+  const [historyVisible, setHistoryVisible]     = useState(false);
+  const [leadTypeFilter, setLeadTypeFilter]     = useState('assigned');
+  const [statusFilter, setStatusFilter]         = useState('all');
+  const [currentUserLeads, setCurrentUserLeads] = useState([]);
+  const [currentUserStats, setCurrentUserStats] = useState(null);
 
-  const user = useSelector(state => state.auth.user);
+  // Modal
+  const [modalLeads, setModalLeads]   = useState([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle]   = useState('');
+
+  // Date range filter
+  const [period, setPeriod]           = useState('month');   // 'month'|'quarter'|'year'|'custom'
+  const [customRange, setCustomRange] = useState(null);      // [dayjs, dayjs] | null
+
+  const user      = useSelector(state => state.auth.user);
   const companyId = user?.company_id;
-  const screens = useBreakpoint();
-  const isMobile = !screens.md;
+  const screens   = useBreakpoint();
+  const isMobile  = !screens.md;
 
-  // Aggregate status counts across all sellers
-  const globalStatusCounts = sellers.reduce((acc, s) => {
-    Object.entries(s.statusCount || {}).forEach(([k, v]) => {
-      acc[k] = (acc[k] || 0) + v;
+  // ── Date range bounds ──────────────────────────────────────────────────────
+  const dateRange = useMemo(() => {
+    if (period === 'custom' && customRange) return customRange;
+    const end   = dayjs();
+    const start = period === 'month'   ? dayjs().startOf('month')
+                : period === 'quarter' ? dayjs().startOf('quarter')
+                :                        dayjs().startOf('year');
+    return [start, end];
+  }, [period, customRange]);
+
+  // Filter leads by date range
+  const filteredLeads = useMemo(() => {
+    const [start, end] = dateRange;
+    return allLeads.filter(l => {
+      const d = l.CreationDate?.toDate?.() || l.CreationDate;
+      if (!d) return true;
+      return dayjs(d).isBetween(start, end, null, '[]');
     });
-    return acc;
-  }, {});
+  }, [allLeads, dateRange]);
 
+  // Filter sellers by date range (re-compute stats on filtered leads)
+  const filteredSellers = useMemo(() => {
+    if (!allLeads.length) return sellers;
+    const [start, end] = dateRange;
+    return sellers.map(s => {
+      const sLeads = filteredLeads.filter(l =>
+        l.seller_id === s.id || l.createdBy === s.id
+      );
+      const assigned = sLeads.filter(l => l.seller_id === s.id && l.createdBy !== s.id);
+      const gain  = assigned.filter(l => l.status === LeadStatus.GAIN).length;
+      const loss  = assigned.filter(l => l.status === LeadStatus.LOSS).length;
+      return {
+        ...s,
+        // keep original stats but re-derive counts from filtered leads
+        _filteredAssigned: assigned.length,
+        _filteredGain: gain,
+        _filteredLoss: loss,
+        _conversionRate: assigned.length > 0 ? Math.round((gain / assigned.length) * 100) : 0,
+      };
+    }).filter(s => s.name.toLowerCase().includes(searchText.toLowerCase()));
+  }, [sellers, filteredLeads, searchText, dateRange]);
+
+  // ── Global counts ──────────────────────────────────────────────────────────
+  const globalStatusCounts = useMemo(() =>
+    sellers.reduce((acc, s) => {
+      Object.entries(s.statusCount || {}).forEach(([k, v]) => {
+        acc[k] = (acc[k] || 0) + v;
+      });
+      return acc;
+    }, {}),
+  [sellers]);
+
+  const totalAssigned = sellers.reduce((s, r) => s + r.totalAssigned, 0);
+  const totalViewed   = sellers.reduce((s, r) => s + r.viewedCount,   0);
+  const overallViewRate = totalAssigned > 0
+    ? ((totalViewed / totalAssigned) * 100).toFixed(1)
+    : '0.0';
+  const totalGain = sellers.reduce((s, r) => s + (r.gainCount || 0), 0);
+  const totalLoss = sellers.reduce((s, r) => s + (r.lossCount || 0), 0);
+
+  const assignedCount   = filteredLeads.filter(l => l.seller_id && l.seller_id !== '' && l.seller_id !== 'unassigned').length;
+  const ownCount        = filteredLeads.filter(l => l.createdBy && l.createdBy !== '').length;
+  const unassignedCount = filteredLeads.filter(l =>
+    (!l.seller_id || l.seller_id === '' || l.seller_id === 'unassigned') &&
+    (!l.createdBy || l.createdBy === '')
+  ).length;
+
+  // ── Lead reveal event ──────────────────────────────────────────────────────
   const getLeadRevealEvent = async (leadId, sellerId) => {
     try {
       const history = await LeadHistoryService.getLeadHistory(leadId);
-      const revealEvent = history.find(h =>
+      const found = history.find(h =>
         (h.type === 'view' || h.type === 'reveal' || h.eventType === 'LEAD_VIEWED') &&
         (h.sellerId === sellerId || h.userId === sellerId || h.createdBy?.id === sellerId)
       );
-      if (revealEvent) return revealEvent;
-      const q = query(collection(db, 'leadHistory'), where('leadId', '==', leadId), where('userId', '==', sellerId));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const data = snapshot.docs[0].data();
-        return { createdAt: data.timestamp || data.createdAt };
+      if (found) return found;
+      const q = query(
+        collection(db, 'leadHistory'),
+        where('leadId', '==', leadId),
+        where('userId', '==', sellerId)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const d = snap.docs[0].data();
+        return { createdAt: d.timestamp || d.createdAt };
       }
       const leadDoc = await LeadsService.getLeadById(leadId);
       if (leadDoc?.revealedAt && leadDoc.revealedBy === sellerId) {
         return { createdAt: leadDoc.revealedAt };
       }
       return null;
-    } catch (error) {
-      console.error('Error getting reveal event:', error);
-      return null;
-    }
+    } catch { return null; }
   };
 
+  // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchAllLeads = useCallback(async () => {
     if (!companyId) return;
     try {
-      const allLeadsData = await LeadsService.getCompanyLeads(companyId);
-      setAllLeads(allLeadsData);
-    } catch (error) {
-      console.error('Error fetching all leads:', error);
-    }
+      const data = await LeadsService.getCompanyLeads(companyId);
+      setAllLeads(data);
+    } catch (e) { console.error(e); }
   }, [companyId]);
+
+  const fetchCurrentUserLeads = useCallback(async () => {
+    if (!companyId || !user?.uid) return;
+    try {
+      const userLeads    = await LeadsService.getSellerLeads(companyId, user.uid);
+      const assignedLeads = userLeads.filter(l => l.seller_id === user.uid && l.createdBy !== user.uid);
+      const ownLeads      = userLeads.filter(l => l.createdBy === user.uid);
+
+      let totalResponseSeconds = 0, responseCount = 0;
+      const assignedWithInfo = await Promise.all(assignedLeads.map(async (lead) => {
+        const rev = await getLeadRevealEvent(lead.id, user.uid);
+        let responseTime = null;
+        const assignedAt = lead.assignedAt?.toDate?.() || lead.assignedAt || null;
+        if (rev && assignedAt) {
+          const viewedAt = rev.createdAt?.toDate?.() || rev.createdAt || new Date();
+          responseTime = (new Date(viewedAt) - new Date(assignedAt)) / 1000;
+        }
+        if (responseTime > 0) { totalResponseSeconds += responseTime; responseCount++; }
+        return { ...lead, responseTime: responseTime > 0 ? responseTime : null, isViewed: !!rev, assignedAt };
+      }));
+
+      const all = [...assignedWithInfo, ...ownLeads];
+      setCurrentUserLeads(all);
+      const viewedCount = assignedWithInfo.filter(l => l.isViewed).length;
+      setCurrentUserStats({
+        totalAssigned: assignedLeads.length,
+        totalOwn:      ownLeads.length,
+        viewedCount,
+        viewRate: assignedLeads.length > 0 ? (viewedCount / assignedLeads.length) * 100 : 0,
+        avgResponse: responseCount > 0 ? totalResponseSeconds / responseCount : 0,
+        gainCount: all.filter(l => l.status === LeadStatus.GAIN).length,
+        lossCount: all.filter(l => l.status === LeadStatus.LOSS).length,
+      });
+    } catch (e) { console.error(e); }
+  }, [companyId, user?.uid]);
 
   const fetchSellers = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     try {
-      const allUsers = await UserService.getUsersByCompanyId(companyId);
+      const allUsers  = await UserService.getUsersByCompanyId(companyId);
       const salesTeam = allUsers.filter(u =>
         [UserRoles.SELLER, UserRoles.SALES_EXECUTIVE, UserRoles.AGENT].includes(u.Role)
       );
 
-      const sellersWithStats = await Promise.all(salesTeam.map(async (seller) => {
-        const allLeads = await LeadsService.getSellerLeads(companyId, seller.id);
-        const ownLeads = allLeads.filter(l => l.createdBy === seller.id);
-        const assignedLeads = allLeads.filter(l => l.seller_id === seller.id && l.createdBy !== seller.id);
-        let viewedCount = 0, totalResponseSeconds = 0, responseCount = 0;
-        let statusCount = {};
-        Object.keys(STATUS_CONFIG).forEach(s => statusCount[s] = 0);
+      const withStats = await Promise.all(salesTeam.map(async (seller) => {
+        const leads       = await LeadsService.getSellerLeads(companyId, seller.id);
+        const ownLeads    = leads.filter(l => l.createdBy === seller.id);
+        const assigned    = leads.filter(l => l.seller_id === seller.id && l.createdBy !== seller.id);
+        let viewedCount = 0, totalResp = 0, respCount = 0;
+        const statusCount = Object.fromEntries(Object.keys(STATUS_CONFIG).map(k => [k, 0]));
+        let gainCount = 0, lossCount = 0;
 
-        for (const lead of assignedLeads) {
-          if (lead.status) statusCount[lead.status] = (statusCount[lead.status] || 0) + 1;
-          const revealEvent = await getLeadRevealEvent(lead.id, seller.id);
-          if (revealEvent) {
+        for (const lead of assigned) {
+          if (lead.status) {
+            statusCount[lead.status] = (statusCount[lead.status] || 0) + 1;
+            if (lead.status === LeadStatus.GAIN) gainCount++;
+            if (lead.status === LeadStatus.LOSS) lossCount++;
+          }
+          const rev = await getLeadRevealEvent(lead.id, seller.id);
+          if (rev) {
             viewedCount++;
-            let assignedAt = lead.assignedAt?.toDate?.() || lead.assignedAt || lead.CreationDate?.toDate?.() || lead.CreationDate || null;
-            const viewedAt = revealEvent.createdAt?.toDate?.() || revealEvent.createdAt || new Date();
+            const assignedAt = lead.assignedAt?.toDate?.() || lead.assignedAt ||
+              lead.CreationDate?.toDate?.() || lead.CreationDate || null;
+            const viewedAt = rev.createdAt?.toDate?.() || rev.createdAt || new Date();
             if (assignedAt) {
-              const responseSeconds = (new Date(viewedAt) - new Date(assignedAt)) / 1000;
-              if (responseSeconds > 0 && responseSeconds < 2592000) {
-                totalResponseSeconds += responseSeconds;
-                responseCount++;
-              }
+              const secs = (new Date(viewedAt) - new Date(assignedAt)) / 1000;
+              if (secs > 0 && secs < 2592000) { totalResp += secs; respCount++; }
             }
           }
         }
 
         return {
-          id: seller.id,
-          name: `${seller.firstname || ''} ${seller.lastname || ''}`.trim() || seller.email,
-          role: seller.Role,
-          totalAssigned: assignedLeads.length,
-          ownLeads: ownLeads.length,
+          id:            seller.id,
+          name:          `${seller.firstname || ''} ${seller.lastname || ''}`.trim() || seller.email,
+          role:          seller.Role,
+          totalAssigned: assigned.length,
+          ownLeads:      ownLeads.length,
           viewedCount,
-          viewRate: assignedLeads.length > 0 ? Math.round((viewedCount / assignedLeads.length) * 100) : 0,
-          avgResponse: responseCount > 0 ? Math.round(totalResponseSeconds / responseCount) : 0,
+          viewRate:      assigned.length > 0 ? Math.round((viewedCount / assigned.length) * 100) : 0,
+          avgResponse:   respCount > 0 ? Math.round(totalResp / respCount) : 0,
           statusCount,
+          gainCount,
+          lossCount,
+          conversionRate: assigned.length > 0 ? Math.round((gainCount / assigned.length) * 100) : 0,
         };
       }));
 
-      setSellers(sellersWithStats.sort((a, b) => b.totalAssigned - a.totalAssigned));
-    } catch (error) {
-      console.error(error);
+      setSellers(withStats.sort((a, b) => b.totalAssigned - a.totalAssigned));
+    } catch (e) {
+      console.error(e);
       message.error('Failed to load sellers');
     } finally {
       setLoading(false);
@@ -464,345 +714,287 @@ const SellerPerformanceAnalytics = () => {
   useEffect(() => {
     fetchSellers();
     fetchAllLeads();
-  }, [fetchSellers, fetchAllLeads]);
+    fetchCurrentUserLeads();
+  }, [fetchSellers, fetchAllLeads, fetchCurrentUserLeads]);
 
-  // Helper functions for counts
-  const getAssignedLeadsCount = () => {
-    return allLeads.filter(l => l.seller_id && l.seller_id !== '' && l.seller_id !== 'unassigned').length;
+  // ── Modals ─────────────────────────────────────────────────────────────────
+  const openModal = (leads, title) => {
+    setModalLeads(leads);
+    setModalTitle(title);
+    setModalVisible(true);
   };
 
-  const getOwnLeadsCount = () => {
-    return allLeads.filter(l => l.createdBy && l.createdBy !== '').length;
+  const handleKpiClick = (type) => {
+    const map = {
+      assigned:   [filteredLeads.filter(l => l.seller_id && l.seller_id !== '' && l.seller_id !== 'unassigned'), 'Assigned Leads'],
+      own:        [filteredLeads.filter(l => l.createdBy && l.createdBy !== ''), 'Own Leads'],
+      unassigned: [filteredLeads.filter(l => (!l.seller_id || l.seller_id === '' || l.seller_id === 'unassigned') && (!l.createdBy || l.createdBy === '')), 'Unassigned Leads'],
+      gain:       [filteredLeads.filter(l => l.status === LeadStatus.GAIN), 'Won Leads'],
+      loss:       [filteredLeads.filter(l => l.status === LeadStatus.LOSS), 'Lost Leads'],
+      all:        [filteredLeads, 'All Leads'],
+    };
+    const [leads, title] = map[type] || map.all;
+    openModal(leads, `${title} (${leads.length})`);
   };
 
-  const getUnassignedLeadsCount = () => {
-    return allLeads.filter(l => 
-      (!l.seller_id || l.seller_id === '' || l.seller_id === 'unassigned') && 
-      (!l.createdBy || l.createdBy === '')
-    ).length;
-  };
-
-  // Handle status filter click - show all leads with that status
-  const handleStatusFilterClick = (status) => {
-    setCurrentModalStatus(status);
-    setLeadTypeModalFilter('all');
-    
-    let filtered = [];
+  const handleStatusClick = (status) => {
     if (status === 'all') {
-      filtered = allLeads;
-      setModalTitle(`All Leads (${filtered.length})`);
+      openModal(allLeads, `All Leads (${allLeads.length})`);
     } else {
-      filtered = allLeads.filter(lead => lead.status === status);
-      const statusConfig = STATUS_CONFIG[status];
-      setModalTitle(`${statusConfig?.text || status} Leads (${filtered.length})`);
+      const cfg  = STATUS_CONFIG[status];
+      const list = allLeads.filter(l => l.status === status);
+      openModal(list, `${cfg?.text || status} Leads (${list.length})`);
     }
-    setFilteredLeadsList(filtered);
-    setShowLeadsModal(true);
   };
 
-  // Handle lead type filter click in modal
-  const handleModalTypeFilter = (type) => {
-    setLeadTypeModalFilter(type);
-    
-    let filtered = [];
-    
-    if (type === 'assigned') {
-      filtered = allLeads.filter(l => l.seller_id && l.seller_id !== '' && l.seller_id !== 'unassigned');
-    } else if (type === 'own') {
-      filtered = allLeads.filter(l => l.createdBy && l.createdBy !== '');
-    } else if (type === 'unassigned') {
-      filtered = allLeads.filter(l => 
-        (!l.seller_id || l.seller_id === '' || l.seller_id === 'unassigned') && 
-        (!l.createdBy || l.createdBy === '')
-      );
-    } else {
-      filtered = allLeads;
-    }
-    
-    // Apply status filter if needed
-    if (currentModalStatus && currentModalStatus !== 'all') {
-      filtered = filtered.filter(lead => lead.status === currentModalStatus);
-    }
-    
-    setFilteredLeadsList(filtered);
-    
-    // Update modal title
-    const typeLabel = type === 'assigned' ? 'Assigned' : type === 'own' ? 'Own' : type === 'unassigned' ? 'Unassigned' : 'All';
-    const statusLabel = currentModalStatus !== 'all' ? STATUS_CONFIG[currentModalStatus]?.text || currentModalStatus : '';
-    setModalTitle(`${typeLabel} ${statusLabel} Leads (${filtered.length})`);
+  const handleUserStatClick = (type) => {
+    const map = {
+      assigned: currentUserLeads.filter(l => l.seller_id === user?.uid && l.createdBy !== user?.uid),
+      own:      currentUserLeads.filter(l => l.createdBy === user?.uid),
+      gain:     currentUserLeads.filter(l => l.status === LeadStatus.GAIN),
+      loss:     currentUserLeads.filter(l => l.status === LeadStatus.LOSS),
+    };
+    const leads = map[type] || currentUserLeads;
+    openModal(leads, `My ${type.charAt(0).toUpperCase() + type.slice(1)} Leads (${leads.length})`);
   };
 
+  // ── Seller drawer ──────────────────────────────────────────────────────────
   const handleViewSeller = async (seller) => {
     setSelectedSeller(seller);
     setDrawerVisible(true);
     setLeadTypeFilter('assigned');
     setStatusFilter('all');
-
     try {
-      const allLeadsData = await LeadsService.getSellerLeads(companyId, seller.id);
-      const assignedLeads = allLeadsData.filter(l => l.seller_id === seller.id && l.createdBy !== seller.id);
-      const ownLeads = allLeadsData.filter(l => l.createdBy === seller.id);
+      const all      = await LeadsService.getSellerLeads(companyId, seller.id);
+      const assigned = all.filter(l => l.seller_id === seller.id && l.createdBy !== seller.id);
+      const own      = all.filter(l => l.createdBy === seller.id);
 
-      const assignedWithInfo = await Promise.all(assignedLeads.map(async (lead) => {
-        const revealEvent = await getLeadRevealEvent(lead.id, seller.id);
-        let responseTime = null;
+      const assignedWithInfo = await Promise.all(assigned.map(async (lead) => {
+        const rev = await getLeadRevealEvent(lead.id, seller.id);
         const assignedAt = lead.assignedAt?.toDate?.() || lead.assignedAt || null;
-        if (revealEvent && assignedAt) {
-          const viewedAt = revealEvent.createdAt?.toDate?.() || revealEvent.createdAt || new Date();
+        let responseTime = null;
+        if (rev && assignedAt) {
+          const viewedAt = rev.createdAt?.toDate?.() || rev.createdAt || new Date();
           responseTime = (new Date(viewedAt) - new Date(assignedAt)) / 1000;
         }
-        return { ...lead, responseTime: responseTime > 0 ? responseTime : null, isViewed: !!revealEvent, assignedAt };
-      }));
-
-      const ownWithInfo = ownLeads.map(lead => ({
-        ...lead, isOwnLead: true, assignedAt: lead.CreationDate?.toDate?.() || lead.CreationDate
+        return { ...lead, responseTime: responseTime > 0 ? responseTime : null, isViewed: !!rev, assignedAt };
       }));
 
       setSellerLeads(assignedWithInfo);
-      setSellerOwnLeads(ownWithInfo);
-    } catch (error) {
-      console.error(error);
-      message.error('Failed to load leads');
-    }
+      setSellerOwnLeads(own.map(l => ({ ...l, isOwnLead: true })));
+    } catch (e) { console.error(e); message.error('Failed to load seller leads'); }
   };
 
-  const handleViewLeadHistory = async (lead) => {
+  // ── Lead history ──────────────────────────────────────────────────────────
+  const handleViewHistory = async (lead) => {
     setSelectedLead(lead);
-    setHistoryModalVisible(true);
+    setHistoryVisible(true);
     try {
-      let history = await LeadHistoryService.getLeadHistory(lead.id);
-      const q = query(collection(db, 'leadHistory'), where('leadId', '==', lead.id));
-      const snapshot = await getDocs(q);
-      snapshot.forEach(doc => {
-        history.push({ ...doc.data(), createdAt: doc.data().timestamp?.toDate?.() || doc.data().createdAt });
+      let hist = await LeadHistoryService.getLeadHistory(lead.id);
+      const snap = await getDocs(query(collection(db, 'leadHistory'), where('leadId', '==', lead.id)));
+      snap.forEach(doc => {
+        const d = doc.data();
+        hist.push({ ...d, createdAt: d.timestamp?.toDate?.() || d.createdAt });
       });
-      setLeadHistory(history.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    } catch (error) {
+      // deduplicate by createdAt+type
+      const seen = new Set();
+      hist = hist.filter(h => {
+        const key = `${h.type}-${h.createdAt}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setLeadHistory(hist.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    } catch {
       message.error('Failed to load history');
       setLeadHistory([]);
     }
   };
 
-  const getFilteredLeads = () => statusFilter === 'all' ? sellerLeads : sellerLeads.filter(l => l.status === statusFilter);
-  const getFilteredOwnLeads = () => statusFilter === 'all' ? sellerOwnLeads : sellerOwnLeads.filter(l => l.status === statusFilter);
+  // ── Export to Excel ────────────────────────────────────────────────────────
+  const handleExport = () => {
+    const rows = filteredSellers.map((s, i) => ({
+      Rank:             i + 1,
+      Name:             s.name,
+      Role:             s.role,
+      Assigned:         s.totalAssigned,
+      'Own Leads':      s.ownLeads,
+      Viewed:           s.viewedCount,
+      'View Rate (%)':  s.viewRate,
+      'Won':            s.gainCount,
+      'Lost':           s.lossCount,
+      'Conversion (%)': s.conversionRate,
+      'Avg Response':   formatTime(s.avgResponse),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sellers');
+    XLSX.writeFile(wb, `seller-performance-${dayjs().format('YYYY-MM-DD')}.xlsx`);
+  };
 
-  const filteredSellers = sellers.filter(s => s.name.toLowerCase().includes(searchText.toLowerCase()));
+  // ── Drawer lead filtering ──────────────────────────────────────────────────
+  const drawerAssigned = statusFilter === 'all'
+    ? sellerLeads
+    : sellerLeads.filter(l => l.status === statusFilter);
+  const drawerOwn = statusFilter === 'all'
+    ? sellerOwnLeads
+    : sellerOwnLeads.filter(l => l.status === statusFilter);
 
-  const totalAssigned = sellers.reduce((sum, s) => sum + s.totalAssigned, 0);
-  const totalViewed = sellers.reduce((sum, s) => sum + s.viewedCount, 0);
-  const overallViewRate = totalAssigned > 0 ? ((totalViewed / totalAssigned) * 100).toFixed(1) : '0.0';
-  const totalLeads = allLeads.length;
-
-  // Desktop seller table columns
+  // ── Table columns ──────────────────────────────────────────────────────────
   const columns = [
-    { title: 'Rank', key: 'rank', width: 70, fixed: 'left', render: (_, __, i) => (
-        <div style={{ textAlign: 'center', fontSize: 18 }}>
-          {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <Text style={{ fontWeight: 700 }}>{i + 1}</Text>}
+    {
+      title: '#', key: 'rank', width: 56,
+      render: (_, __, i) => (
+        <div style={{ textAlign:'center', fontSize:16 }}>
+          {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <Text type="secondary">{i+1}</Text>}
         </div>
-      )
+      ),
     },
-    { title: 'Seller', key: 'seller', width: 220, render: (_, r) => (
+    {
+      title: 'Seller', key: 'seller', width: 210,
+      render: (_, r) => (
         <Space>
-          <Avatar icon={<UserOutlined />} style={{ background: COLORS.primary }} />
+          <Avatar
+            style={{ background: perfBg(r.viewRate), color: perfColor(r.viewRate), fontWeight:700 }}
+          >
+            {r.name.charAt(0).toUpperCase()}
+          </Avatar>
           <div>
-            <div style={{ fontWeight: 600 }}>{r.name}</div>
-            <Text type="secondary" style={{ fontSize: 11 }}>{r.role}</Text>
+            <div style={{ fontWeight:600, fontSize:13 }}>{r.name}</div>
+            <Text type="secondary" style={{ fontSize:11 }}>{r.role}</Text>
           </div>
         </Space>
-      )
+      ),
     },
-    { title: <span><UserOutlined /> Assigned</span>, dataIndex: 'totalAssigned', width: 100, sorter: (a, b) => a.totalAssigned - b.totalAssigned,
-      render: v => <span style={{ fontSize: 18, fontWeight: 700, color: COLORS.primary, fontFamily: 'monospace' }}>{v}</span>
+    {
+      title: 'Assigned', dataIndex: 'totalAssigned', width: 90,
+      sorter: (a, b) => a.totalAssigned - b.totalAssigned,
+      render: v => <span style={{ fontWeight:700, color:C.blue, fontFamily:'monospace', fontSize:16 }}>{v}</span>,
     },
-    { title: <span><PlusOutlined /> Own</span>, dataIndex: 'ownLeads', width: 90, sorter: (a, b) => a.ownLeads - b.ownLeads,
-      render: v => <span style={{ fontSize: 16, fontWeight: 600, color: COLORS.success, fontFamily: 'monospace' }}>{v}</span>
+    {
+      title: 'Own', dataIndex: 'ownLeads', width: 72,
+      sorter: (a, b) => a.ownLeads - b.ownLeads,
+      render: v => <span style={{ fontWeight:600, color:C.green, fontFamily:'monospace' }}>{v}</span>,
     },
-    { title: <span><EyeOutlined /> Viewed</span>, key: 'viewed', width: 160, render: (_, r) => (
+    {
+      title: 'View rate', key: 'view', width: 170,
+      sorter: (a, b) => a.viewRate - b.viewRate,
+      render: (_, r) => (
         <div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.success, fontFamily: 'monospace' }}>{r.viewedCount} / {r.totalAssigned}</div>
-          <Progress percent={r.viewRate} size="small" strokeColor={{ from: '#52c41a', to: '#73d13d' }} showInfo={false} />
+          <div style={{ fontSize:13, fontWeight:600, color: perfColor(r.viewRate), marginBottom:4 }}>
+            {r.viewedCount}/{r.totalAssigned} &nbsp;
+            <Tag
+              style={{ borderRadius:10, fontSize:10, padding:'1px 8px',
+                background: perfBg(r.viewRate), color: perfColor(r.viewRate), border:'none' }}
+            >
+              {r.viewRate}%
+            </Tag>
+          </div>
+          <Progress
+            percent={r.viewRate} size="small"
+            strokeColor={perfColor(r.viewRate)} trailColor="#f3f4f6"
+            showInfo={false}
+          />
         </div>
-      )
+      ),
     },
-    { title: <span><HourglassOutlined /> Avg Response</span>, key: 'response', width: 140, render: (_, r) => (
-        <Tag color={r.avgResponse <= 7200 && r.avgResponse > 0 ? 'success' : r.avgResponse > 0 ? 'warning' : 'default'}
-          style={{ fontSize: 13, padding: '4px 12px', borderRadius: 20 }}>
-          {r.avgResponse > 0 ? formatTime(r.avgResponse) : '—'}
+    {
+      title: 'Conversion', dataIndex: 'conversionRate', width: 100,
+      sorter: (a, b) => a.conversionRate - b.conversionRate,
+      render: v => (
+        <Tag
+          style={{ borderRadius:12, fontSize:11, padding:'2px 10px', border:'none',
+            background: v>=50 ? '#f0fdf4' : v>=30 ? '#fefce8' : '#fef2f2',
+            color: v>=50 ? C.green : v>=30 ? C.yellow : C.red }}
+        >
+          {v}%
         </Tag>
-      )
+      ),
     },
-    { title: 'Actions', key: 'actions', width: 100, fixed: 'right', render: (_, r) => (
-        <Button type="primary" size="small" onClick={() => handleViewSeller(r)} icon={<EyeOutlined />} style={{ borderRadius: 20 }}>Details</Button>
-      )
-    }
+    {
+      title: 'Avg response', key: 'response', width: 130,
+      sorter: (a, b) => a.avgResponse - b.avgResponse,
+      render: (_, r) => r.avgResponse > 0 ? (
+        <Tag
+          style={{ borderRadius:16, fontSize:12, padding:'3px 12px', border:'none',
+            background: r.avgResponse<=7200 ? '#f0fdf4' : '#fefce8',
+            color: r.avgResponse<=7200 ? C.green : C.yellow }}
+        >
+          {formatTime(r.avgResponse)}
+        </Tag>
+      ) : <Text type="secondary">—</Text>,
+    },
+    {
+      title: '', key: 'action', width: 90,
+      render: (_, r) => (
+        <Button
+          type="primary" size="small"
+          icon={<EyeOutlined />}
+          onClick={e => { e.stopPropagation(); handleViewSeller(r); }}
+          style={{ borderRadius:16 }}
+        >
+          Details
+        </Button>
+      ),
+    },
   ];
 
-  // Lead columns for modal
-  const modalLeadColumns = [
-    { title: 'Name', dataIndex: 'name', width: 200, render: (v, r) => <div><div style={{ fontWeight: 600 }}>{v || 'Unknown'}</div><Text type="secondary" style={{ fontSize: 11 }}>{r.email}</Text></div> },
-    { title: 'Phone', dataIndex: 'phoneNumber', width: 120, render: v => v || '—' },
-    { title: 'Region', dataIndex: 'region', width: 100, render: v => v || '—' },
-    { title: 'Status', dataIndex: 'status', width: 120, render: v => {
-        const cfg = getStatusConfig(v);
-        return <span className={`tag-pill ${STATUS_CONFIG[v]?.tagClass || ''}`}>{cfg.text}</span>;
-      }
-    },
-    { title: 'Interest', dataIndex: 'InterestLevel', width: 100, render: level => {
-        const color = level === 'High' ? 'red' : level === 'Medium' ? 'orange' : 'blue';
-        return <Tag color={color}>{level || '—'}</Tag>;
-      }
-    },
-    { title: 'Seller', dataIndex: 'seller_id', width: 150, render: (v, r) => {
-        const seller = sellers.find(s => s.id === v);
-        return seller?.name || 'Unassigned';
-      }
-    },
-    { title: 'Created', dataIndex: 'CreationDate', width: 110, render: date => date ? dayjs(date).format('DD MMM YYYY') : '—' },
-    { title: 'Actions', key: 'history', width: 80, render: (_, r) => (
-        <Button size="small" icon={<HistoryOutlined />} onClick={() => handleViewLeadHistory(r)} type="link">History</Button>
-      )
-    }
+  const modalColumns = [
+    { title:'Name',    dataIndex:'name',        width:180, render:(v,r) => <div><div style={{fontWeight:600}}>{v||'Unknown'}</div><Text type="secondary" style={{fontSize:11}}>{r.email}</Text></div> },
+    { title:'Phone',   dataIndex:'phoneNumber', width:130, render:v=>v||'—' },
+    { title:'Region',  dataIndex:'region',      width:100, render:v=>v||'—' },
+    { title:'Status',  dataIndex:'status',      width:130, render:v=>{const c=STATUS_CONFIG[v];return c?<Tag style={{borderRadius:12,background:`${c.color}18`,color:c.color,border:'none'}}>{c.icon} {c.text}</Tag>:<Tag>{v}</Tag>;} },
+    { title:'Seller',  dataIndex:'seller_id',   width:150, render:v=>{const s=sellers.find(s=>s.id===v);return s?.name||'Unassigned';} },
+    { title:'Created', dataIndex:'CreationDate',width:110, render:d=>d?dayjs(d).format('DD MMM YYYY'):'—' },
+    { title:'',        key:'hist',              width:80,  render:(_,r)=><Button size="small" icon={<HistoryOutlined/>} onClick={()=>handleViewHistory(r)} type="link">History</Button> },
   ];
 
-  const currentAssignedLeads = getFilteredLeads();
-  const currentOwnLeads = getFilteredOwnLeads();
-  const drawerStatusCounts = selectedSeller?.statusCount || {};
-  const drawerTotalLeads = Object.values(drawerStatusCounts).reduce((a, b) => a + b, 0);
-
-  // ─── Assigned lead columns ─────────────────────────────────────────────────
-  const leadColumns = [
-    {
-      title: 'Lead', dataIndex: 'name', key: 'name', width: 220, fixed: 'left',
-      render: (v, r) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>{v || 'Unknown'}</div>
-          <Text type="secondary" style={{ fontSize: 11 }}>{r.email}</Text>
-          {r.phoneNumber && <div style={{ fontSize: 11, color: COLORS.success }}><PhoneOutlined /> {r.phoneNumber}</div>}
-        </div>
-      )
-    },
-    {
-      title: 'Status', dataIndex: 'status', key: 'status', width: 140,
-      render: v => <span className={`tag-pill ${STATUS_CONFIG[v]?.tagClass || ''}`}>{getStatusConfig(v).icon} {getStatusConfig(v).text}</span>,
-      filters: ALL_STATUSES.filter(s => s.value !== 'all').map(s => ({ text: s.label, value: s.value })),
-      onFilter: (value, record) => record.status === value,
-    },
-    {
-      title: 'Reveal Status', key: 'viewed', width: 130,
-      render: (_, r) => r.isViewed
-        ? <Badge status="success" text={<Text style={{ fontSize: 12 }}>Revealed</Text>} />
-        : <Badge status="warning" text={<Text style={{ fontSize: 12 }}>Hidden</Text>} />
-    },
-    {
-      title: 'Response Time', key: 'response', width: 130, sorter: (a, b) => (a.responseTime || 0) - (b.responseTime || 0),
-      render: (_, r) => {
-        if (!r.responseTime || r.responseTime <= 0) return '—';
-        return (
-          <Tag icon={r.responseTime <= 7200 ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
-            color={r.responseTime <= 7200 ? 'success' : 'warning'} style={{ borderRadius: 16 }}>
-            {formatTime(r.responseTime)}
-          </Tag>
-        );
-      }
-    },
-    {
-      title: 'Assigned Date', key: 'assigned', width: 130,
-      sorter: (a, b) => (a.assignedAt ? new Date(a.assignedAt) : 0) - (b.assignedAt ? new Date(b.assignedAt) : 0),
-      render: (_, r) => r.assignedAt
-        ? <Tooltip title={dayjs(r.assignedAt).format('YYYY-MM-DD HH:mm:ss')}>{dayjs(r.assignedAt).format('MMM DD, YYYY')}</Tooltip>
-        : '—'
-    },
-    {
-      title: 'Actions', key: 'history', width: 100, fixed: 'right',
-      render: (_, r) => <Button size="small" icon={<HistoryOutlined />} onClick={() => handleViewLeadHistory(r)} type="link">History</Button>
-    }
-  ];
-
-  // ─── Own lead columns ──────────────────────────────────────────────────────
-  const ownLeadColumns = [
-    {
-      title: 'Lead', dataIndex: 'name', key: 'name', width: 220, fixed: 'left',
-      render: (v, r) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>{v || 'Unknown'}</div>
-          <Text type="secondary" style={{ fontSize: 11 }}>{r.email}</Text>
-        </div>
-      )
-    },
-    {
-      title: 'Status', dataIndex: 'status', key: 'status', width: 140,
-      render: v => <span className={`tag-pill ${STATUS_CONFIG[v]?.tagClass || ''}`}>{getStatusConfig(v).icon} {getStatusConfig(v).text}</span>,
-      filters: ALL_STATUSES.filter(s => s.value !== 'all').map(s => ({ text: s.label, value: s.value })),
-      onFilter: (value, record) => record.status === value,
-    },
-    {
-      title: 'Created Date', key: 'created', width: 130,
-      render: (_, r) => r.CreationDate
-        ? <Tooltip title={dayjs(r.CreationDate).format('YYYY-MM-DD HH:mm:ss')}>{dayjs(r.CreationDate).format('MMM DD, YYYY')}</Tooltip>
-        : '—'
-    },
-    {
-      title: 'Interest', dataIndex: 'InterestLevel', key: 'interest', width: 100,
-      render: level => {
-        const color = level === 'High' ? 'red' : level === 'Medium' ? 'orange' : 'blue';
-        return <Tag color={color} style={{ borderRadius: 16 }}>{level || '—'}</Tag>;
-      }
-    },
-    {
-      title: 'Budget', dataIndex: 'Budget', key: 'budget', width: 140,
-      render: budget => budget ? `AED ${Number(budget).toLocaleString()}` : '—'
-    },
-    {
-      title: 'Actions', key: 'history', width: 100, fixed: 'right',
-      render: (_, r) => <Button size="small" icon={<HistoryOutlined />} onClick={() => handleViewLeadHistory(r)} type="link">History</Button>
-    }
-  ];
-
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: isMobile ? 12 : 24, background: '#f0f2f5', minHeight: '100vh' }}>
-      <style>{inlineStyles}</style>
+    <div className="spa-root" style={{ padding: isMobile ? 10 : 22, background:'#f5f6f8', minHeight:'100vh' }}>
+      <style>{CSS}</style>
 
-      {/* Header */}
-      <div style={{
-        background: 'linear-gradient(135deg, #0f2044 0%, #1a3a6b 55%, #1e4d8c 100%)',
-        borderRadius: 20, padding: isMobile ? '20px 18px' : '22px 32px',
-        marginBottom: 20, color: '#fff', position: 'relative', overflow: 'hidden',
-      }}>
-        <div style={{ position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: '50%', background: '#1890ff18' }} />
-        <div style={{ position: 'absolute', bottom: -80, left: -80, width: 280, height: 280, borderRadius: '50%', background: '#722ed118' }} />
-        <Row justify="space-between" align="middle" gutter={[16, 16]}>
+      {/* ── Header ── */}
+      <div className="spa-header">
+        <Row justify="space-between" align="middle" gutter={[12,12]}>
           <Col xs={24} md={16}>
-            <Space size={16} align="center">
+            <Space size={14} align="center">
               <div style={{
-                width: 52, height: 52, borderRadius: 14,
-                background: '#1890ff28', backdropFilter: 'blur(10px)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: '1px solid #1890ff44',
+                width:48, height:48, borderRadius:12,
+                background:'rgba(255,255,255,.12)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                border:'1px solid rgba(255,255,255,.2)',
               }}>
-                <DashboardOutlined style={{ fontSize: 26, color: '#60b8ff' }} />
+                <DashboardOutlined style={{ fontSize:24, color:'#93c5fd' }} />
               </div>
               <div>
-                <Title level={isMobile ? 4 : 2} style={{ margin: 0, color: '#fff', fontWeight: 700 }}>
-                  Seller Performance Analytics
+                <Title level={isMobile?4:3} style={{ margin:0, color:'#fff', fontWeight:700, lineHeight:1.2 }}>
+                  Lead tracking · View rates · Response times
                 </Title>
-                <Text style={{ color: '#a8c8e8', fontSize: isMobile ? 12 : 14 }}>
-                  Track assigned leads, reveal times & performance metrics
-                </Text>
+               
               </div>
             </Space>
           </Col>
           <Col xs={24} md={8}>
-            <Space direction={isMobile ? 'vertical' : 'horizontal'} style={{ width: '100%', justifyContent: 'flex-end' }}>
+            <Space wrap style={{ justifyContent: isMobile ? 'flex-start' : 'flex-end', width:'100%' }}>
               <Input
                 placeholder="Search seller..."
-                prefix={<SearchOutlined style={{ color: '#8ca8c8' }} />}
+                prefix={<SearchOutlined style={{ color:'#64748b' }} />}
                 value={searchText}
                 onChange={e => setSearchText(e.target.value)}
-                style={{ width: isMobile ? '100%' : 200, borderRadius: 10, background: '#ffffff18', border: '1px solid #ffffff30', color: '#fff' }}
-                allowClear size="large"
+                style={{ width:170, borderRadius:10, background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.25)' }}
+                allowClear
               />
-              <Button icon={<ReloadOutlined />} onClick={() => { fetchSellers(); fetchAllLeads(); }} loading={loading}
-                type="primary" size="large" style={{ borderRadius: 10 }}>
+              <Tooltip title="Export to Excel">
+                <Button icon={<DownloadOutlined />} onClick={handleExport}
+                  style={{ borderRadius:10, background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.25)', color:'#fff' }}
+                />
+              </Tooltip>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() => { fetchSellers(); fetchAllLeads(); fetchCurrentUserLeads(); }}
+                loading={loading} type="primary" style={{ borderRadius:10 }}
+              >
                 Refresh
               </Button>
             </Space>
@@ -810,296 +1002,540 @@ const SellerPerformanceAnalytics = () => {
         </Row>
       </div>
 
-      {/* Stat Cards */}
-      <Row gutter={[14, 14]} style={{ marginBottom: 20 }}>
-        <Col xs={12} sm={6}><StatCard title="Total Sellers" value={sellers.length} icon={<TeamOutlined />} colorKey="blue" loading={loading} /></Col>
-        <Col xs={12} sm={6}><StatCard title="Assigned Leads" value={totalAssigned} icon={<UserOutlined />} colorKey="cyan" loading={loading} /></Col>
-        <Col xs={12} sm={6}><StatCard title="Viewed / Revealed" value={totalViewed} suffix={`/ ${totalAssigned}`} icon={<EyeOutlined />} colorKey="green" loading={loading} /></Col>
-        <Col xs={12} sm={6}><StatCard title="Overall View Rate" value={overallViewRate} suffix="%" icon={<PercentageOutlined />} colorKey="purple" loading={loading} /></Col>
+      {/* ── Date range filter bar ── */}
+      <div className="filter-bar">
+        <FilterOutlined style={{ color:'#9ca3af', fontSize:14 }} />
+        <Text style={{ fontSize:12, color:'#6b7280', fontWeight:600 }}>Period:</Text>
+        {[['month','This month'],['quarter','This quarter'],['year','This year']].map(([k,l]) => (
+          <button
+            key={k}
+            className={`period-btn ${period === k ? 'active' : ''}`}
+            onClick={() => setPeriod(k)}
+          >{l}</button>
+        ))}
+        <RangePicker
+          size="small"
+          style={{ borderRadius:8, fontSize:12 }}
+          onChange={(dates) => {
+            if (dates) { setCustomRange(dates); setPeriod('custom'); }
+            else setPeriod('month');
+          }}
+          placeholder={['Start date','End date']}
+        />
+        {period !== 'month' && (
+          <Tag
+            color="blue"
+            closable
+            onClose={() => { setPeriod('month'); setCustomRange(null); }}
+            style={{ borderRadius:10, fontSize:11 }}
+          >
+            {period === 'custom' && customRange
+              ? `${customRange[0].format('DD MMM')} – ${customRange[1].format('DD MMM')}`
+              : period === 'quarter' ? 'This quarter' : 'This year'}
+          </Tag>
+        )}
+        <div style={{ marginLeft:'auto', fontSize:12, color:'#9ca3af' }}>
+          Showing <b style={{color:'#374151'}}>{filteredLeads.length}</b> of {allLeads.length} leads
+        </div>
+      </div>
+
+      {/* ── My Performance ── */}
+      {currentUserStats && currentUserStats.totalAssigned > 0 && (
+        <Card className="my-perf-card" bodyStyle={{ padding:'20px 24px' }}>
+          <Row gutter={[16,12]} align="middle">
+            <Col xs={24} md={5}>
+              <Space direction="vertical" align="center" style={{ width:'100%', textAlign:'center' }}>
+                <Avatar size={56} icon={<UserOutlined />}
+                  style={{ background:'rgba(255,255,255,.2)', border:'2px solid rgba(255,255,255,.4)' }}
+                />
+                <Text style={{ color:'#fff', fontWeight:700, fontSize:14 }}>My Performance</Text>
+                <Text style={{ color:'rgba(255,255,255,.7)', fontSize:12 }}>
+                  {user?.firstname} {user?.lastname}
+                </Text>
+              </Space>
+            </Col>
+            {[
+              { label:'Assigned',  val: currentUserStats.totalAssigned, color:'#e0f2fe', type:'assigned' },
+              { label:'Own',       val: currentUserStats.totalOwn,      color:'#d1fae5', type:'own' },
+              { label:'Won',       val: currentUserStats.gainCount,     color:'#bbf7d0', type:'gain' },
+              { label:'Lost',      val: currentUserStats.lossCount,     color:'#fecaca', type:'loss' },
+            ].map(item => (
+              <Col xs={6} md={3} key={item.label}>
+                <div className="my-perf-stat" onClick={() => handleUserStatClick(item.type)}>
+                  <div style={{ fontSize:26, fontWeight:700, color:'#fff' }}>{item.val}</div>
+                  <div style={{ fontSize:11, color:'rgba(255,255,255,.7)' }}>{item.label}</div>
+                </div>
+              </Col>
+            ))}
+            <Col xs={24} md={7}>
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                  <Text style={{ color:'rgba(255,255,255,.8)', fontSize:12 }}>View rate</Text>
+                  <Text style={{ color:'#fff', fontWeight:700 }}>{currentUserStats.viewRate.toFixed(1)}%</Text>
+                </div>
+                <Progress
+                  percent={currentUserStats.viewRate}
+                  strokeColor={{ from:'#34d399', to:'#059669' }}
+                  trailColor="rgba(255,255,255,.2)"
+                  showInfo={false}
+                />
+                <div style={{ display:'flex', justifyContent:'space-between', marginTop:8 }}>
+                  <Text style={{ color:'rgba(255,255,255,.7)', fontSize:11 }}>Avg response</Text>
+                  <Text style={{ color:'#fff', fontWeight:600, fontSize:12 }}>
+                    {formatTime(currentUserStats.avgResponse)}
+                  </Text>
+                </div>
+              </div>
+            </Col>
+          </Row>
+        </Card>
+      )}
+
+      {/* ── KPI row ── */}
+      <Row gutter={[12,12]} style={{ marginBottom:18 }}>
+        {[
+          { title:'Assigned Leads', value:assignedCount,   icon:<UserOutlined />,     colorKey:'blue',   type:'assigned' },
+          { title:'Own Leads',      value:ownCount,        icon:<PlusOutlined />,     colorKey:'green',  type:'own' },
+          { title:'Unassigned',     value:unassignedCount, icon:<WarningOutlined />,  colorKey:'yellow', type:'unassigned' },
+          { title:'Total Leads',    value:filteredLeads.length, icon:<AppstoreOutlined />, colorKey:'purple', type:'all' },
+        ].map(k => (
+          <Col xs={12} sm={6} key={k.title}>
+            <KpiCard {...k} loading={loading} onClick={() => handleKpiClick(k.type)} />
+          </Col>
+        ))}
       </Row>
 
-      {/* Pie Chart Row */}
-      <Card className="spa-stat-card blue" style={{ marginBottom: 20, borderRadius: 16 }}>
-        <div style={{ padding: '0 0 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-          <Space>
-            <PieChartOutlined style={{ fontSize: 20, color: COLORS.primary }} />
-            <span style={{ fontWeight: 600, fontSize: 16 }}>Lead Status Distribution</span>
-            <Tag color={COLORS.primary} style={{ borderRadius: 20 }}>{totalLeads} Total Leads</Tag>
-          </Space>
-        </div>
-        <StatusPieChart statusCounts={globalStatusCounts} totalLeads={totalLeads} onSliceClick={handleStatusFilterClick} />
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 16 }}>
-          {ALL_STATUSES.filter(s => s.value !== 'all').map(status => {
-            const count = globalStatusCounts[status.value] || 0;
-            const config = STATUS_CONFIG[status.value];
-            if (!config) return null;
-            return (
-              <div key={status.value} style={{ textAlign: 'center', minWidth: 80, padding: 8, background: `${config.color}10`, borderRadius: 10, cursor: 'pointer' }} onClick={() => handleStatusFilterClick(status.value)}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: config.color }}>{count}</div>
-                <div style={{ fontSize: 11, color: config.color }}>{config.text}</div>
-                <Progress percent={totalLeads ? (count / totalLeads) * 100 : 0} size="small" strokeColor={config.color} showInfo={false} />
+      {/* ── Performance metrics row ── */}
+      <Row gutter={[12,12]} style={{ marginBottom:18 }}>
+        {[
+          { label:'Lost Leads',        value:totalLoss,              bg:'linear-gradient(135deg,#dc2626,#b91c1c)', icon:<CloseCircleOutlined />, type:'loss' },
+          { label:'Won Leads',         value:totalGain,              bg:'linear-gradient(135deg,#16a34a,#15803d)', icon:<TrophyOutlined />,       type:'gain' },
+          { label:'Overall View Rate', value:`${overallViewRate}%`,  bg:'linear-gradient(135deg,#ca8a04,#b45309)', icon:<EyeOutlined />,          type:null  },
+          { label:'Active Sellers',    value:sellers.length,         bg:'linear-gradient(135deg,#7c3aed,#6d28d9)', icon:<TeamOutlined />,         type:null  },
+        ].map(m => (
+          <Col xs={12} md={6} key={m.label}>
+            <div
+              style={{ background:m.bg, borderRadius:14, padding:'14px 16px', color:'#fff', cursor:m.type?'pointer':'default' }}
+              onClick={() => m.type && handleKpiClick(m.type)}
+            >
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <div style={{ fontSize:26, fontWeight:700, lineHeight:1 }}>{m.value}</div>
+                  <div style={{ fontSize:11, opacity:.85, marginTop:4 }}>{m.label}</div>
+                </div>
+                <div style={{ fontSize:28, opacity:.7 }}>{m.icon}</div>
               </div>
+            </div>
+          </Col>
+        ))}
+      </Row>
+
+      {/* ── Status pills ── */}
+      <Card className="chart-card" bodyStyle={{ padding:'16px 20px' }} style={{ marginBottom:18 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <Text style={{ fontSize:12, fontWeight:600, color:'#6b7280', marginRight:4 }}>
+            Filter by status:
+          </Text>
+          {STATUS_LIST.map(s => {
+            const count = s.value === 'all'
+              ? allLeads.length
+              : (globalStatusCounts[s.value] || 0);
+            return (
+              <StatusPill
+                key={s.value}
+                status={s.value}
+                config={{ color:s.color, text:s.label, icon:s.icon }}
+                count={count}
+                isActive={false}
+                onClick={handleStatusClick}
+              />
             );
           })}
         </div>
       </Card>
 
-      {/* Sellers List */}
-      <Card
-        title={<Space><TeamOutlined style={{ color: COLORS.primary }} /><span style={{ fontWeight: 600 }}>Sellers Performance</span><Tag color={COLORS.primary} style={{ borderRadius: 20 }}>{filteredSellers.length} sellers</Tag></Space>}
-        style={{ borderRadius: 20, boxShadow: '0 2px 12px rgba(0,0,0,.06)', overflow: 'hidden' }}
-        bodyStyle={{ padding: 0 }}
-      >
-        <div style={{ padding: isMobile ? 12 : 20 }}>
-          {isMobile ? (
-            loading ? <Skeleton active avatar paragraph={{ rows: 3 }} />
-              : filteredSellers.length > 0 ? filteredSellers.map((seller, idx) => (
-                  <SellerCard key={seller.id} seller={seller} rank={idx + 1} onClick={handleViewSeller} isSelected={selectedSeller?.id === seller.id} />
-                )) : <Empty description="No sellers found" />
-          ) : (
-            <Table columns={columns} dataSource={filteredSellers} rowKey="id" loading={loading}
-              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: total => `Total ${total} sellers` }}
-              scroll={{ x: 1300 }} className="seller-table" bordered={false}
-              onRow={(record) => ({
-                onClick: () => handleViewSeller(record),
-                style: { cursor: 'pointer' }
+      {/* ── Charts row 1: Pipeline + Status donut ── */}
+      <Row gutter={[12,12]} style={{ marginBottom:18 }}>
+        <Col xs={24} md={14}>
+          <Card className="chart-card" bodyStyle={{ padding:'18px 20px' }}>
+            <div style={{ marginBottom:14 }}>
+              <Text style={{ fontWeight:700, fontSize:14, color:'#111827' }}>Monthly Lead Pipeline</Text>
+              <Text type="secondary" style={{ fontSize:11, marginLeft:8 }}>Last 6 months</Text>
+            </div>
+            <PipelineChart leads={allLeads} dateRange={dateRange} />
+          </Card>
+        </Col>
+        <Col xs={24} md={10}>
+          <Card className="chart-card" bodyStyle={{ padding:'18px 20px' }}>
+            <div style={{ marginBottom:10 }}>
+              <Text style={{ fontWeight:700, fontSize:14, color:'#111827' }}>
+                <PieChartOutlined style={{ color:C.blue, marginRight:6 }} />
+                Status Distribution
+              </Text>
+            </div>
+            <StatusDonut counts={globalStatusCounts} />
+            {/* Clickable count pills below donut */}
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:10, justifyContent:'center' }}>
+              {STATUS_LIST.filter(s=>s.value!=='all').map(s => {
+                const count = globalStatusCounts[s.value] || 0;
+                if (!count) return null;
+                return (
+                  <div
+                    key={s.value}
+                    onClick={() => handleStatusClick(s.value)}
+                    style={{ background:`${s.color}14`, borderRadius:8, padding:'4px 10px', cursor:'pointer', textAlign:'center', minWidth:64 }}
+                  >
+                    <div style={{ fontWeight:700, color:s.color, fontSize:16 }}>{count}</div>
+                    <div style={{ fontSize:10, color:s.color }}>{s.label}</div>
+                  </div>
+                );
               })}
-            />
-          )}
-        </div>
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ── Charts row 2: View rate + Response time ── */}
+      <Row gutter={[12,12]} style={{ marginBottom:18 }}>
+        <Col xs={24} md={12}>
+          <Card className="chart-card" bodyStyle={{ padding:'18px 20px' }}>
+            <div style={{ marginBottom:12 }}>
+              <Text style={{ fontWeight:700, fontSize:14, color:'#111827' }}>View Rate by Seller</Text>
+              <div style={{ display:'flex', gap:12, marginTop:6, fontSize:11, color:'#9ca3af' }}>
+                <span><span style={{ color:C.excellent }}>●</span> ≥70% excellent</span>
+                <span><span style={{ color:C.good }}>●</span> 50–69% good</span>
+                <span><span style={{ color:C.poor }}>●</span> &lt;50% low</span>
+              </div>
+            </div>
+            <ViewRateChart sellers={filteredSellers} />
+          </Card>
+        </Col>
+        <Col xs={24} md={12}>
+          <Card className="chart-card" bodyStyle={{ padding:'18px 20px' }}>
+            <div style={{ marginBottom:12 }}>
+              <Text style={{ fontWeight:700, fontSize:14, color:'#111827' }}>Avg Response Time (h)</Text>
+              <Text type="secondary" style={{ fontSize:11, marginLeft:8 }}>Sorted fastest → slowest</Text>
+            </div>
+            <ResponseChart sellers={filteredSellers} />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ── Charts row 3: Conversion trend + Perf donut ── */}
+      <Row gutter={[12,12]} style={{ marginBottom:18 }}>
+        <Col xs={24} md={14}>
+          <Card className="chart-card" bodyStyle={{ padding:'18px 20px' }}>
+            <div style={{ marginBottom:12 }}>
+              <Text style={{ fontWeight:700, fontSize:14, color:'#111827' }}>Conversion Rate Trend</Text>
+              <Text type="secondary" style={{ fontSize:11, marginLeft:8 }}>Last 6 months</Text>
+            </div>
+            <TrendChart leads={allLeads} />
+          </Card>
+        </Col>
+        <Col xs={24} md={10}>
+          <Card className="chart-card" bodyStyle={{ padding:'18px 20px' }}>
+            <div style={{ marginBottom:10 }}>
+              <Text style={{ fontWeight:700, fontSize:14, color:'#111827' }}>
+                <HeatMapOutlined style={{ color:C.orange, marginRight:6 }} />
+                Seller Performance Tiers
+              </Text>
+            </div>
+            <PerfDonut sellers={sellers} />
+            <Row gutter={[8,8]} style={{ marginTop:12 }}>
+              {[
+                { label:'Excellent', color:C.excellent, count:sellers.filter(s=>s.viewRate>=70).length },
+                { label:'Good',      color:C.good,      count:sellers.filter(s=>s.viewRate>=50&&s.viewRate<70).length },
+                { label:'Average',   color:C.average,   count:sellers.filter(s=>s.viewRate>=30&&s.viewRate<50).length },
+                { label:'Poor',      color:C.poor,      count:sellers.filter(s=>s.viewRate<30).length },
+              ].map(t => (
+                <Col span={6} key={t.label} style={{ textAlign:'center' }}>
+                  <div style={{ fontSize:20, fontWeight:700, color:t.color }}>{t.count}</div>
+                  <Text type="secondary" style={{ fontSize:10 }}>{t.label}</Text>
+                </Col>
+              ))}
+            </Row>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ── Sellers table ── */}
+      <Card
+        title={
+          <Space>
+            <TeamOutlined style={{ color:C.blue }} />
+            <span style={{ fontWeight:700 }}>Sellers Leaderboard</span>
+            <Tag style={{ borderRadius:20, background:'#eff6ff', color:C.blue, border:'none' }}>
+              {filteredSellers.length} sellers
+            </Tag>
+          </Space>
+        }
+        extra={
+          <Button size="small" icon={<DownloadOutlined />} onClick={handleExport}>
+            Export
+          </Button>
+        }
+        style={{ borderRadius:18, boxShadow:'0 2px 10px rgba(0,0,0,.06)', overflow:'hidden' }}
+        bodyStyle={{ padding: isMobile ? 10 : 16 }}
+      >
+        {isMobile ? (
+          loading
+            ? <Skeleton active avatar paragraph={{ rows:3 }} />
+            : filteredSellers.length > 0
+              ? filteredSellers.map((s, i) => (
+                  <div
+                    key={s.id}
+                    className={`seller-card ${selectedSeller?.id===s.id?'active':''}`}
+                    onClick={() => handleViewSeller(s)}
+                  >
+                    <div style={{ display:'flex', alignItems:'center', marginBottom:10 }}>
+                      <div style={{
+                        width:38, height:38, borderRadius:10,
+                        background: perfBg(s.viewRate),
+                        color: perfColor(s.viewRate),
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        fontWeight:700, marginRight:10, fontSize:15,
+                      }}>
+                        {s.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:600 }}>
+                          {i===0?'🥇 ':i===1?'🥈 ':i===2?'🥉 ':''}{s.name}
+                        </div>
+                        <Text type="secondary" style={{ fontSize:11 }}>{s.role}</Text>
+                      </div>
+                      <Badge count={s.totalAssigned} showZero color={perfColor(s.viewRate)} />
+                    </div>
+                    <Progress percent={s.viewRate} size="small" strokeColor={perfColor(s.viewRate)} trailColor="#f3f4f6" showInfo={false} />
+                    <div style={{ display:'flex', justifyContent:'space-between', marginTop:6 }}>
+                      <Text type="secondary" style={{ fontSize:11 }}>Viewed {s.viewedCount}/{s.totalAssigned}</Text>
+                      <Text type="secondary" style={{ fontSize:11 }}>Conv {s.conversionRate}%</Text>
+                    </div>
+                  </div>
+                ))
+              : <Empty description="No sellers found" />
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={filteredSellers}
+            rowKey="id"
+            loading={loading}
+            pagination={{ pageSize:10, showSizeChanger:true, showTotal:t=>`${t} sellers`, size:'small' }}
+            scroll={{ x:1100 }}
+            size="small"
+            bordered={false}
+            onRow={r => ({ onClick:()=>handleViewSeller(r), style:{ cursor:'pointer' } })}
+          />
+        )}
       </Card>
 
-      {/* Leads Modal - Shows when clicking on status filter */}
+      {/* ── Leads modal ── */}
       <Modal
-        title={<Space><PieChartOutlined style={{ color: COLORS.primary }} /><span>{modalTitle}</span></Space>}
-        open={showLeadsModal}
-        onCancel={() => setShowLeadsModal(false)}
+        title={<Space><PieChartOutlined style={{ color:C.blue }} /><span style={{ fontWeight:700 }}>{modalTitle}</span></Space>}
+        open={modalVisible}
+        onCancel={() => setModalVisible(false)}
         footer={null}
-        width={1200}
+        width={1100}
         destroyOnClose
       >
-        {/* Lead Type Filter Cards */}
-        <div style={{ marginBottom: 20, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          {/* Assigned Leads Card */}
-          <div 
-            className={`spa-status-card ${leadTypeModalFilter === 'assigned' ? 'active' : ''}`}
-            style={{ 
-              flex: 1, minWidth: 120, padding: '16px 12px',
-              borderColor: leadTypeModalFilter === 'assigned' ? COLORS.primary : '#f0f0f0',
-              cursor: 'pointer'
-            }}
-            onClick={() => handleModalTypeFilter('assigned')}
-          >
-            <div className="sc-icon" style={{ color: COLORS.primary, fontSize: 24 }}>
-              <UserOutlined />
-            </div>
-            <div className="sc-count" style={{ color: COLORS.primary, fontSize: 24 }}>
-              {getAssignedLeadsCount()}
-            </div>
-            <div className="sc-label" style={{ color: COLORS.primary }}>Assigned</div>
-          </div>
-
-          {/* Own Leads Card (Created by Seller) */}
-          <div 
-            className={`spa-status-card ${leadTypeModalFilter === 'own' ? 'active' : ''}`}
-            style={{ 
-              flex: 1, minWidth: 120, padding: '16px 12px',
-              borderColor: leadTypeModalFilter === 'own' ? COLORS.success : '#f0f0f0',
-              cursor: 'pointer'
-            }}
-            onClick={() => handleModalTypeFilter('own')}
-          >
-            <div className="sc-icon" style={{ color: COLORS.success, fontSize: 24 }}>
-              <PlusOutlined />
-            </div>
-            <div className="sc-count" style={{ color: COLORS.success, fontSize: 24 }}>
-              {getOwnLeadsCount()}
-            </div>
-            <div className="sc-label" style={{ color: COLORS.success }}>Own (Created)</div>
-          </div>
-
-          {/* Unassigned Leads Card */}
-          <div 
-            className={`spa-status-card ${leadTypeModalFilter === 'unassigned' ? 'active' : ''}`}
-            style={{ 
-              flex: 1, minWidth: 120, padding: '16px 12px',
-              borderColor: leadTypeModalFilter === 'unassigned' ? COLORS.warning : '#f0f0f0',
-              cursor: 'pointer'
-            }}
-            onClick={() => handleModalTypeFilter('unassigned')}
-          >
-            <div className="sc-icon" style={{ color: COLORS.warning, fontSize: 24 }}>
-              <WarningOutlined />
-            </div>
-            <div className="sc-count" style={{ color: COLORS.warning, fontSize: 24 }}>
-              {getUnassignedLeadsCount()}
-            </div>
-            <div className="sc-label" style={{ color: COLORS.warning }}>Unassigned</div>
-          </div>
-
-          {/* All Leads Card */}
-          <div 
-            className={`spa-status-card ${leadTypeModalFilter === 'all' ? 'active' : ''}`}
-            style={{ 
-              flex: 1, minWidth: 120, padding: '16px 12px',
-              borderColor: leadTypeModalFilter === 'all' ? COLORS.purple : '#f0f0f0',
-              cursor: 'pointer'
-            }}
-            onClick={() => handleModalTypeFilter('all')}
-          >
-            <div className="sc-icon" style={{ color: COLORS.purple, fontSize: 24 }}>
-              <AppstoreOutlined />
-            </div>
-            <div className="sc-count" style={{ color: COLORS.purple, fontSize: 24 }}>
-              {allLeads.length}
-            </div>
-            <div className="sc-label" style={{ color: COLORS.purple }}>All Leads</div>
-          </div>
-        </div>
-
-        {/* Reset Filter Button */}
-        {leadTypeModalFilter !== 'all' && (
-          <div style={{ marginBottom: 16, textAlign: 'right' }}>
-            <Button size="small" onClick={() => handleModalTypeFilter('all')} style={{ borderRadius: 20 }}>
-              Clear Filter
-            </Button>
-          </div>
-        )}
-
         <Table
-          columns={modalLeadColumns}
-          dataSource={filteredLeadsList}
+          columns={modalColumns}
+          dataSource={modalLeads}
           rowKey="id"
-          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: total => `Total ${total} leads` }}
-          scroll={{ x: 1000 }}
+          size="small"
+          pagination={{ pageSize:10, showSizeChanger:true, showTotal:t=>`${t} leads` }}
+          scroll={{ x:900 }}
         />
       </Modal>
 
-      {/* Seller Detail Drawer */}
+      {/* ── Seller detail drawer ── */}
       <Drawer
-        title={<Space><Avatar icon={<UserOutlined />} style={{ background: COLORS.primary }} /><span style={{ fontSize: 16, fontWeight: 600 }}>{selectedSeller?.name}</span><Tag color={COLORS.primary} style={{ borderRadius: 20 }}>{selectedSeller?.role}</Tag></Space>}
-        open={drawerVisible} onClose={() => setDrawerVisible(false)} width={isMobile ? '100%' : 1200}
-        placement="right" closable destroyOnClose className="spa-drawer" styles={{ body: { padding: 0 } }}
+        title={
+          <Space>
+            <Avatar style={{ background:C.blue }}>{selectedSeller?.name?.charAt(0)}</Avatar>
+            <span style={{ fontWeight:700, fontSize:15 }}>{selectedSeller?.name}</span>
+            <Tag style={{ borderRadius:16, background:'#eff6ff', color:C.blue, border:'none' }}>
+              {selectedSeller?.role}
+            </Tag>
+          </Space>
+        }
+        open={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+        width={isMobile?'100%':1100}
+        placement="right"
+        destroyOnClose
       >
-        {/* Drawer Stats */}
-        <Row gutter={[12, 12]} style={{ padding: '16px 20px', background: '#f8f9fb', borderBottom: '1px solid #f0f0f0' }}>
+        {/* Stats row */}
+        <Row gutter={[10,10]} style={{ padding:'14px 18px', background:'#f8f9fb', borderBottom:'1px solid #f0f0f0' }}>
           {[
-            { label: 'Assigned Leads', value: selectedSeller?.totalAssigned, colorKey: 'blue' },
-            { label: 'Own Leads', value: selectedSeller?.ownLeads, colorKey: 'green' },
-            { label: 'Viewed/Revealed', value: `${selectedSeller?.viewedCount}/${selectedSeller?.totalAssigned}`, colorKey: 'cyan' },
-            { label: 'View Rate', value: `${selectedSeller?.viewRate}%`, colorKey: 'purple' },
+            { label:'Assigned',    value:selectedSeller?.totalAssigned,               color:C.blue },
+            { label:'Own Leads',   value:selectedSeller?.ownLeads,                    color:C.green },
+            { label:'Viewed',      value:`${selectedSeller?.viewedCount}/${selectedSeller?.totalAssigned}`, color:perfColor(selectedSeller?.viewRate||0) },
+            { label:'View Rate',   value:`${selectedSeller?.viewRate}%`,              color:perfColor(selectedSeller?.viewRate||0) },
+            { label:'Conversion',  value:`${selectedSeller?.conversionRate}%`,        color:selectedSeller?.conversionRate>=50?C.green:selectedSeller?.conversionRate>=30?C.yellow:C.red },
+            { label:'Avg Response',value:formatTime(selectedSeller?.avgResponse),     color:C.blue },
           ].map(item => (
-            <Col xs={12} md={6} key={item.label}>
-              <StatCard title={item.label} value={item.value} colorKey={item.colorKey} loading={false} />
+            <Col xs={12} md={4} key={item.label}>
+              <div style={{ background:'#fff', borderRadius:12, padding:'10px 14px', textAlign:'center', border:'1px solid #f0f0f0' }}>
+                <div style={{ fontSize:20, fontWeight:700, color:item.color, fontFamily:'monospace' }}>{item.value}</div>
+                <Text type="secondary" style={{ fontSize:10 }}>{item.label}</Text>
+              </div>
             </Col>
           ))}
         </Row>
 
-        {/* Drawer Status Filter Cards */}
-        <div style={{ padding: '12px 20px', background: '#f8f9fb', borderBottom: '1px solid #f0f0f0' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-            <StatusFilterCard
-              status="all"
-              config={{ color: COLORS.primary, text: 'All', icon: <AppstoreOutlined /> }}
-              count={drawerTotalLeads}
-              isActive={statusFilter === 'all'}
-              onClick={() => setStatusFilter('all')}
+        {/* Status pills in drawer */}
+        <div style={{ padding:'12px 18px', background:'#f8f9fb', borderBottom:'1px solid #f0f0f0', display:'flex', gap:8, flexWrap:'wrap' }}>
+          <StatusPill
+            status="all"
+            config={{ color:C.blue, text:'All', icon:<AppstoreOutlined /> }}
+            count={selectedSeller ? Object.values(selectedSeller.statusCount||{}).reduce((a,b)=>a+b,0) : 0}
+            isActive={statusFilter==='all'}
+            onClick={() => setStatusFilter('all')}
+          />
+          {Object.entries(STATUS_CONFIG).map(([s, cfg]) => (
+            <StatusPill
+              key={s} status={s} config={cfg}
+              count={selectedSeller?.statusCount?.[s]||0}
+              isActive={statusFilter===s}
+              onClick={() => setStatusFilter(s)}
             />
-            {Object.entries(STATUS_CONFIG).map(([status, config]) => (
-              <StatusFilterCard
-                key={status}
-                status={status}
-                config={config}
-                count={drawerStatusCounts[status] || 0}
-                isActive={statusFilter === status}
-                onClick={() => setStatusFilter(status)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Lead Type Tabs */}
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 8 }}>
-          {[['assigned', 'Assigned Leads'], ['own', 'Created by Seller'], ['all', 'All Leads']].map(([val, label]) => (
-            <Button key={val} type={leadTypeFilter === val ? 'primary' : 'default'} size="small" onClick={() => setLeadTypeFilter(val)} style={{ borderRadius: 20 }}>
-              {label}
-            </Button>
           ))}
         </div>
 
-        <div style={{ padding: isMobile ? '12px' : '16px 20px' }}>
-          {/* Assigned Leads */}
-          {(leadTypeFilter === 'assigned' || leadTypeFilter === 'all') && sellerLeads.length > 0 && (
+        {/* Lead type buttons */}
+        <div style={{ padding:'10px 18px', borderBottom:'1px solid #f0f0f0', display:'flex', gap:8 }}>
+          {[['assigned','Assigned'],['own','Created by seller'],['all','All']].map(([v,l]) => (
+            <Button
+              key={v} size="small"
+              type={leadTypeFilter===v?'primary':'default'}
+              style={{ borderRadius:16 }}
+              onClick={() => setLeadTypeFilter(v)}
+            >{l}</Button>
+          ))}
+        </div>
+
+        <div style={{ padding: isMobile?10:'14px 18px' }}>
+          {/* Assigned leads */}
+          {(leadTypeFilter==='assigned'||leadTypeFilter==='all') && sellerLeads.length > 0 && (
             <>
-              <Divider orientation="left" style={{ margin: '0 0 12px' }}>
-                <Space><UserOutlined style={{ color: COLORS.primary }} /><span style={{ fontWeight: 600 }}>Assigned Leads</span><Tag color={COLORS.primary} style={{ borderRadius: 20 }}>{currentAssignedLeads.length} / {sellerLeads.length}</Tag></Space>
+              <Divider orientation="left" style={{ margin:'0 0 10px', fontSize:13 }}>
+                <Space>
+                  <UserOutlined style={{ color:C.blue }} />
+                  <span style={{ fontWeight:600 }}>Assigned Leads</span>
+                  <Tag style={{ borderRadius:16, background:'#eff6ff', color:C.blue, border:'none' }}>
+                    {drawerAssigned.length} / {sellerLeads.length}
+                  </Tag>
+                </Space>
               </Divider>
-              {isMobile ? currentAssignedLeads.map(lead => <LeadCard key={lead.id} lead={lead} leadType="assigned" onViewHistory={handleViewLeadHistory} />)
-                : <Table columns={leadColumns} dataSource={currentAssignedLeads} rowKey="id" pagination={{ pageSize: 10, showSizeChanger: true }} size="middle" scroll={{ x: 1000 }} className="lead-table" bordered={false} />}
-              {currentAssignedLeads.length === 0 && <Empty description="No leads match the status filter" />}
+              <Table
+                size="small"
+                dataSource={drawerAssigned}
+                rowKey="id"
+                pagination={{ pageSize:10, size:'small' }}
+                columns={[
+                  { title:'Lead',     dataIndex:'name',        render:(v,r)=><div><div style={{fontWeight:600}}>{v}</div><Text type="secondary" style={{fontSize:11}}>{r.email}</Text></div> },
+                  { title:'Status',   dataIndex:'status',      render:v=>{const c=STATUS_CONFIG[v];return c?<Tag style={{borderRadius:10,background:`${c.color}15`,color:c.color,border:'none',fontSize:11}}>{c.text}</Tag>:<Tag>{v}</Tag>;} },
+                  { title:'Revealed', dataIndex:'isViewed',    render:v=>v?<Badge status="success" text="Yes"/>:<Badge status="warning" text="No"/> },
+                  { title:'Response', dataIndex:'responseTime',render:v=>v?formatTime(v):'—' },
+                  { title:'',         render:(_,r)=><Button size="small" icon={<HistoryOutlined/>} onClick={()=>handleViewHistory(r)}>History</Button> },
+                ]}
+              />
             </>
           )}
 
-          {/* Own Leads */}
-          {(leadTypeFilter === 'own' || leadTypeFilter === 'all') && sellerOwnLeads.length > 0 && (
+          {/* Own leads */}
+          {(leadTypeFilter==='own'||leadTypeFilter==='all') && sellerOwnLeads.length > 0 && (
             <>
-              <Divider orientation="left" style={{ margin: '16px 0 12px' }}>
-                <Space><PlusOutlined style={{ color: COLORS.success }} /><span style={{ fontWeight: 600 }}>Leads Created by Seller</span><Tag color={COLORS.success} style={{ borderRadius: 20 }}>{currentOwnLeads.length} / {sellerOwnLeads.length}</Tag></Space>
+              <Divider orientation="left" style={{ margin:'16px 0 10px', fontSize:13 }}>
+                <Space>
+                  <PlusOutlined style={{ color:C.green }} />
+                  <span style={{ fontWeight:600 }}>Created by Seller</span>
+                  <Tag style={{ borderRadius:16, background:'#f0fdf4', color:C.green, border:'none' }}>
+                    {drawerOwn.length} / {sellerOwnLeads.length}
+                  </Tag>
+                </Space>
               </Divider>
-              {isMobile ? currentOwnLeads.map(lead => <LeadCard key={lead.id} lead={lead} leadType="own" onViewHistory={handleViewLeadHistory} />)
-                : <Table columns={ownLeadColumns} dataSource={currentOwnLeads} rowKey="id" pagination={{ pageSize: 10, showSizeChanger: true }} size="middle" scroll={{ x: 1000 }} className="lead-table" bordered={false} />}
-              {currentOwnLeads.length === 0 && <Empty description="No leads match the status filter" />}
+              <Table
+                size="small"
+                dataSource={drawerOwn}
+                rowKey="id"
+                pagination={{ pageSize:10, size:'small' }}
+                columns={[
+                  { title:'Lead',    dataIndex:'name',       render:(v,r)=><div><div style={{fontWeight:600}}>{v}</div><Text type="secondary" style={{fontSize:11}}>{r.email}</Text></div> },
+                  { title:'Status',  dataIndex:'status',     render:v=>{const c=STATUS_CONFIG[v];return c?<Tag style={{borderRadius:10,background:`${c.color}15`,color:c.color,border:'none',fontSize:11}}>{c.text}</Tag>:<Tag>{v}</Tag>;} },
+                  { title:'Created', dataIndex:'CreationDate',render:d=>d?dayjs(d).format('DD MMM YYYY'):'—' },
+                  { title:'',        render:(_,r)=><Button size="small" icon={<HistoryOutlined/>} onClick={()=>handleViewHistory(r)}>History</Button> },
+                ]}
+              />
             </>
           )}
-
-          {sellerLeads.length === 0 && sellerOwnLeads.length === 0 && <Empty description="No leads found for this seller" />}
         </div>
       </Drawer>
 
-      {/* Lead History Modal */}
+      {/* ── Lead history modal ── */}
       <Modal
-        title={<Space><HistoryOutlined style={{ color: COLORS.primary }} /><span style={{ fontWeight: 600 }}>Lead History: {selectedLead?.name}</span></Space>}
-        open={historyModalVisible} onCancel={() => { setHistoryModalVisible(false); setSelectedLead(null); setLeadHistory([]); }}
-        footer={null} width={isMobile ? '90%' : 550} destroyOnClose
-        styles={{ body: { maxHeight: '60vh', overflowY: 'auto', padding: 24 } }}
+        title={
+          <Space>
+            <HistoryOutlined style={{ color:C.blue }} />
+            <span style={{ fontWeight:700 }}>Lead History: {selectedLead?.name}</span>
+          </Space>
+        }
+        open={historyVisible}
+        onCancel={() => { setHistoryVisible(false); setSelectedLead(null); setLeadHistory([]); }}
+        footer={null}
+        width={isMobile?'92%':520}
+        destroyOnClose
       >
-        {leadHistory.length === 0 ? <Empty description="No history records found" />
-          : <Timeline items={leadHistory.map((event, idx) => {
-              let eventType = 'Activity', eventColor = COLORS.gray, eventIcon = <ClockCircleOutlined />;
-              if (event.type === 'view' || event.eventType === 'LEAD_VIEWED' || event.type === 'reveal') {
-                eventType = 'Lead Revealed / Viewed'; eventIcon = <UnlockOutlined />; eventColor = COLORS.success;
-              } else if (event.type === 'assign') {
-                eventType = 'Lead Assigned'; eventIcon = <UserOutlined />; eventColor = COLORS.primary;
-              } else if (event.type === 'whatsapp') {
-                eventType = 'WhatsApp Sent'; eventIcon = <MailOutlined />; eventColor = '#25D366';
-              } else if (event.type === 'email') {
-                eventType = 'Email Sent'; eventIcon = <MailOutlined />; eventColor = COLORS.primary;
-              } else if (event.type === 'call') {
-                eventType = 'Phone Call'; eventIcon = <PhoneOutlined />; eventColor = COLORS.purple;
-              } else if (event.type === 'note') {
-                eventType = 'Note Added'; eventIcon = <FileTextOutlined />; eventColor = COLORS.gray;
-              } else if (event.type === 'status') {
-                eventType = 'Status Changed'; eventIcon = <TagOutlined />; eventColor = COLORS.warning;
-              }
-              return {
-                key: idx, color: eventColor, dot: eventIcon,
-                children: (
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{eventType}</div>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {dayjs(event.createdAt?.toDate?.() || event.createdAt || event.timestamp?.toDate?.()).format('YYYY-MM-DD HH:mm:ss')}
-                    </Text>
-                    {event.message && <div style={{ fontSize: 12, marginTop: 6, background: '#f8f9fb', padding: 8, borderRadius: 8 }}>{event.message}</div>}
-                    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>By: {event.createdBy?.name || event.userId || event.sellerId || 'System'}</Text>
-                  </div>
-                )
-              };
-            })}
-          />
+        {leadHistory.length === 0
+          ? <Empty description="No history found" />
+          : (
+            <Timeline
+              items={leadHistory.map((event, i) => {
+                const typeMap = {
+                  view:    { label:'Lead Revealed',   color:C.green,  dot:<UnlockOutlined /> },
+                  reveal:  { label:'Lead Revealed',   color:C.green,  dot:<UnlockOutlined /> },
+                  LEAD_VIEWED:{ label:'Lead Viewed',  color:C.green,  dot:<EyeOutlined /> },
+                  assign:  { label:'Lead Assigned',   color:C.blue,   dot:<UserOutlined /> },
+                  whatsapp:{ label:'WhatsApp Sent',   color:'#16a34a',dot:<MailOutlined /> },
+                  email:   { label:'Email Sent',      color:C.blue,   dot:<MailOutlined /> },
+                  call:    { label:'Phone Call',      color:C.purple, dot:<PhoneOutlined /> },
+                  note:    { label:'Note Added',      color:C.gray,   dot:<FileTextOutlined /> },
+                  status:  { label:'Status Changed',  color:C.yellow, dot:<TagOutlined /> },
+                };
+                const cfg = typeMap[event.type] || typeMap[event.eventType] || { label:'Activity', color:C.gray, dot:<ClockCircleOutlined /> };
+                const ts  = event.createdAt?.toDate?.() || event.createdAt || event.timestamp?.toDate?.();
+                return {
+                  key: i, color: cfg.color, dot: cfg.dot,
+                  children: (
+                    <div>
+                      <div style={{ fontWeight:600, fontSize:13 }}>{cfg.label}</div>
+                      <Text type="secondary" style={{ fontSize:11 }}>
+                        {ts ? dayjs(ts).format('YYYY-MM-DD HH:mm:ss') : '—'}
+                      </Text>
+                      {event.message && (
+                        <div style={{ fontSize:12, marginTop:6, background:'#f8f9fb', padding:'8px 10px', borderRadius:8, whiteSpace:'pre-wrap' }}>
+                          {event.message}
+                        </div>
+                      )}
+                      {event.type === 'call' && (
+                        <div style={{ fontSize:12, marginTop:4 }}>
+                          <Tag color={event.outcome==='answered'?'success':'error'}>{event.outcome}</Tag>
+                          {event.duration && <span style={{ color:'#6b7280', marginLeft:6 }}>{event.duration}min</span>}
+                        </div>
+                      )}
+                      <Text type="secondary" style={{ fontSize:11, display:'block', marginTop:4 }}>
+                        By: {event.createdBy?.name || event.userId || event.sellerId || 'System'}
+                      </Text>
+                    </div>
+                  ),
+                };
+              })}
+            />
+          )
         }
       </Modal>
     </div>
   );
 };
 
-export default SellerPerformanceAnalytics;
+export default LeadsPerformanceAnalytics;
