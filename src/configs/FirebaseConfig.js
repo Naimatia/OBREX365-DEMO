@@ -7,7 +7,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+/*const firebaseConfig = {
   apiKey: "AIzaSyDA_YiXxhf427isD117IOgVYUMORPptgCU",
   authDomain: "orbrex-demo.firebaseapp.com",
   projectId: "orbrex-demo",
@@ -15,6 +15,16 @@ const firebaseConfig = {
   messagingSenderId: "533694845345",
   appId: "1:533694845345:web:f24951b7421fd2f72c3be0",
   measurementId: "G-299NPEWH88"
+};
+*/
+// Your web app's Firebase configuration from bardawil account
+const firebaseConfig = {
+  apiKey: "AIzaSyBL64wkLYf4aDfKwc1RVlSeHG6UwIfBN4M",
+  authDomain: "obrex365-5e5e7.firebaseapp.com",
+  projectId: "obrex365-5e5e7",
+  storageBucket: "obrex365-5e5e7.firebasestorage.app",
+  messagingSenderId: "1096846535143",
+  appId: "1:1096846535143:web:52e37d8c9c690c133cb542"
 };
 
 // Initialize Firebase
