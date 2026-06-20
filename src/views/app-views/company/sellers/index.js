@@ -17,7 +17,8 @@ import {
   HistoryOutlined, MessageOutlined, WhatsAppOutlined, PhoneFilled,
   TagOutlined, FilterOutlined, ReloadOutlined, DownloadOutlined,
   InfoCircleOutlined, BulbOutlined, WarningOutlined, RocketOutlined,
-  StarOutlined, TrophyFilled, CrownOutlined, ThunderboltFilled
+  StarOutlined, TrophyFilled, CrownOutlined, ThunderboltFilled,
+  KeyOutlined
 } from '@ant-design/icons';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -39,6 +40,7 @@ import dayjs from 'dayjs';
 import AddUserForm from './AddUserForm';
 import EditUserForm from './EditUserForm';
 import BulkLeadTransferModal from '../../components/BulkLeadTransfer/BulkLeadTransferModal';
+import { auth } from 'configs/FirebaseConfig';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -981,7 +983,7 @@ const loadSellerHistory = useCallback(async (sellerId, append = false) => {
       await UserService.createSellerDirectly({
         ...values, company_id: companyId,
         CreationDate: new Date(), LastLogin: new Date(),
-        Notification: false, forcePasswordReset: true, isBanned: false,
+        Notification: false, forcePasswordReset: false, isBanned: false,
         isVerified: false, ipAddress: ip, password: 'Welcome123!'
       });
       message.success(`${values.firstname} ${values.lastname} added.`);
@@ -1042,6 +1044,196 @@ const loadSellerHistory = useCallback(async (sellerId, append = false) => {
     [UserRoles.AGENT]: 'purple', [UserRoles.TEAM_LEADER]: 'orange',
     [UserRoles.SALES_MANAGER]: 'magenta', [UserRoles.OFF_PLAN_SALES]: '#2db7f5',
     [UserRoles.READY_TO_MOVE_SALES]: '#87d068'
+  };
+
+// ─── NEW: Change Password Modal Component ─────────────────────────────────────
+const ChangePasswordModal = ({ visible, user, onCancel, onSuccess }) => {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    if (newPassword.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      // ✅ FIX: Use auth from import
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error('No user logged in');
+      }
+
+      const idToken = await currentUser.getIdToken();
+      
+      // ✅ FIX: Use the correct API URL
+      const response = await fetch('https://delete-user-demo.vercel.app/api/changeUserPassword', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          newPassword: newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to change password');
+      }
+
+      message.success(`Password changed successfully for ${user.firstname} ${user.lastname}`);
+      setNewPassword('');
+      setConfirmPassword('');
+      onSuccess();
+    } catch (err) {
+      setError(err.message);
+      message.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ 
+            width: 36, height: 36, borderRadius: '50%', 
+            background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontSize: 16
+          }}>
+            <KeyOutlined />
+          </div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>Change Password</div>
+            <div style={{ fontSize: 12, color: '#888' }}>
+              {user?.firstname} {user?.lastname} · {user?.email}
+            </div>
+          </div>
+        </div>
+      }
+      open={visible}
+      onCancel={() => {
+        setNewPassword('');
+        setConfirmPassword('');
+        setError('');
+        onCancel();
+      }}
+      footer={[
+        <Button key="cancel" onClick={() => {
+          setNewPassword('');
+          setConfirmPassword('');
+          setError('');
+          onCancel();
+        }}>
+          Cancel
+        </Button>,
+        <Button
+          key="submit"
+          type="primary"
+          icon={<KeyOutlined />}
+          loading={loading}
+          onClick={handleSubmit}
+          style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', border: 'none' }}
+        >
+          Change Password
+        </Button>,
+      ]}
+      width={460}
+      bodyStyle={{ padding: '24px' }}
+    >
+      <div style={{ marginBottom: 16 }}>
+        <Alert
+          message="Password will be changed immediately"
+          description="The user will be able to log in with the new password. No email notification will be sent."
+          type="info"
+          showIcon
+          style={{ borderRadius: 8 }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
+          <KeyOutlined style={{ marginRight: 6, color: '#7c3aed' }} />
+          New Password
+        </div>
+        <Input.Password
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          placeholder="Enter new password (min 6 characters)"
+          size="large"
+          style={{ borderRadius: 8 }}
+          prefix={<KeyOutlined style={{ color: '#bbb' }} />}
+        />
+        <div style={{ marginTop: 4, fontSize: 11, color: '#888' }}>
+          Minimum 6 characters
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
+          <CheckCircleOutlined style={{ marginRight: 6, color: '#7c3aed' }} />
+          Confirm Password
+        </div>
+        <Input.Password
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder="Confirm new password"
+          size="large"
+          style={{ borderRadius: 8 }}
+          prefix={<CheckCircleOutlined style={{ color: '#bbb' }} />}
+        />
+      </div>
+
+      {error && (
+        <Alert
+          message={error}
+          type="error"
+          showIcon
+          style={{ borderRadius: 8, marginBottom: 8 }}
+        />
+      )}
+
+      <div style={{ 
+        background: '#f8fafc', 
+        padding: '12px 16px', 
+        borderRadius: 8,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 8
+      }}>
+        <InfoCircleOutlined style={{ color: '#7c3aed' }} />
+        <span style={{ fontSize: 12, color: '#555' }}>
+          This action is logged for audit purposes. Only CEOs and HR can change passwords.
+        </span>
+      </div>
+    </Modal>
+  );
+};
+
+  // ── NEW: Password change state ──────────────────────────────────────────────
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [passwordUser, setPasswordUser] = useState(null);
+
+  // ── UPDATE: Add password change handler ─────────────────────────────────────
+  const handlePasswordChange = (user) => {
+    setPasswordUser(user);
+    setPasswordModalVisible(true);
   };
 
   const columns = [
@@ -1118,31 +1310,54 @@ const loadSellerHistory = useCallback(async (sellerId, append = false) => {
     }
   ];
 
-  if (canManageUsers) columns.push({
-    title: 'Actions', key: 'actions', width: 180,
-    render: (_, r) => (
-      <Space size={4} wrap>
-        {salesRoles.includes(r.Role) && <>
-          <Tooltip title="Full Analytics & History">
-            <Button type="primary" icon={<EyeOutlined />} size="small" onClick={() => handleSellerClick(r)}>
-              Analyze
-            </Button>
+  if (canManageUsers) columns.push(
+{
+      title: 'Actions', 
+      key: 'actions', 
+      width: 240, // Increased width to accommodate new button
+      render: (_, r) => (
+        <Space size={4} wrap>
+          {salesRoles.includes(r.Role) && (
+            <>
+              <Tooltip title="Full Analytics & History">
+                <Button type="primary" icon={<EyeOutlined />} size="small" onClick={() => handleSellerClick(r)}>
+                  Analyze
+                </Button>
+              </Tooltip>
+              <Tooltip title="Transfer Leads">
+                <Button 
+                  icon={<SwapOutlined />} 
+                  size="small"
+                  style={{ color: C.orange, borderColor: C.orange }}
+                  onClick={() => { setTransferFromSeller(r); setTransferModalVisible(true); }} 
+                />
+              </Tooltip>
+            </>
+          )}
+          
+          {/* ── NEW: Change Password Button ── */}
+          <Tooltip title="Change Password">
+            <Button 
+              icon={<KeyOutlined />} 
+              size="small"
+              style={{ color: C.purple, borderColor: C.purple }}
+              onClick={() => handlePasswordChange(r)}
+            />
           </Tooltip>
-          <Tooltip title="Transfer Leads">
-            <Button icon={<SwapOutlined />} size="small"
-              style={{ color: C.orange, borderColor: C.orange }}
-              onClick={() => { setTransferFromSeller(r); setTransferModalVisible(true); }} />
+          
+          <Tooltip title="Edit">
+            <Button 
+              icon={<EditOutlined />} 
+              size="small"
+              onClick={() => { setCurrentUser(r); setIsEditModalVisible(true); }} 
+            />
           </Tooltip>
-        </>}
-        <Tooltip title="Edit">
-          <Button icon={<EditOutlined />} size="small"
-            onClick={() => { setCurrentUser(r); setIsEditModalVisible(true); }} />
-        </Tooltip>
-        <Popconfirm title="Delete this user?" onConfirm={() => handleDeleteUser(r.id)} okText="Yes" cancelText="No">
-          <Button danger icon={<DeleteOutlined />} size="small" />
-        </Popconfirm>
-      </Space>
-    )
+          
+          <Popconfirm title="Delete this user?" onConfirm={() => handleDeleteUser(r.id)} okText="Yes" cancelText="No">
+            <Button danger icon={<DeleteOutlined />} size="small" />
+          </Popconfirm>
+        </Space>
+      )
   });
 
   // ── Analytics Drawer rendering ────────────────────────────────────────────
@@ -1590,7 +1805,22 @@ const loadSellerHistory = useCallback(async (sellerId, append = false) => {
         companyId={companyId}
         onSuccess={() => { message.success('Leads transferred. Refreshing…'); fetchUsers(); }}
       />
+       {/* ── NEW: Change Password Modal ── */}
+      <ChangePasswordModal
+        visible={passwordModalVisible}
+        user={passwordUser}
+        onCancel={() => {
+          setPasswordModalVisible(false);
+          setPasswordUser(null);
+        }}
+        onSuccess={() => {
+          setPasswordModalVisible(false);
+          setPasswordUser(null);
+          message.success('Password changed successfully');
+        }}
+      />
     </div>
+    
   );
 };
 
