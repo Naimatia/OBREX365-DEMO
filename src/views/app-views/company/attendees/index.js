@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Card, Table, Tag, Space, Button, Input, Select, Modal, Form,
   message, Tooltip, Typography, Row, Col, DatePicker, Avatar, Badge,
@@ -13,11 +13,12 @@ import {
   FilterOutlined, SortAscendingOutlined, SortDescendingOutlined,
   FileExcelOutlined, PrinterOutlined, DownloadOutlined,
   LeftOutlined, RightOutlined, EditOutlined, SaveOutlined,
-  CloseOutlined, PlusOutlined, DeleteOutlined,LoginOutlined, LogoutOutlined
+  CloseOutlined, PlusOutlined, DeleteOutlined, LoginOutlined, LogoutOutlined
 } from '@ant-design/icons';
 import {
-  db, collection, query, where, getDocs, 
-  doc, updateDoc, addDoc, deleteDoc, serverTimestamp, orderBy
+  db, collection, query, where, getDocs,
+  doc, updateDoc, addDoc, deleteDoc, serverTimestamp, orderBy,
+  getDoc, setDoc
 } from 'configs/FirebaseConfig';
 import UserService from 'services/firebase/UserService';
 import { UserRoles } from 'models/UserModel';
@@ -25,6 +26,8 @@ import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
 import './AttendancePage.css';
+import { debounce } from 'lodash';
+import { LRUCache } from 'lru-cache';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -46,7 +49,7 @@ const ATTENDANCE_STATUSES = {
   'unpaid_leave': { label: 'Unpaid Leave', color: '#fa8c16', bg: '#fff7e6', icon: <CloseOutlined /> },
   'holiday_nonwork': { label: 'Holiday', color: '#722ed1', bg: '#f9f0ff', icon: <CalendarOutlined /> },
   'no_show': { label: 'No Show', color: '#ff4d4f', bg: '#fff1f0', icon: <CloseCircleOutlined /> },
-  'weekly_off': { label: 'Weekly Off', color: '#8c8c8c', bg: '#f5f5f5', icon: <CalendarOutlined /> }, // ← NEW
+  'weekly_off': { label: 'Weekly Off', color: '#8c8c8c', bg: '#f5f5f5', icon: <CalendarOutlined /> },
 };
 
 const STATUS_OPTIONS = [
@@ -57,8 +60,25 @@ const STATUS_OPTIONS = [
   { value: 'unpaid_leave', label: 'Unpaid Leave' },
   { value: 'holiday_nonwork', label: 'Holiday' },
   { value: 'no_show', label: 'No Show' },
-  { value: 'weekly_off', label: 'Weekly Off' }, // ← NEW
+  { value: 'weekly_off', label: 'Weekly Off' },
 ];
+
+// ─── Cache Configuration ──────────────────────────────────────────────────
+// LRU Cache with TTL for different data types
+const CACHE_CONFIG = {
+  employees: { max: 100, ttl: 1000 * 60 * 15 }, // 15 minutes
+  mappings: { max: 50, ttl: 1000 * 60 * 30 },   // 30 minutes
+  notes: { max: 200, ttl: 1000 * 60 * 5 },      // 5 minutes
+  attendance: { max: 150, ttl: 1000 * 60 * 2 }, // 2 minutes
+};
+
+// Global cache instances (singleton pattern)
+const cacheInstances = {
+  employees: new LRUCache(CACHE_CONFIG.employees),
+  mappings: new LRUCache(CACHE_CONFIG.mappings),
+  notes: new LRUCache(CACHE_CONFIG.notes),
+  attendance: new LRUCache(CACHE_CONFIG.attendance),
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const timeToMins = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -68,10 +88,78 @@ const toDate = t => t?.toDate ? t.toDate() : (t ? new Date(t) : null);
 const resolveType = p =>
   p.type || ['check-in', 'check-out', 'break-out', 'break-in', 'overtime-in', 'overtime-out'][Number(p.punchCode)] || 'check-in';
 
+// ─── Firestore Query Optimizer ──────────────────────────────────────────────
+class FirestoreQueryOptimizer {
+  constructor() {
+    this.pendingRequests = new Map();
+    this.requestCount = 0;
+    this.requestLimit = 80000; // Quota limit per day
+    this.lastResetDate = dayjs().format('YYYY-MM-DD');
+  }
+
+  // Check if we're approaching quota limit
+  isQuotaExceeded() {
+    const today = dayjs().format('YYYY-MM-DD');
+    if (today !== this.lastResetDate) {
+      this.requestCount = 0;
+      this.lastResetDate = today;
+    }
+    return this.requestCount >= this.requestLimit * 0.9; // 90% threshold
+  }
+
+  // Track each request
+  trackRequest() {
+    this.requestCount++;
+    if (this.requestCount % 100 === 0) {
+      console.log(`Firestore requests today: ${this.requestCount}/${this.requestLimit}`);
+    }
+  }
+
+  // Get or create request promise (deduplication)
+  getRequest(key, requestFn) {
+    if (this.isQuotaExceeded()) {
+      console.warn('Firestore quota nearing limit, using cached data');
+      return Promise.reject(new Error('QUOTA_EXCEEDED'));
+    }
+
+    // Check if there's already a pending request for this key
+    if (this.pendingRequests.has(key)) {
+      return this.pendingRequests.get(key);
+    }
+
+    // Create new request
+    const promise = requestFn()
+      .then(result => {
+        this.pendingRequests.delete(key);
+        this.trackRequest();
+        return result;
+      })
+      .catch(error => {
+        this.pendingRequests.delete(key);
+        throw error;
+      });
+
+    // Store pending request
+    this.pendingRequests.set(key, promise);
+    return promise;
+  }
+
+  // Batch multiple requests into one when possible
+  batchRequests(requests) {
+    if (requests.length === 0) return Promise.resolve([]);
+    if (requests.length === 1) return requests[0]();
+
+    // For attendance records, we can batch by date range
+    return Promise.all(requests.map(req => req()));
+  }
+}
+
+const queryOptimizer = new FirestoreQueryOptimizer();
+
 // ─── Build attendance rows ──────────────────────────────────────────────────
-const buildAttendanceRows = (rawRecords, employees, startDate, endDate, mappings = []) => {
+const buildAttendanceRows = (rawRecords, employees, startDate, endDate, mappings = [], savedNotes = {}) => {
   const mappingByCrmId = Object.fromEntries(mappings.map(m => [String(m.crmUserId), m]));
-  
+
   const punchGroup = {};
   rawRecords.forEach(rec => {
     const ts = toDate(rec.timestamp);
@@ -85,34 +173,30 @@ const buildAttendanceRows = (rawRecords, employees, startDate, endDate, mappings
   const rows = [];
   let cursor = dayjs(startDate);
   const end = dayjs(endDate);
-  
+
   while (cursor.isBefore(end.add(1, 'day'), 'day')) {
     const dateStr = cursor.format('YYYY-MM-DD');
-    const dayOfWeek = cursor.day(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    
+    const dayOfWeek = cursor.day();
+
     employees.forEach(emp => {
       const mapping = mappingByCrmId[String(emp.id)];
       if (!mapping) return;
-      
+
       const punches = punchGroup[`${mapping.deviceUserId}_${dateStr}`] || [];
-      
-      // Check if it's Sunday (day 0)
       const isSunday = dayOfWeek === 0;
-      
-      // Determine attendance status from punches
+
       const checkIns = punches.filter(p => resolveType(p) === 'check-in');
       const checkOuts = punches.filter(p => resolveType(p) === 'check-out');
       const firstIn = checkIns[0] ? toDate(checkIns[0].timestamp) : null;
       const lastOut = checkOuts[checkOuts.length - 1] ? toDate(checkOuts[checkOuts.length - 1].timestamp) : null;
-      
+
       const shift = mapping.shift || { start: '10:00', end: '16:00' };
       const shiftStartMins = timeToMins(shift.start);
-      
+
       let delayMins = 0;
       let status = 'absent';
       let statusLabel = 'Absent';
-      
-      // If it's Sunday, set status to weekly_off (unless there are punches)
+
       if (isSunday && punches.length === 0) {
         status = 'weekly_off';
         statusLabel = 'Weekly Off';
@@ -122,17 +206,18 @@ const buildAttendanceRows = (rawRecords, employees, startDate, endDate, mappings
         status = delayMins > 15 ? 'late' : 'present';
         statusLabel = delayMins > 15 ? 'Late' : 'Present';
       } else if (punches.length > 0 && !firstIn) {
-        // Has punches but no check-in (shouldn't happen normally)
         status = 'no_show';
         statusLabel = 'No Show';
       }
-      
-      // Calculate work duration
+
       let workMins = 0;
       if (firstIn && lastOut) {
         workMins = Math.max(0, Math.round((lastOut - firstIn) / 60000));
       }
-      
+
+      const noteKey = `${emp.id}_${dateStr}`;
+      const savedNote = savedNotes[noteKey] || {};
+
       rows.push({
         key: `${emp.id}_${dateStr}`,
         employeeId: emp.id,
@@ -142,24 +227,24 @@ const buildAttendanceRows = (rawRecords, employees, startDate, endDate, mappings
         date: dateStr,
         displayDate: dayjs(dateStr).format('DD MMM YYYY'),
         weekday: dayjs(dateStr).format('ddd'),
-        status: status,
-        statusLabel: statusLabel,
+        status: savedNote.status || status,
+        statusLabel: ATTENDANCE_STATUSES[savedNote.status]?.label || statusLabel,
         delayMins: delayMins,
         firstIn: firstIn,
         lastOut: lastOut,
         workMins: workMins,
-        note: '',
+        note: savedNote.note || '',
         employee: emp,
         rawPunches: punches,
         shift: shift,
-        isOverridden: false,
+        isOverridden: savedNote.isOverridden || false,
         originalStatus: status,
-        isSunday: isSunday, // ← Add this flag for reference
+        isSunday: isSunday,
       });
     });
     cursor = cursor.add(1, 'day');
   }
-  
+
   return rows.sort((a, b) => {
     if (a.date !== b.date) return b.date.localeCompare(a.date);
     return (a.employeeName || '').localeCompare(b.employeeName || '');
@@ -183,7 +268,7 @@ const exportToExcel = (data, dateRange) => {
   const ws = XLSX.utils.json_to_sheet(exportData);
   ws['!cols'] = Array(6).fill({ wch: 20 });
   XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
-  
+
   const start = dayjs(dateRange[0]).format('YYYYMMDD');
   const end = dayjs(dateRange[1]).format('YYYYMMDD');
   XLSX.writeFile(wb, `Attendance_${start}_${end}.xlsx`);
@@ -220,10 +305,10 @@ const InlineStatusSelect = ({ value, record, onStatusChange, saving }) => {
           {STATUS_OPTIONS.map(opt => {
             const cfg = ATTENDANCE_STATUSES[opt.value];
             return (
-              <Menu.Item 
-                key={opt.value} 
+              <Menu.Item
+                key={opt.value}
                 onClick={() => handleChange(opt.value)}
-                style={{ 
+                style={{
                   background: value === opt.value ? cfg.bg : 'transparent',
                   borderRadius: 4
                 }}
@@ -241,8 +326,8 @@ const InlineStatusSelect = ({ value, record, onStatusChange, saving }) => {
         </Menu>
       }
     >
-      <div 
-        style={{ 
+      <div
+        style={{
           cursor: 'pointer',
           display: 'inline-flex',
           alignItems: 'center',
@@ -311,10 +396,10 @@ const InlineNoteEditor = ({ value, record, onNoteSave }) => {
             }
           }}
         />
-        <Button 
-          type="primary" 
-          size="small" 
-          icon={<SaveOutlined />} 
+        <Button
+          type="primary"
+          size="small"
+          icon={<SaveOutlined />}
           onClick={handleSave}
           loading={saving}
         />
@@ -324,10 +409,10 @@ const InlineNoteEditor = ({ value, record, onNoteSave }) => {
   }
 
   return (
-    <div 
-      style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
         gap: 8,
         cursor: 'pointer',
         padding: '4px 8px',
@@ -347,9 +432,9 @@ const InlineNoteEditor = ({ value, record, onNoteSave }) => {
         e.currentTarget.style.borderColor = 'transparent';
       }}
     >
-      <Text 
+      <Text
         ellipsis={{ tooltip: value || 'Click to add note' }}
-        style={{ 
+        style={{
           fontSize: 13,
           color: value ? '#1a1a2e' : '#bfbfbf',
           flex: 1,
@@ -380,102 +465,202 @@ const AttendancePage = () => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState(null);
   const [employeeFilter, setEmployeeFilter] = useState(null);
-  // Default: today
   const [dateRange, setDateRange] = useState([dayjs(), dayjs()]);
   const [sortField, setSortField] = useState('date');
   const [sortOrder, setSortOrder] = useState('descend');
   const [savingStatus, setSavingStatus] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(Date.now());
 
-  // ── Fetch Data ────────────────────────────────────────────────────────────
-  const fetchEmployees = useCallback(async () => {
-    if (!companyId) return;
-    try {
-      const all = await UserService.getUsersByCompanyId(companyId);
-      const staff = all.filter(u => STAFF_ROLES.includes(u.Role));
-      setEmployees(staff);
-    } catch (e) { console.error(e); }
-  }, [companyId]);
+  // Track if data has been loaded to prevent duplicate requests
+  const dataLoadedRef = useRef({
+    employees: false,
+    mappings: false,
+    notes: false,
+    attendance: false,
+  });
 
-  const fetchMappings = useCallback(async () => {
-    if (!companyId) return;
-    try {
-      const snap = await getDocs(
-        query(collection(db, 'attendance_device_mapping'), where('company_id', '==', companyId))
-      );
-      setMappings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) { console.error(e); }
-  }, [companyId]);
-
-  const fetchRecords = useCallback(async () => {
-    if (!companyId || !dateRange || dateRange.length < 2) {
-      setRawRecords([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const start = dateRange[0].startOf('day').toDate();
-      const end = dateRange[1].endOf('day').toDate();
-
-      const snap = await getDocs(
-        query(
-          collection(db, 'attendance'),
-          where('company_id', '==', companyId),
-          orderBy('timestamp', 'desc')
-        )
-      );
+  // ── Debounced Data Fetch Functions ──────────────────────────────────────
+  const debouncedFetchEmployees = useMemo(
+    () => debounce(async (forceRefresh = false) => {
+      if (!companyId) return;
       
-      const recs = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(r => {
-          const ts = toDate(r.timestamp);
-          return ts && ts >= start && ts <= end;
-        });
-      
-      setRawRecords(recs);
-    } catch (e) {
-      if (e.code === 'failed-precondition') {
-        message.error('Missing Firestore index. Please create the required index.');
-      } else {
-        message.error('Failed to load attendance records: ' + e.message);
+      const cacheKey = `employees_${companyId}`;
+      const cached = cacheInstances.employees.get(cacheKey);
+
+      if (!forceRefresh && cached && dataLoadedRef.current.employees) {
+        setEmployees(cached);
+        return;
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [companyId, dateRange]);
 
-  // ── Fetch saved notes from Firestore ─────────────────────────────────────
-  const fetchSavedNotes = useCallback(async () => {
-    if (!companyId) return;
-    try {
-      const snap = await getDocs(
-        query(collection(db, 'attendance_notes'), where('company_id', '==', companyId))
-      );
-      const notes = {};
-      snap.docs.forEach(doc => {
-        const data = doc.data();
-        const key = `${data.employeeId}_${data.date}`;
-        notes[key] = {
-          id: doc.id,
-          status: data.status,
-          note: data.note || '',
-          isOverridden: data.isOverridden || false,
-        };
-      });
-      setSavedNotes(notes);
-    } catch (e) { console.error(e); }
-  }, [companyId]);
+      try {
+        const all = await queryOptimizer.getRequest(
+          `employees_${companyId}`,
+          () => UserService.getUsersByCompanyId(companyId)
+        );
+        const staff = all.filter(u => STAFF_ROLES.includes(u.Role));
+        cacheInstances.employees.set(cacheKey, staff);
+        setEmployees(staff);
+        dataLoadedRef.current.employees = true;
+      } catch (e) {
+        if (e.message !== 'QUOTA_EXCEEDED') {
+          console.error('Error fetching employees:', e);
+          message.error('Failed to load employees');
+        }
+      }
+    }, 300),
+    [companyId]
+  );
+
+  const debouncedFetchMappings = useMemo(
+    () => debounce(async (forceRefresh = false) => {
+      if (!companyId) return;
+
+      const cacheKey = `mappings_${companyId}`;
+      const cached = cacheInstances.mappings.get(cacheKey);
+
+      if (!forceRefresh && cached && dataLoadedRef.current.mappings) {
+        setMappings(cached);
+        return;
+      }
+
+      try {
+        const snap = await queryOptimizer.getRequest(
+          `mappings_${companyId}`,
+          () => getDocs(query(collection(db, 'attendance_device_mapping'), where('company_id', '==', companyId)))
+        );
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        cacheInstances.mappings.set(cacheKey, data);
+        setMappings(data);
+        dataLoadedRef.current.mappings = true;
+      } catch (e) {
+        if (e.message !== 'QUOTA_EXCEEDED') {
+          console.error('Error fetching mappings:', e);
+          message.error('Failed to load mappings');
+        }
+      }
+    }, 300),
+    [companyId]
+  );
+
+  const debouncedFetchNotes = useMemo(
+    () => debounce(async (forceRefresh = false) => {
+      if (!companyId) return;
+
+      const cacheKey = `notes_${companyId}`;
+      const cached = cacheInstances.notes.get(cacheKey);
+
+      if (!forceRefresh && cached && dataLoadedRef.current.notes) {
+        setSavedNotes(cached);
+        return;
+      }
+
+      try {
+        const snap = await queryOptimizer.getRequest(
+          `notes_${companyId}`,
+          () => getDocs(query(collection(db, 'attendance_notes'), where('company_id', '==', companyId)))
+        );
+        const notes = {};
+        snap.docs.forEach(doc => {
+          const data = doc.data();
+          const key = `${data.employeeId}_${data.date}`;
+          notes[key] = {
+            id: doc.id,
+            status: data.status,
+            note: data.note || '',
+            isOverridden: data.isOverridden || false,
+          };
+        });
+        cacheInstances.notes.set(cacheKey, notes);
+        setSavedNotes(notes);
+        dataLoadedRef.current.notes = true;
+      } catch (e) {
+        if (e.message !== 'QUOTA_EXCEEDED') {
+          console.error('Error fetching notes:', e);
+          message.error('Failed to load notes');
+        }
+      }
+    }, 300),
+    [companyId]
+  );
+
+  const debouncedFetchRecords = useMemo(
+    () => debounce(async (forceRefresh = false) => {
+      if (!companyId || !dateRange || dateRange.length < 2) {
+        setRawRecords([]);
+        return;
+      }
+
+      const startDate = dateRange[0].format('YYYY-MM-DD');
+      const endDate = dateRange[1].format('YYYY-MM-DD');
+      const cacheKey = `attendance_${companyId}_${startDate}_${endDate}`;
+      const cached = cacheInstances.attendance.get(cacheKey);
+
+      if (!forceRefresh && cached && dataLoadedRef.current.attendance) {
+        setRawRecords(cached);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const start = dateRange[0].startOf('day').toDate();
+        const end = dateRange[1].endOf('day').toDate();
+
+        // Optimize: Fetch only what's needed
+        const snap = await queryOptimizer.getRequest(
+          cacheKey,
+          () => getDocs(
+            query(
+              collection(db, 'attendance'),
+              where('company_id', '==', companyId),
+              where('timestamp', '>=', start),
+              where('timestamp', '<=', end),
+              orderBy('timestamp', 'desc')
+            )
+          )
+        );
+
+        const recs = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(r => {
+            const ts = toDate(r.timestamp);
+            return ts && ts >= start && ts <= end;
+          });
+
+        cacheInstances.attendance.set(cacheKey, recs);
+        setRawRecords(recs);
+        dataLoadedRef.current.attendance = true;
+      } catch (e) {
+        if (e.code === 'failed-precondition') {
+          message.error('Missing Firestore index. Please create the required index.');
+        } else if (e.message !== 'QUOTA_EXCEEDED') {
+          message.error('Failed to load attendance records: ' + e.message);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, 500),
+    [companyId, dateRange]
+  );
 
   // ── Initial data load ────────────────────────────────────────────────────
   useEffect(() => {
-    fetchEmployees();
-    fetchMappings();
-    fetchSavedNotes();
-  }, [fetchEmployees, fetchMappings, fetchSavedNotes]);
+    const loadData = async () => {
+      await Promise.all([
+        debouncedFetchEmployees(false),
+        debouncedFetchMappings(false),
+        debouncedFetchNotes(false),
+      ]);
+    };
+    loadData();
+  }, [companyId]);
 
   // ── Fetch records when date range changes ──────────────────────────────
   useEffect(() => {
-    fetchRecords();
-  }, [fetchRecords]);
+    if (dateRange && dateRange.length === 2) {
+      dataLoadedRef.current.attendance = false;
+      debouncedFetchRecords(false);
+    }
+  }, [dateRange]);
 
   // ── Build attendance data when dependencies change ──────────────────────
   useEffect(() => {
@@ -483,39 +668,23 @@ const AttendancePage = () => {
       setAttendanceData([]);
       return;
     }
-    
-    let data = buildAttendanceRows(
+
+    const data = buildAttendanceRows(
       rawRecords,
       employees,
       dateRange[0].toDate(),
       dateRange[1].toDate(),
-      mappings
+      mappings,
+      savedNotes
     );
-    
-    // Apply saved notes and overrides
-    data = data.map(row => {
-      const key = `${row.employeeId}_${row.date}`;
-      if (savedNotes[key]) {
-        return {
-          ...row,
-          status: savedNotes[key].status || row.status,
-          statusLabel: ATTENDANCE_STATUSES[savedNotes[key].status]?.label || row.statusLabel,
-          note: savedNotes[key].note || '',
-          isOverridden: savedNotes[key].isOverridden || false,
-          originalStatus: row.status,
-        };
-      }
-      return row;
-    });
-    
+
     setAttendanceData(data);
   }, [rawRecords, employees, mappings, dateRange, savedNotes]);
 
   // ── Apply filters and sorting ─────────────────────────────────────────────
   useEffect(() => {
     let filtered = [...attendanceData];
-    
-    // Search filter
+
     if (searchText) {
       const query = searchText.toLowerCase();
       filtered = filtered.filter(r =>
@@ -524,18 +693,15 @@ const AttendancePage = () => {
         r.department?.toLowerCase().includes(query)
       );
     }
-    
-    // Status filter
+
     if (statusFilter) {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
-    
-    // Employee filter
+
     if (employeeFilter) {
       filtered = filtered.filter(r => r.employeeId === employeeFilter);
     }
-    
-    // Sorting
+
     filtered.sort((a, b) => {
       let aVal = a[sortField] || '';
       let bVal = b[sortField] || '';
@@ -545,85 +711,78 @@ const AttendancePage = () => {
       if (aVal > bVal) return sortOrder === 'ascend' ? 1 : -1;
       return 0;
     });
-    
+
     setFilteredData(filtered);
   }, [attendanceData, searchText, statusFilter, employeeFilter, sortField, sortOrder]);
 
-// ── Statistics - Calculate REAL percentages ──────────────────────────────
-const stats = useMemo(() => {
-  // Get unique employees for the selected date range
-  const uniqueEmployees = new Map();
-  attendanceData.forEach(row => {
-    if (!uniqueEmployees.has(row.employeeId)) {
-      uniqueEmployees.set(row.employeeId, {
-        id: row.employeeId,
-        name: row.employeeName,
-        role: row.role,
-      });
-    }
-  });
-  
-  const totalEmployees = uniqueEmployees.size;
-  
-  // Get today's date (or the last date in the range if today is not in range)
-  const today = dayjs().format('YYYY-MM-DD');
-  const todayData = attendanceData.filter(row => row.date === today);
-  
-  // If no data for today, use the last date in the range
-  const targetDate = todayData.length > 0 ? today : dateRange[1]?.format('YYYY-MM-DD') || today;
-  const targetData = attendanceData.filter(row => row.date === targetDate);
-  
-  const totalTarget = targetData.length;
-  
-  // Calculate real counts
-  const present = targetData.filter(r => r.status === 'present').length;
-  const late = targetData.filter(r => r.status === 'late').length;
-  const absent = targetData.filter(r => r.status === 'absent').length;
-  const sickPto = targetData.filter(r => r.status === 'sick_pto').length;
-  const unpaidLeave = targetData.filter(r => r.status === 'unpaid_leave').length;
-  const holiday = targetData.filter(r => r.status === 'holiday_nonwork').length;
-  const noShow = targetData.filter(r => r.status === 'no_show').length;
-  const weeklyOff = targetData.filter(r => r.status === 'weekly_off').length; // ← NEW
-  
-  // Calculate REAL percentages based on total employees
-  const presentPercentage = totalEmployees > 0 ? ((present / totalEmployees) * 100).toFixed(1) : 0;
-  const latePercentage = totalEmployees > 0 ? ((late / totalEmployees) * 100).toFixed(1) : 0;
-  const absentPercentage = totalEmployees > 0 ? ((absent / totalEmployees) * 100).toFixed(1) : 0;
-  const sickPtoPercentage = totalEmployees > 0 ? ((sickPto / totalEmployees) * 100).toFixed(1) : 0;
-  const unpaidLeavePercentage = totalEmployees > 0 ? ((unpaidLeave / totalEmployees) * 100).toFixed(1) : 0;
-  const holidayPercentage = totalEmployees > 0 ? ((holiday / totalEmployees) * 100).toFixed(1) : 0;
-  const noShowPercentage = totalEmployees > 0 ? ((noShow / totalEmployees) * 100).toFixed(1) : 0;
-  const weeklyOffPercentage = totalEmployees > 0 ? ((weeklyOff / totalEmployees) * 100).toFixed(1) : 0; // ← NEW
-  
-  return { 
-    totalEmployees,
-    totalTarget,
-    present,
-    late,
-    absent,
-    sickPto,
-    unpaidLeave,
-    holiday,
-    noShow,
-    weeklyOff, // ← NEW
-    presentPercentage,
-    latePercentage,
-    absentPercentage,
-    sickPtoPercentage,
-    unpaidLeavePercentage,
-    holidayPercentage,
-    noShowPercentage,
-    weeklyOffPercentage, // ← NEW
-    targetDate: dayjs(targetDate).format('DD MMM YYYY'),
-  };
-}, [attendanceData, dateRange]);
+  // ── Statistics ────────────────────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const uniqueEmployees = new Map();
+    attendanceData.forEach(row => {
+      if (!uniqueEmployees.has(row.employeeId)) {
+        uniqueEmployees.set(row.employeeId, {
+          id: row.employeeId,
+          name: row.employeeName,
+          role: row.role,
+        });
+      }
+    });
+
+    const totalEmployees = uniqueEmployees.size;
+    const today = dayjs().format('YYYY-MM-DD');
+    const todayData = attendanceData.filter(row => row.date === today);
+    const targetDate = todayData.length > 0 ? today : dateRange[1]?.format('YYYY-MM-DD') || today;
+    const targetData = attendanceData.filter(row => row.date === targetDate);
+
+    const totalTarget = targetData.length;
+    const present = targetData.filter(r => r.status === 'present').length;
+    const late = targetData.filter(r => r.status === 'late').length;
+    const absent = targetData.filter(r => r.status === 'absent').length;
+    const sickPto = targetData.filter(r => r.status === 'sick_pto').length;
+    const unpaidLeave = targetData.filter(r => r.status === 'unpaid_leave').length;
+    const holiday = targetData.filter(r => r.status === 'holiday_nonwork').length;
+    const noShow = targetData.filter(r => r.status === 'no_show').length;
+    const weeklyOff = targetData.filter(r => r.status === 'weekly_off').length;
+
+    const presentPercentage = totalEmployees > 0 ? ((present / totalEmployees) * 100).toFixed(1) : 0;
+    const latePercentage = totalEmployees > 0 ? ((late / totalEmployees) * 100).toFixed(1) : 0;
+    const absentPercentage = totalEmployees > 0 ? ((absent / totalEmployees) * 100).toFixed(1) : 0;
+    const sickPtoPercentage = totalEmployees > 0 ? ((sickPto / totalEmployees) * 100).toFixed(1) : 0;
+    const unpaidLeavePercentage = totalEmployees > 0 ? ((unpaidLeave / totalEmployees) * 100).toFixed(1) : 0;
+    const holidayPercentage = totalEmployees > 0 ? ((holiday / totalEmployees) * 100).toFixed(1) : 0;
+    const noShowPercentage = totalEmployees > 0 ? ((noShow / totalEmployees) * 100).toFixed(1) : 0;
+    const weeklyOffPercentage = totalEmployees > 0 ? ((weeklyOff / totalEmployees) * 100).toFixed(1) : 0;
+
+    return {
+      totalEmployees,
+      totalTarget,
+      present,
+      late,
+      absent,
+      sickPto,
+      unpaidLeave,
+      holiday,
+      noShow,
+      weeklyOff,
+      presentPercentage,
+      latePercentage,
+      absentPercentage,
+      sickPtoPercentage,
+      unpaidLeavePercentage,
+      holidayPercentage,
+      noShowPercentage,
+      weeklyOffPercentage,
+      targetDate: dayjs(targetDate).format('DD MMM YYYY'),
+    };
+  }, [attendanceData, dateRange]);
+
   // ── Save Status Update ────────────────────────────────────────────────────
   const handleStatusChange = async (record, newStatus) => {
     if (!record) return;
     setSavingStatus(true);
     try {
       const key = `${record.employeeId}_${record.date}`;
-      
+
       const data = {
         company_id: companyId,
         employeeId: record.employeeId,
@@ -635,8 +794,7 @@ const stats = useMemo(() => {
         updatedBy: reduxUser?.email || 'unknown',
         updatedAt: serverTimestamp(),
       };
-      
-      // Check if already exists
+
       const snap = await getDocs(
         query(
           collection(db, 'attendance_notes'),
@@ -645,7 +803,7 @@ const stats = useMemo(() => {
           where('date', '==', record.date)
         )
       );
-      
+
       if (!snap.empty) {
         await updateDoc(doc(db, 'attendance_notes', snap.docs[0].id), data);
       } else {
@@ -654,19 +812,23 @@ const stats = useMemo(() => {
           createdAt: serverTimestamp(),
         });
       }
-      
-      // Update local state
-      setSavedNotes(prev => ({
-        ...prev,
+
+      // Update local state and cache
+      const updatedNotes = {
+        ...savedNotes,
         [key]: {
           status: newStatus,
           note: record.note || '',
           isOverridden: true,
         }
-      }));
-      
-      // Update the record in the list
-      setAttendanceData(prev => 
+      };
+      setSavedNotes(updatedNotes);
+
+      // Update cache
+      const cacheKey = `notes_${companyId}`;
+      cacheInstances.notes.set(cacheKey, updatedNotes);
+
+      setAttendanceData(prev =>
         prev.map(row => {
           if (row.key === record.key) {
             return {
@@ -679,7 +841,7 @@ const stats = useMemo(() => {
           return row;
         })
       );
-      
+
       message.success(`Status updated for ${record.employeeName}`);
     } catch (e) {
       console.error('Error saving status:', e);
@@ -692,10 +854,10 @@ const stats = useMemo(() => {
   // ── Save Note Update ────────────────────────────────────────────────────
   const handleNoteSave = async (record, note) => {
     if (!record) return;
-    
+
     try {
       const key = `${record.employeeId}_${record.date}`;
-      
+
       const data = {
         company_id: companyId,
         employeeId: record.employeeId,
@@ -707,8 +869,7 @@ const stats = useMemo(() => {
         updatedBy: reduxUser?.email || 'unknown',
         updatedAt: serverTimestamp(),
       };
-      
-      // Check if already exists
+
       const snap = await getDocs(
         query(
           collection(db, 'attendance_notes'),
@@ -717,7 +878,7 @@ const stats = useMemo(() => {
           where('date', '==', record.date)
         )
       );
-      
+
       if (!snap.empty) {
         await updateDoc(doc(db, 'attendance_notes', snap.docs[0].id), data);
       } else {
@@ -726,19 +887,23 @@ const stats = useMemo(() => {
           createdAt: serverTimestamp(),
         });
       }
-      
-      // Update local state
-      setSavedNotes(prev => ({
-        ...prev,
+
+      // Update local state and cache
+      const updatedNotes = {
+        ...savedNotes,
         [key]: {
           status: record.status,
           note: note,
           isOverridden: record.isOverridden || false,
         }
-      }));
-      
-      // Update the record in the list
-      setAttendanceData(prev => 
+      };
+      setSavedNotes(updatedNotes);
+
+      // Update cache
+      const cacheKey = `notes_${companyId}`;
+      cacheInstances.notes.set(cacheKey, updatedNotes);
+
+      setAttendanceData(prev =>
         prev.map(row => {
           if (row.key === record.key) {
             return {
@@ -749,7 +914,7 @@ const stats = useMemo(() => {
           return row;
         })
       );
-      
+
     } catch (e) {
       console.error('Error saving note:', e);
       throw e;
@@ -760,134 +925,171 @@ const stats = useMemo(() => {
   const handleDateChange = (dates) => {
     if (dates && dates.length === 2) {
       setDateRange(dates);
-      // Force refresh by clearing and refetching
-      setRawRecords([]);
-      setAttendanceData([]);
+      dataLoadedRef.current.attendance = false;
+      // Don't clear data immediately, let the fetch handle it
     }
   };
 
-// ─── Table Columns ──────────────────────────────────────────────────────────
-const columns = [
-  {
-    title: 'Employee Name',
-    dataIndex: 'employeeName',
-    key: 'employeeName',
-    width: 200,
-    sorter: true,
-    render: (text, record) => (
-      <Space>
-        <Avatar size={36} style={{ backgroundColor: '#1890ff' }}>
-          {text.charAt(0).toUpperCase()}
-        </Avatar>
+  // ─── Refresh All Data ──────────────────────────────────────────────────
+  const handleRefresh = () => {
+    setLoading(true);
+    // Clear cache for this company
+    const cacheKeys = [
+      `employees_${companyId}`,
+      `mappings_${companyId}`,
+      `notes_${companyId}`,
+    ];
+    cacheKeys.forEach(key => {
+      cacheInstances.employees.delete(key);
+      cacheInstances.mappings.delete(key);
+      cacheInstances.notes.delete(key);
+    });
+
+    // Reset loaded flags
+    dataLoadedRef.current = {
+      employees: false,
+      mappings: false,
+      notes: false,
+      attendance: false,
+    };
+
+    // Force refetch
+    Promise.all([
+      debouncedFetchEmployees(true),
+      debouncedFetchMappings(true),
+      debouncedFetchNotes(true),
+    ]).then(() => {
+      dataLoadedRef.current.attendance = false;
+      debouncedFetchRecords(true);
+    }).catch(() => {
+      setLoading(false);
+    });
+
+    setLastRefresh(Date.now());
+  };
+
+  // ─── Table Columns ──────────────────────────────────────────────────────────
+  const columns = [
+    {
+      title: 'Employee Name',
+      dataIndex: 'employeeName',
+      key: 'employeeName',
+      width: 200,
+      sorter: true,
+      render: (text, record) => (
+        <Space>
+          <Avatar size={36} style={{ backgroundColor: '#1890ff' }}>
+            {text.charAt(0).toUpperCase()}
+          </Avatar>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{text}</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>{record.role}</Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      title: 'Date',
+      dataIndex: 'displayDate',
+      key: 'date',
+      width: 130,
+      sorter: true,
+      render: (text, record) => (
         <div>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{text}</div>
-          <Text type="secondary" style={{ fontSize: 12 }}>{record.role}</Text>
+          <div style={{ fontWeight: 500, fontSize: 14 }}>{text}</div>
+          <Text type="secondary" style={{ fontSize: 12 }}>{record.weekday}</Text>
         </div>
-      </Space>
-    ),
-  },
-  {
-    title: 'Date',
-    dataIndex: 'displayDate',
-    key: 'date',
-    width: 130,
-    sorter: true,
-    render: (text, record) => (
-      <div>
-        <div style={{ fontWeight: 500, fontSize: 14 }}>{text}</div>
-        <Text type="secondary" style={{ fontSize: 12 }}>{record.weekday}</Text>
-      </div>
-    ),
-  },
-  {
-    title: 'Check In',
-    dataIndex: 'firstIn',
-    key: 'checkIn',
-    width: 110,
-    align: 'center',
-    render: (value, record) => {
-      if (!record.firstIn) {
-        return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
-      }
-      const time = dayjs(record.firstIn).format('HH:mm');
-      return (
-        <Tag color="green" icon={<LoginOutlined />} style={{ fontWeight: 600 }}>
-          {time}
-        </Tag>
-      );
+      ),
     },
-  },
-  {
-    title: 'Check Out',
-    dataIndex: 'lastOut',
-    key: 'checkOut',
-    width: 110,
-    align: 'center',
-    render: (value, record) => {
-      if (!record.lastOut) {
-        return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
-      }
-      const time = dayjs(record.lastOut).format('HH:mm');
-      return (
-        <Tag color="red" icon={<LogoutOutlined />} style={{ fontWeight: 600 }}>
-          {time}
-        </Tag>
-      );
-    },
-  },
-  {
-    title: 'Delay',
-    dataIndex: 'delayMins',
-    key: 'delay',
-    width: 100,
-    align: 'center',
-    sorter: (a, b) => (a.delayMins || 0) - (b.delayMins || 0),
-    render: (value, record) => {
-      if (!record.delayMins || record.delayMins <= 0) {
-        return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
-      }
-      const isLate = record.delayMins > 15;
-      return (
-        <Tooltip title={`Arrived ${record.delayMins} minutes late`}>
-          <Tag 
-            color={isLate ? 'red' : 'orange'} 
-            icon={<WarningOutlined />}
-            style={{ fontWeight: 600 }}
-          >
-            +{record.delayMins}m
+    {
+      title: 'Check In',
+      dataIndex: 'firstIn',
+      key: 'checkIn',
+      width: 110,
+      align: 'center',
+      render: (value, record) => {
+        if (!record.firstIn) {
+          return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+        }
+        const time = dayjs(record.firstIn).format('HH:mm');
+        return (
+          <Tag color="green" icon={<LoginOutlined />} style={{ fontWeight: 600 }}>
+            {time}
           </Tag>
-        </Tooltip>
-      );
+        );
+      },
     },
-  },
-  {
-    title: 'Status',
-    dataIndex: 'status',
-    key: 'status',
-    width: 180,
-    render: (status, record) => (
-      <InlineStatusSelect
-        value={status}
-        record={record}
-        onStatusChange={handleStatusChange}
-        saving={savingStatus}
-      />
-    ),
-  },
-  {
-    title: 'Note / Feedback',
-    dataIndex: 'note',
-    key: 'note',
-    width: 250,
-    render: (text, record) => (
-      <InlineNoteEditor
-        value={text}
-        record={record}
-        onNoteSave={handleNoteSave}
-      />
-    ),
-  },
-];
+    {
+      title: 'Check Out',
+      dataIndex: 'lastOut',
+      key: 'checkOut',
+      width: 110,
+      align: 'center',
+      render: (value, record) => {
+        if (!record.lastOut) {
+          return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+        }
+        const time = dayjs(record.lastOut).format('HH:mm');
+        return (
+          <Tag color="red" icon={<LogoutOutlined />} style={{ fontWeight: 600 }}>
+            {time}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: 'Delay',
+      dataIndex: 'delayMins',
+      key: 'delay',
+      width: 100,
+      align: 'center',
+      sorter: (a, b) => (a.delayMins || 0) - (b.delayMins || 0),
+      render: (value, record) => {
+        if (!record.delayMins || record.delayMins <= 0) {
+          return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+        }
+        const isLate = record.delayMins > 15;
+        return (
+          <Tooltip title={`Arrived ${record.delayMins} minutes late`}>
+            <Tag
+              color={isLate ? 'red' : 'orange'}
+              icon={<WarningOutlined />}
+              style={{ fontWeight: 600 }}
+            >
+              +{record.delayMins}m
+            </Tag>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 180,
+      render: (status, record) => (
+        <InlineStatusSelect
+          value={status}
+          record={record}
+          onStatusChange={handleStatusChange}
+          saving={savingStatus}
+        />
+      ),
+    },
+    {
+      title: 'Note / Feedback',
+      dataIndex: 'note',
+      key: 'note',
+      width: 250,
+      render: (text, record) => (
+        <InlineNoteEditor
+          value={text}
+          record={record}
+          onNoteSave={handleNoteSave}
+        />
+      ),
+    },
+  ];
 
   // ── Date Presets ──────────────────────────────────────────────────────────
   const datePresets = [
@@ -932,9 +1134,11 @@ const columns = [
           </Col>
           <Col>
             <Space>
-              <Button icon={<ReloadOutlined />} onClick={() => { fetchRecords(); fetchSavedNotes(); }}>
-                Refresh
-              </Button>
+              <Badge count={queryOptimizer.requestCount} overflowCount={999} style={{ backgroundColor: '#52c41a' }}>
+                <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading}>
+                  Refresh
+                </Button>
+              </Badge>
               <Button icon={<FileExcelOutlined />} onClick={() => exportToExcel(filteredData, dateRange)}>
                 Export
               </Button>
@@ -1005,7 +1209,7 @@ const columns = [
         </Col>
       </Row>
 
-      {/* Additional Stats Row for other statuses */}
+      {/* Additional Stats Row */}
       <Row gutter={[16, 16]} className="stats-row" style={{ marginTop: 0 }}>
         <Col xs={24} sm={8} md={4}>
           <Card size="small" className="stat-card">
@@ -1040,13 +1244,13 @@ const columns = [
           </Card>
         </Col>
         <Col xs={24} sm={8} md={4}>
-    <Card size="small" className="stat-card">
-      <div style={{ fontSize: 12, color: '#8c8c8c' }}>Weekly Off</div> {/* ← NEW */}
-      <div style={{ fontSize: 20, fontWeight: 700, color: '#8c8c8c' }}> {/* ← NEW */}
-        {stats.weeklyOff} <span style={{ fontSize: 14, fontWeight: 400, color: '#8c8c8c' }}>({stats.weeklyOffPercentage}%)</span> {/* ← NEW */}
-      </div>
-    </Card>
-  </Col>
+          <Card size="small" className="stat-card">
+            <div style={{ fontSize: 12, color: '#8c8c8c' }}>Weekly Off</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#8c8c8c' }}>
+              {stats.weeklyOff} <span style={{ fontSize: 14, fontWeight: 400, color: '#8c8c8c' }}>({stats.weeklyOffPercentage}%)</span>
+            </div>
+          </Card>
+        </Col>
         <Col xs={24} sm={8} md={4}>
           <Card size="small" className="stat-card">
             <div style={{ fontSize: 12, color: '#8c8c8c' }}>Total Records</div>
@@ -1079,7 +1283,7 @@ const columns = [
               allowClear
               style={{ width: '100%' }}
               showSearch
-              filterOption={(input, option) => 
+              filterOption={(input, option) =>
                 option.children.toLowerCase().includes(input.toLowerCase())
               }
             >
@@ -1138,7 +1342,7 @@ const columns = [
                 <span>Showing filtered results</span>
                 {employeeFilter && (
                   <Tag color="blue">
-                    {employees.find(e => e.id === employeeFilter)?.firstname || ''} 
+                    {employees.find(e => e.id === employeeFilter)?.firstname || ''}
                     {employees.find(e => e.id === employeeFilter)?.lastname || ''}
                   </Tag>
                 )}
@@ -1190,6 +1394,10 @@ const columns = [
           <Divider type="vertical" />
           <Text type="secondary">
             <CalendarOutlined /> {dayjs().format('DD/MM/YYYY')}
+          </Text>
+          <Divider type="vertical" />
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            Requests Today: {queryOptimizer.requestCount}
           </Text>
         </Space>
       </div>

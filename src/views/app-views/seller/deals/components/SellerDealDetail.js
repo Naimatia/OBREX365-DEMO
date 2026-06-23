@@ -15,7 +15,9 @@ import {
   Card,
   message,
   Modal,
-  Avatar
+  Avatar,
+  Tooltip,
+  Dropdown
 } from 'antd';
 import {
   EditOutlined,
@@ -31,9 +33,13 @@ import {
   TeamOutlined,
   FileTextOutlined,
   StarOutlined,
-  ShareAltOutlined
+  ShareAltOutlined,
+  PhoneOutlined,
+  GlobalOutlined,
+  TrophyOutlined,
+  CloseCircleOutlined
 } from '@ant-design/icons';
-import { DealStatus, DealSource } from 'models/DealModel';
+import { DealStatus, DealStatusLabels, DealStatusColors } from 'models/DealModel';
 import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
@@ -50,6 +56,7 @@ const SellerDealDetail = ({
   onEdit, 
   onDelete,
   onAddNote,
+  onStatusUpdate,
   loading 
 }) => {
   const [noteText, setNoteText] = useState('');
@@ -57,29 +64,40 @@ const SellerDealDetail = ({
 
   if (!deal) return null;
 
+  // Helper to safely format Firestore timestamps
+  const formatDate = (date) => {
+    if (!date) return '—';
+    try {
+      const dateObj = typeof date.toDate === 'function' ? date.toDate() : new Date(date);
+      if (isNaN(dateObj.getTime())) return '—';
+      return dayjs(dateObj).format('DD MMM YYYY, HH:mm');
+    } catch (error) {
+      return '—';
+    }
+  };
+
   // Get status color
   const getStatusColor = (status) => {
-    switch (status) {
-      case DealStatus.OPENED:
-        return 'blue';
-      case DealStatus.GAIN:
-        return 'green';
-      case DealStatus.LOSS:
-        return 'red';
-      default:
-        return 'default';
-    }
+    return DealStatusColors[status] || 'default';
+  };
+
+  const getStatusLabel = (status) => {
+    return DealStatusLabels[status] || status || 'Unknown';
   };
 
   // Get source icon
   const getSourceIcon = (source) => {
     switch (source) {
-      case DealSource.LEADS:
+      case 'Leads':
         return <TeamOutlined />;
-      case DealSource.CONTACTS:
+      case 'Contacts':
         return <ContactsOutlined />;
-      case DealSource.FREELANCE:
+      case 'Freelance':
         return <UserOutlined />;
+      case 'Facebook':
+        return <span style={{ color: '#1877F2' }}>📘</span>;
+      case 'Instagram':
+        return <span style={{ color: '#E4405F' }}>📷</span>;
       default:
         return <FileTextOutlined />;
     }
@@ -123,13 +141,14 @@ const SellerDealDetail = ({
     return new Intl.NumberFormat('en-AE', {
       style: 'currency',
       currency: 'AED',
-      minimumFractionDigits: 2
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(amount || 0);
   };
 
   // Handle email action
   const handleEmail = () => {
-    const email = deal.contact_email || deal.lead_email || '';
+    const email = deal.contact_email || deal.contact_data?.email || '';
     if (email) {
       const subject = `Regarding Deal: ${deal.Description?.substring(0, 50)}...`;
       const body = `Dear Client,\n\nI hope this email finds you well. I am reaching out regarding our deal discussion.\n\nDeal Amount: ${formatCurrency(deal.Amount)}\nStatus: ${deal.Status}\n\nPlease let me know if you have any questions or would like to schedule a meeting.\n\nBest regards`;
@@ -143,15 +162,24 @@ const SellerDealDetail = ({
 
   // Handle WhatsApp action
   const handleWhatsApp = () => {
-    const phone = deal.contact_phone || deal.lead_phone || '';
+    const phone = deal.contact_phone || deal.contact_data?.phone || '';
     if (phone) {
+      const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
       const message = `Hi! I'm reaching out about our deal discussion. Deal Amount: ${formatCurrency(deal.Amount)}. Let me know when would be a good time to talk. Thanks!`;
-      const whatsappLink = `https://wa.me/${phone.replace(/[^\d]/g, '')}?text=${encodeURIComponent(message)}`;
+      const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
       window.open(whatsappLink, '_blank');
     } else {
       message.warning('No phone number available for this deal');
     }
   };
+
+  // Status options for dropdown
+  const statusOptions = [
+    { label: 'Opened', value: DealStatus.OPENED, color: 'blue' },
+    { label: 'Proposal', value: DealStatus.PROPOSAL, color: 'purple' },
+    { label: 'Won', value: DealStatus.WON, color: 'gold' },
+    { label: 'Lost', value: DealStatus.LOST, color: 'red' }
+  ];
 
   return (
     <Drawer
@@ -159,21 +187,25 @@ const SellerDealDetail = ({
         <Space>
           <DollarOutlined style={{ color: '#1890ff' }} />
           <span>Deal Details</span>
+          {deal.Status && (
+            <Tag color={getStatusColor(deal.Status)}>
+              {getStatusLabel(deal.Status)}
+            </Tag>
+          )}
         </Space>
       }
       placement="right"
-      width={window.innerWidth > 768 ? 500 : '100%'}
+      width={window.innerWidth > 768 ? 520 : '100%'}
       onClose={onClose}
-      visible={visible}
+      open={visible}
       extra={
         <Space>
           <Button 
             icon={<EditOutlined />} 
             onClick={() => onEdit(deal)}
             type="primary"
-            ghost
           >
-            Edit
+            Edit Deal
           </Button>
           <Button 
             icon={<ExclamationCircleOutlined />} 
@@ -186,82 +218,134 @@ const SellerDealDetail = ({
       }
     >
       {/* Deal Header */}
-      <Card className="mb-4" style={{ border: '1px solid #f0f0f0' }}>
+      <Card style={{ marginBottom: 16, borderRadius: 12, border: '1px solid #f0f0f0' }}>
         <Row gutter={16}>
           <Col span={12}>
             <Statistic
               title="Deal Amount"
               value={formatCurrency(deal.Amount)}
-              valueStyle={{ color: '#52c41a', fontSize: '24px' }}
+              valueStyle={{ color: '#52c41a', fontSize: '22px' }}
               prefix={<DollarOutlined />}
             />
           </Col>
           <Col span={12}>
             <div style={{ textAlign: 'center' }}>
               <Text type="secondary">Status</Text>
-              <div style={{ marginTop: '8px' }}>
-                <Tag color={getStatusColor(deal.Status)} style={{ fontSize: '14px', padding: '4px 12px' }}>
-                  {deal.Status}
-                </Tag>
+              <div style={{ marginTop: 8 }}>
+                <Dropdown
+                  menu={{
+                    items: statusOptions.map(option => ({
+                      key: option.value,
+                      label: (
+                        <Tag color={option.color} style={{ margin: 0 }}>
+                          {option.label}
+                        </Tag>
+                      ),
+                      onClick: () => onStatusUpdate?.(deal.id, option.value)
+                    }))
+                  }}
+                  trigger={['click']}
+                >
+                  <Tag 
+                    color={getStatusColor(deal.Status)} 
+                    style={{ 
+                      fontSize: '14px', 
+                      padding: '4px 16px',
+                      cursor: 'pointer',
+                      borderRadius: 20
+                    }}
+                  >
+                    {getStatusLabel(deal.Status)} <EditOutlined style={{ fontSize: 10, marginLeft: 4 }} />
+                  </Tag>
+                </Dropdown>
               </div>
             </div>
           </Col>
         </Row>
       </Card>
 
+      {/* Contact Info */}
+      {deal.contact_name && (
+        <Card title="Contact" style={{ marginBottom: 16, borderRadius: 12, backgroundColor: '#fafafa' }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Avatar size={40} style={{ backgroundColor: '#1890ff' }}>
+                {deal.contact_name[0]?.toUpperCase()}
+              </Avatar>
+              <div>
+                <div style={{ fontWeight: 600 }}>{deal.contact_name}</div>
+                {deal.contact_email && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    <MailOutlined /> {deal.contact_email}
+                  </Text>
+                )}
+                {deal.contact_phone && (
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                    <PhoneOutlined /> {deal.contact_phone}
+                  </Text>
+                )}
+                {deal.region && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    <GlobalOutlined /> {deal.region}
+                  </Text>
+                )}
+              </div>
+            </div>
+          </Space>
+        </Card>
+      )}
+
       {/* Deal Information */}
-      <Card title="Deal Information" className="mb-4" style={{ backgroundColor: '#fafafa' }}>
-        <Space direction="vertical" style={{ width: '100%' }}>
+      <Card title="Deal Information" style={{ marginBottom: 16, borderRadius: 12 }}>
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
           {/* Source */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
-            <div style={{ minWidth: '120px', color: '#8c8c8c' }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ minWidth: '100px', color: '#8c8c8c' }}>
               {getSourceIcon(deal.Source)} Source:
             </div>
-            <Tag color="blue">{deal.Source}</Tag>
+            <Tag color="blue">{deal.Source || 'Contacts'}</Tag>
           </div>
 
           {/* Description */}
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ color: '#8c8c8c', marginBottom: '4px' }}>
+          <div>
+            <div style={{ color: '#8c8c8c', marginBottom: 4 }}>
               <FileTextOutlined /> Description:
             </div>
-            <Paragraph style={{ margin: 0, backgroundColor: 'white', padding: '8px', borderRadius: '4px' }}>
-              {deal.Description}
+            <Paragraph style={{ margin: 0, backgroundColor: 'white', padding: '8px 12px', borderRadius: 6 }}>
+              {deal.Description || '—'}
             </Paragraph>
           </div>
 
           {/* Creation Date */}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
-            <div style={{ minWidth: '120px', color: '#8c8c8c' }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ minWidth: '100px', color: '#8c8c8c' }}>
               <CalendarOutlined /> Created:
             </div>
-            <Text>{dayjs(deal.CreationDate).format('DD MMM YYYY, HH:mm')}</Text>
+            <Text>{formatDate(deal.CreationDate)}</Text>
           </div>
 
           {/* Last Updated */}
-          {deal.LastUpdateDate && (
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ minWidth: '120px', color: '#8c8c8c' }}>
-                <CalendarOutlined /> Updated:
-              </div>
-              <Text>{dayjs(deal.LastUpdateDate).format('DD MMM YYYY, HH:mm')}</Text>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ minWidth: '100px', color: '#8c8c8c' }}>
+              <CalendarOutlined /> Updated:
             </div>
-          )}
+            <Text>{formatDate(deal.LastUpdateDate || deal.updatedAt)}</Text>
+          </div>
 
-          {/* Property Info */}
-          {deal.property_id && (
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ minWidth: '120px', color: '#8c8c8c' }}>
-                <HomeOutlined /> Property:
+          {/* Seller Info */}
+          {deal.seller_name && (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ minWidth: '100px', color: '#8c8c8c' }}>
+                <UserOutlined /> Seller:
               </div>
-              <Text>Property ID: {deal.property_id}</Text>
+              <Tag color="green">{deal.seller_name}</Tag>
             </div>
           )}
         </Space>
       </Card>
 
-      {/* Communication Actions */}
-      <Card title="Quick Actions" className="mb-4" style={{ backgroundColor: '#f6ffed' }}>
+      {/* Quick Actions */}
+      <Card title="Quick Actions" style={{ marginBottom: 16, borderRadius: 12, backgroundColor: '#f6ffed' }}>
         <Row gutter={8}>
           <Col span={12}>
             <Button 
@@ -287,23 +371,21 @@ const SellerDealDetail = ({
       </Card>
 
       {/* Add Note Section */}
-      <Card title="Add Note" className="mb-4">
-        <Space.Compact style={{ width: '100%' }}>
-          <TextArea
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            placeholder="Add a note about this deal..."
-            rows={2}
-            style={{ resize: 'none' }}
-          />
-        </Space.Compact>
+      <Card title="Add Note" style={{ marginBottom: 16, borderRadius: 12 }}>
+        <TextArea
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          placeholder="Add a note about this deal..."
+          rows={2}
+          style={{ resize: 'none', marginBottom: 8 }}
+        />
         <Button
           type="primary"
           icon={<PlusOutlined />}
           onClick={handleAddNote}
           loading={addingNote}
           disabled={!noteText.trim()}
-          style={{ marginTop: '8px', width: '100%' }}
+          style={{ width: '100%' }}
         >
           Add Note
         </Button>
@@ -311,22 +393,22 @@ const SellerDealDetail = ({
 
       {/* Notes Timeline */}
       {deal.Notes && deal.Notes.length > 0 && (
-        <Card title="Notes History" style={{ backgroundColor: '#fff7e6' }}>
-          <Timeline
-            items={deal.Notes.map((note, index) => ({
-              key: index,
-              dot: <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />,
-              children: (
+        <Card title="Notes History" style={{ borderRadius: 12 }}>
+          <Timeline>
+            {deal.Notes.map((note, index) => (
+              <Timeline.Item 
+                key={index}
+                dot={<Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />}
+              >
                 <div>
-                  <Text>{note.note}</Text>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {dayjs(note.CreationDate).format('DD MMM YYYY, HH:mm')}
+                  <Paragraph style={{ margin: 0 }}>{note.note}</Paragraph>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {formatDate(note.CreationDate)}
                   </Text>
                 </div>
-              )
-            }))}
-          />
+              </Timeline.Item>
+            ))}
+          </Timeline>
         </Card>
       )}
     </Drawer>

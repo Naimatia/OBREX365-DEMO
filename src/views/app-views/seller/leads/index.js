@@ -10,7 +10,8 @@ import {
   message,
   Statistic,
   Progress,
-  Tooltip
+  Tooltip,
+  Tag
 } from 'antd';
 import { 
   UserAddOutlined, 
@@ -21,11 +22,13 @@ import {
   TrophyOutlined,
   StarOutlined,
   UploadOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  UserOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import LeadsService from 'services/LeadsService';
-import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
+import { LeadStatus, LeadInterestLevel, LeadStatusLabels, LeadStatusColors } from 'models/LeadModel';
 import SellerLeadList from './components/SellerLeadList';
 import SellerLeadForm from './components/SellerLeadForm';
 import SellerLeadDetail from './components/SellerLeadDetail';
@@ -33,7 +36,10 @@ import LeadEncouragementModal from './components/LeadEncouragementModal';
 import CSVImportModal from './components/CSVImportModal';
 import DealsService from 'services/DealsService';
 import { DealSourceEnum, DealStatus } from 'models/DealModel';
-import { db, collection, query, where, getDocs } from 'configs/FirebaseConfig';
+import { db, collection, query, where, getDocs, serverTimestamp } from 'configs/FirebaseConfig';
+import LeadService from 'services/firebase/LeadService';
+import ContactService from 'services/firebase/ContactService';
+import sellerActivityService, { ActivityTypes, EntityTypes } from 'services/firebase/SellerActivityService';
 
 const { Title, Text } = Typography;
 
@@ -62,7 +68,8 @@ const SellerLeadsPage = () => {
     loss: 0,
     highInterest: 0,
     mediumInterest: 0,
-    lowInterest: 0
+    lowInterest: 0,
+    converted: 0
   });
   
   // Get current user data
@@ -82,7 +89,7 @@ const SellerLeadsPage = () => {
     try {
       console.log('Fetching leads for seller:', sellerId, 'company:', companyId);
       
-      // Get ALL leads from company first to debug
+      // Get ALL leads from company first
       const allLeadsQuery = query(
         collection(db, 'leads'),
         where('company_id', '==', companyId)
@@ -92,31 +99,15 @@ const SellerLeadsPage = () => {
       const allLeads = allLeadsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       console.log('Total leads in company:', allLeads.length);
-      console.log('Sample lead structure:', allLeads[0]);
-      
-      // Check what fields are available in leads
-      const leadsWithSellerId = allLeads.filter(lead => lead.seller_id);
-      const leadsWithCreatedBy = allLeads.filter(lead => lead.createdBy);
-      
-      console.log('Leads with seller_id field:', leadsWithSellerId.length);
-      console.log('Leads with createdBy field:', leadsWithCreatedBy.length);
       
       // Find leads assigned to this seller (by seller_id)
       const assignedToSeller = allLeads.filter(lead => {
-        const isAssigned = lead.seller_id === sellerId;
-        if (isAssigned) {
-          console.log('Found lead assigned to seller:', lead.id, lead.name, 'seller_id:', lead.seller_id);
-        }
-        return isAssigned;
+        return lead.seller_id === sellerId;
       });
       
       // Find leads created by this seller
       const createdBySeller = allLeads.filter(lead => {
-        const isCreated = lead.createdBy === sellerId;
-        if (isCreated) {
-          console.log('Found lead created by seller:', lead.id, lead.name, 'createdBy:', lead.createdBy);
-        }
-        return isCreated;
+        return lead.createdBy === sellerId;
       });
       
       console.log('Assigned to seller count:', assignedToSeller.length);
@@ -130,11 +121,6 @@ const SellerLeadsPage = () => {
       
       setLeads(uniqueLeads);
       calculateMonthlyStats(uniqueLeads);
-      
-      // Show warning if no assigned leads found
-      if (assignedToSeller.length === 0 && allLeads.length > 0) {
-        console.warn('No leads assigned to this seller. Check if leads have seller_id field set correctly.');
-      }
       
     } catch (err) {
       console.error('Error fetching leads:', err);
@@ -159,12 +145,13 @@ const SellerLeadsPage = () => {
     const stats = {
       total: monthlyLeads.length,
       target: 30,
-      pending: monthlyLeads.filter(l => l.status === LeadStatus.PENDING).length,
+      pending: monthlyLeads.filter(l => l.status === LeadStatus.NEW || l.status === LeadStatus.PENDING).length,
       gain: monthlyLeads.filter(l => l.status === LeadStatus.GAIN).length,
-      loss: monthlyLeads.filter(l => l.status === LeadStatus.LOSS).length,
+      loss: monthlyLeads.filter(l => l.status === LeadStatus.LOSS || l.status === LeadStatus.NOT_INTERESTED).length,
       highInterest: monthlyLeads.filter(l => l.InterestLevel === LeadInterestLevel.HIGH).length,
       mediumInterest: monthlyLeads.filter(l => l.InterestLevel === LeadInterestLevel.MEDIUM).length,
-      lowInterest: monthlyLeads.filter(l => l.InterestLevel === LeadInterestLevel.LOW).length
+      lowInterest: monthlyLeads.filter(l => l.InterestLevel === LeadInterestLevel.LOW).length,
+      converted: monthlyLeads.filter(l => l.status === LeadStatus.CONVERTED || l.convertedContactId).length
     };
     
     setMonthlyStats(stats);
@@ -176,15 +163,146 @@ const SellerLeadsPage = () => {
   }, [fetchLeads]);
 
   // === REVEAL LEAD HANDLER ===
-  const handleRevealLead = async (leadId) => {
+const handleRevealLead = async (leadId) => {
+  try {
+    await LeadsService.markLeadAsViewed(leadId, sellerId);
+    
+    const lead = leads.find(l => l.id === leadId);
+    await sellerActivityService.logActivity({
+      sellerId: sellerId,
+      companyId: companyId,
+      activityType: ActivityTypes.LEAD_REVEALED,
+      entityType: 'lead',
+      entityId: leadId,
+      entityName: lead?.name || 'Unknown',
+      details: {
+        name: lead?.name,
+      },
+      metadata: {
+        revealedAt: new Date().toISOString(),
+      }
+    });
+    
+    await fetchLeads();
+  } catch (err) {
+    console.error('Failed to reveal lead:', err);
+    message.error('Failed to reveal lead');
+    throw err;
+  }
+};
+
+  // === STATUS CHANGE HANDLER ===
+  const handleStatusChange = async (leadId, newStatus) => {
     try {
-      await LeadsService.markLeadAsViewed(leadId, sellerId);
-      // Refresh leads to update the revealed status
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) {
+        throw new Error('Lead not found');
+      }
+
+      // If status is CONVERTED, create contact
+      if (newStatus === LeadStatus.CONVERTED && !lead.convertedContactId) {
+        Modal.confirm({
+          title: 'Convert Lead to Contact',
+          content: (
+            <div>
+              <p>This will convert the lead to a contact and create a new contact record.</p>
+              <p><strong>Lead:</strong> {lead.name}</p>
+              <p><strong>Email:</strong> {lead.email}</p>
+              <p><strong>Phone:</strong> {lead.phoneNumber}</p>
+            </div>
+          ),
+          okText: 'Convert',
+          cancelText: 'Cancel',
+          onOk: async () => {
+            try {
+              await LeadService.convertToContact(leadId);
+              message.success('Lead converted to contact successfully!');
+              await fetchLeads();
+            } catch (error) {
+              message.error('Failed to convert lead: ' + error.message);
+            }
+          }
+        });
+        return;
+      }
+
+      // If changing from CONVERTED to another status, confirm contact deletion
+      if (lead.status === LeadStatus.CONVERTED && newStatus !== LeadStatus.CONVERTED && lead.convertedContactId) {
+        Modal.confirm({
+          title: 'Change Status - Contact Will Be Deleted',
+          content: (
+            <div>
+              <p>This lead currently has a contact associated with it.</p>
+              <p><strong>Lead:</strong> {lead.name}</p>
+              <p><strong>Current Status:</strong> Converted</p>
+              <p><strong>New Status:</strong> {LeadStatusLabels[newStatus] || newStatus}</p>
+              <p style={{ color: '#ff4d4f', marginTop: 12 }}>
+                ⚠️ The contact will be deleted when changing from "Converted" to another status.
+              </p>
+            </div>
+          ),
+          okText: 'Change Status & Delete Contact',
+          cancelText: 'Cancel',
+          onOk: async () => {
+            try {
+              // Delete the contact
+              if (lead.convertedContactId) {
+                await ContactService.delete(lead.convertedContactId);
+              }
+
+              // Update lead
+              await LeadService.update(leadId, {
+                convertedContactId: null,
+                convertedAt: null,
+                status: newStatus,
+                updatedAt: serverTimestamp()
+              });
+
+              message.success(`Status changed to ${LeadStatusLabels[newStatus] || newStatus} and contact deleted`);
+              await fetchLeads();
+            } catch (error) {
+              message.error('Failed to update status: ' + error.message);
+            }
+          }
+        });
+        return;
+      }
+
+      // Regular status update (if status is GAIN, create deal)
+      await LeadService.updateStatus(leadId, newStatus);
+      
+      // If status is GAIN, create deal
+      if (newStatus === LeadStatus.GAIN) {
+        const dealData = {
+          Amount: lead.Budget || 0,
+          Description: `Converted from lead: ${lead.name}\nInterest: ${lead.InterestLevel}`,
+          lead_id: lead.id,
+          seller_id: sellerId,
+          company_id: companyId,
+          Status: DealStatus.OPEN,
+          Source: DealSourceEnum.LEADS,
+          contact_name: lead.name,
+          contact_email: lead.email,
+          contact_phone: lead.phoneNumber,
+          CreationDate: new Date(),
+        };
+        await DealsService.createDeal(dealData);
+        message.success(`Lead converted to Gain! Deal created.`);
+      }
+
+      // Show encouragement modal for GAIN or LOSS
+      if ([LeadStatus.GAIN, LeadStatus.LOSS, LeadStatus.NOT_INTERESTED].includes(newStatus)) {
+        setEncouragementModal({
+          visible: true,
+          status: newStatus,
+          leadName: lead?.name || 'Lead'
+        });
+      }
+
       await fetchLeads();
     } catch (err) {
-      console.error('Failed to reveal lead:', err);
-      message.error('Failed to reveal lead');
-      throw err;
+      console.error('Status update failed:', err);
+      message.error('Failed to update status: ' + err.message);
     }
   };
 
@@ -220,13 +338,13 @@ const SellerLeadsPage = () => {
         const leadData = {
           ...cleanedData,
           company_id: companyId,
-          seller_id: sellerId, // Assign to self
-          createdBy: sellerId, // Mark as created by this seller
-          status: LeadStatus.PENDING,
+          seller_id: sellerId,
+          createdBy: sellerId,
+          status: LeadStatus.NEW,
           CreationDate: new Date(),
         };
 
-        await LeadsService.createLead(leadData);
+        await LeadService.create(leadData, false);
         message.success('Lead created successfully');
       }
 
@@ -244,10 +362,30 @@ const SellerLeadsPage = () => {
     setIsFormVisible(true);
   };
 
-  const handleViewLead = (lead) => {
-    setSelectedLead(lead);
-    setIsDetailVisible(true);
-  };
+const handleViewLead = async (lead) => {
+  setSelectedLead(lead);
+  setIsDetailVisible(true);
+  
+  // Log view activity
+  if (sellerId && companyId) {
+    await sellerActivityService.logActivity({
+      sellerId: sellerId,
+      companyId: companyId,
+      activityType: ActivityTypes.LEAD_VIEWED,
+      entityType: 'lead',
+      entityId: lead.id,
+      entityName: lead.name,
+      details: {
+        name: lead.name,
+        status: lead.status,
+      },
+      metadata: {
+        status: lead.status,
+      }
+    });
+  }
+};
+
 
   const handleEditLead = (lead) => {
     // Only allow editing if seller created this lead
@@ -273,7 +411,7 @@ const SellerLeadsPage = () => {
       okType: 'danger',
       onOk: async () => {
         try {
-          await LeadsService.deleteLead(leadId);
+          await LeadService.delete(leadId);
           message.success('Lead deleted successfully');
           fetchLeads();
         } catch (err) {
@@ -283,60 +421,55 @@ const SellerLeadsPage = () => {
     });
   };
 
-  // Handle status change (used in Detail view)
-  const handleLeadStatusChange = async (leadId, newStatus) => {
-    try {
-      await LeadsService.updateLead(leadId, { status: newStatus });
 
-      if (newStatus === LeadStatus.GAIN) {
-        const lead = leads.find(l => l.id === leadId);
-        if (lead) {
-          const dealData = {
-            Amount: lead.Budget || 0,
-            Description: `Converted from lead: ${lead.name}\nInterest: ${lead.InterestLevel}`,
-            lead_id: lead.id,
-            seller_id: sellerId,
-            company_id: companyId,
-            Status: DealStatus.OPEN,
-            Source: DealSourceEnum.LEADS,
-            contact_name: lead.name,
-            contact_email: lead.email,
-            contact_phone: lead.phoneNumber,
-            CreationDate: new Date(),
-          };
-
-          await DealsService.createDeal(dealData);
-          message.success(`Lead converted to Gain! Deal created.`);
+const handleAddNote = async (leadId, noteText) => {
+  try {
+    // Get the lead before adding note
+    const lead = leads.find(l => l.id === leadId);
+    
+    // Add the note
+    await LeadsService.addNote(leadId, noteText);
+    
+    // Log the note activity
+    if (sellerId && companyId && lead) {
+      await sellerActivityService.logActivity({
+        sellerId: sellerId,
+        companyId: companyId,
+        activityType: ActivityTypes.LEAD_NOTE_ADDED,
+        entityType: EntityTypes.LEAD,
+        entityId: leadId,
+        entityName: lead.name || 'Unknown Lead',
+        details: {
+          name: lead.name,
+          note: noteText.substring(0, 100) + (noteText.length > 100 ? '...' : ''),
+          noteLength: noteText.length,
+          leadStatus: lead.status,
+        },
+        metadata: {
+          noteAddedAt: new Date().toISOString(),
+          leadStatus: lead.status,
         }
-      }
-
-      if ([LeadStatus.GAIN, LeadStatus.LOSS].includes(newStatus)) {
-        const lead = leads.find(l => l.id === leadId);
-        setEncouragementModal({
-          visible: true,
-          status: newStatus,
-          leadName: lead?.name || 'Lead'
-        });
-      }
-
-      fetchLeads();
-    } catch (err) {
-      console.error('Status update failed:', err);
-      message.error('Failed to update status');
+      });
     }
-  };
-
-  const handleAddNote = async (leadId, noteText) => {
-    try {
-      await LeadsService.addNote(leadId, noteText);
-      message.success('Note added successfully');
-      fetchLeads();
-      return true;
-    } catch (err) {
-      message.error('Failed to add note');
-      return false;
+    
+    message.success('Note added successfully');
+    fetchLeads(); // Refresh the list
+    
+    // Update selected lead if detail view is open
+    if (selectedLead && selectedLead.id === leadId) {
+      const updatedLead = await LeadService.getById(leadId);
+      if (updatedLead) {
+        setSelectedLead(updatedLead);
+      }
     }
-  };
+    
+    return true;
+  } catch (err) {
+    console.error('Error adding note:', err);
+    message.error('Failed to add note: ' + err.message);
+    return false;
+  }
+};
 
   const handleCsvImportSuccess = (importedCount) => {
     message.success(`Successfully imported ${importedCount} leads`);
@@ -397,12 +530,12 @@ const SellerLeadsPage = () => {
         </Col>
         <Col xs={24} sm={12} md={6}>
           <Card>
-            <Statistic title="Converted" value={monthlyStats.gain} valueStyle={{ color: '#52c41a' }} prefix={<TrophyOutlined />} />
+            <Statistic title="Gained" value={monthlyStats.gain} valueStyle={{ color: '#52c41a' }} prefix={<TrophyOutlined />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
           <Card>
-            <Statistic title="High Interest" value={monthlyStats.highInterest} valueStyle={{ color: '#ff4d4f' }} prefix={<StarOutlined />} />
+            <Statistic title="Converted" value={monthlyStats.converted} valueStyle={{ color: '#722ed1' }} prefix={<UserOutlined />} />
           </Card>
         </Col>
       </Row>
@@ -433,7 +566,8 @@ const SellerLeadsPage = () => {
             onViewLead={handleViewLead}
             onEditLead={handleEditLead}
             onDeleteLead={handleDeleteLead}
-            onRevealLead={handleRevealLead}       
+            onRevealLead={handleRevealLead}
+            onStatusChange={handleStatusChange}
             sellerId={sellerId}
           />
         )}
@@ -461,7 +595,7 @@ const SellerLeadsPage = () => {
         lead={selectedLead}
         onEdit={handleEditLead}
         onAddNote={handleAddNote}
-        onStatusChange={handleLeadStatusChange}
+        onStatusChange={handleStatusChange}
         onClose={() => { setIsDetailVisible(false); setSelectedLead(null); }}
       />
 

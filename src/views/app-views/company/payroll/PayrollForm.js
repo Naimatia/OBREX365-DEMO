@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+// @ts-nocheck
+import React, { useEffect, useState, useRef } from 'react';
 import { 
   Modal, Form, Input, Select, InputNumber, Divider, Button, 
   message, Space, Tag, Alert, Row, Col, Card, Switch, Typography 
@@ -24,12 +25,15 @@ const PayrollForm = ({
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [loading, setLoading] = useState(false);
   const [updateEmployeeSalary, setUpdateEmployeeSalary] = useState(false);
+  const prevVisibleRef = useRef(visible);
 
+  // Watch form values for live calculation
   const monthlySalary = Form.useWatch('monthly_salary', form);
   const daysInMonth = Form.useWatch('days_in_month', form);
   const workingDays = Form.useWatch('working_days', form);
   const absentDays = Form.useWatch('absent_days', form);
   const overtimeHours = Form.useWatch('overtime_hours', form);
+  const hoursPerDay = Form.useWatch('hours_per_day', form);
   const otherDeduction = Form.useWatch('other_deduction', form);
 
   const EmployeeRoles = {
@@ -48,48 +52,70 @@ const PayrollForm = ({
     MARKETING_OFFICER: 'Marketing Officer',
   };
 
-  // Calculate payroll values
-  const calculatePayroll = () => {
-    const salary = Number(monthlySalary || 0);
-    const days = Number(daysInMonth || 30);
-    const working = Number(workingDays || 0);
-    const absent = Number(absentDays || 0);
-    const overtime = Number(overtimeHours || 0);
-    const other = Number(otherDeduction || 0);
+const calculatePayroll = () => {
+  const salary = Number(monthlySalary || 0);
+  const days = Number(daysInMonth || 30);
+  const working = Number(workingDays || 0);
+  const overtime = Number(overtimeHours || 0);
+  const hpd = Number(hoursPerDay || 8);
+  const other = Number(otherDeduction || 0);
 
-    if (salary <= 0 || days <= 0) {
-      return { basicPay: 0, absenceDeduction: 0, overtimePay: 0, grossPay: 0, netPay: 0 };
-    }
-
-    const dailyRate = salary / days;
-    // Basic Pay = Monthly Salary (when working days = days in month)
-    // If working days is less than days in month, calculate proportionally
-    const basicPay = dailyRate * working;
-    // Absence Deduction = (Monthly Salary / Working Days In Month) × Absent Days
-    const absenceDeduction = dailyRate * absent;
-    // Overtime Pay = Overtime Hours × Hourly Rate × 1.5
-    const hourlyRate = dailyRate / 8; // Assuming 8 hours per day
-    const overtimePay = overtime * hourlyRate * 1.5;
-    // Gross Pay = Basic Pay + Overtime
-    const grossPay = basicPay + overtimePay;
-    // Net Pay = Gross Pay - Absence Deduction - Other Deduction
-    const netPay = grossPay - absenceDeduction - other;
-
+  if (salary <= 0 || days <= 0) {
     return {
-      basicPay: Math.round(basicPay * 100) / 100,
-      absenceDeduction: Math.round(absenceDeduction * 100) / 100,
-      overtimePay: Math.round(overtimePay * 100) / 100,
-      grossPay: Math.round(grossPay * 100) / 100,
-      netPay: Math.round(netPay * 100) / 100,
-      dailyRate: Math.round(dailyRate * 100) / 100,
-      hourlyRate: Math.round(hourlyRate * 100) / 100,
+      basicPay: 0,
+      absenceDeduction: 0,
+      overtimePay: 0,
+      grossPay: 0,
+      netPay: 0,
+      dailyRate: 0,
+      hourlyRate: 0,
     };
+  }
+
+  const dailyRate = salary / days;
+  const hourlyRate = dailyRate / hpd;
+
+  // Salary earned from attendance
+  const basicPay = working * dailyRate;
+
+  // Overtime
+  const overtimePay = overtime * hourlyRate * 1.5;
+
+  // Gross
+  const grossPay = basicPay + overtimePay;
+
+  // No absence deduction (already accounted for)
+  const absenceDeduction = 0;
+
+  // Final salary
+  const netPay = grossPay - other;
+
+  return {
+    basicPay: Number(basicPay.toFixed(2)),
+    absenceDeduction: 0,
+    overtimePay: Number(overtimePay.toFixed(2)),
+    grossPay: Number(grossPay.toFixed(2)),
+    netPay: Number(netPay.toFixed(2)),
+    dailyRate: Number(dailyRate.toFixed(2)),
+    hourlyRate: Number(hourlyRate.toFixed(2)),
   };
+};
 
   const calculatedValues = calculatePayroll();
 
   // Handle employee selection
   const handleEmployeeSelect = (employeeId) => {
+    if (!employeeId) {
+      setSelectedEmployee(null);
+      form.setFieldsValue({
+        employee_name: '',
+        position: '',
+        monthly_salary: 0,
+        employee_id: '',
+      });
+      return;
+    }
+
     const employee = employees.find(e => String(e.id) === String(employeeId));
     if (employee) {
       setSelectedEmployee(employee);
@@ -103,28 +129,33 @@ const PayrollForm = ({
     }
   };
 
-  // Initialize form
+  // ✅ FIX 2: Initialize form only when modal opens (transition from hidden → visible)
   useEffect(() => {
-    if (visible) {
+    if (visible && !prevVisibleRef.current) {
       if (isEditing && initialValues) {
+        // Editing mode — load all saved values including calculated fields
         form.setFieldsValue({
-          ...initialValues,
+          employee_id: initialValues.employee_id || '',
+          employee_name: initialValues.employee_name || '',
+          position: initialValues.position || '',
           monthly_salary: Number(initialValues.monthly_salary || 0),
           days_in_month: Number(initialValues.days_in_month || 30),
           hours_per_day: Number(initialValues.hours_per_day || 8),
           working_days: Number(initialValues.working_days || 0),
           overtime_hours: Number(initialValues.overtime_hours || 0),
-          absent_days: Number(initialValues.absent_days || initialValues.absent_per_day || 0),
+          absent_days: Number(initialValues.absent_days || 0),
           other_deduction: Number(initialValues.other_deduction || 0),
-          employee_id: initialValues.employee_id || '',
-          employee_name: initialValues.employee_name || '',
-          position: initialValues.position || '',
+          period_start: initialValues.period_start || '',
+          period_end: initialValues.period_end || '',
         });
+
         if (initialValues.employee_id) {
           const emp = employees.find(e => String(e.id) === String(initialValues.employee_id));
           if (emp) setSelectedEmployee(emp);
         }
+        setUpdateEmployeeSalary(false);
       } else {
+        // Add mode — reset to defaults
         form.resetFields();
         form.setFieldsValue({
           employee_id: '',
@@ -137,41 +168,36 @@ const PayrollForm = ({
           overtime_hours: 0,
           absent_days: 0,
           other_deduction: 0,
-          daily_rate: 0,
-          hourly_rate: 0,
         });
         setSelectedEmployee(null);
+        setUpdateEmployeeSalary(false);
       }
-      setUpdateEmployeeSalary(false);
     }
+
+    prevVisibleRef.current = visible;
   }, [visible, isEditing, initialValues, form, employees]);
 
+  // ✅ FIX 3: handleSubmit sends form values + calculated summary; does NOT re-derive from scratch
   const handleSubmit = async () => {
     try {
-      const values = await form.validateFields();
-      setLoading(true);
-      
+      const values = form.getFieldsValue();
+
+      if (!values.employee_id) { message.error('Please select an employee'); return; }
+      if (!values.employee_name) { message.error('Employee name is required'); return; }
+      if (!values.position) { message.error('Position is required'); return; }
       if (!values.monthly_salary || values.monthly_salary <= 0) {
-        message.error("Monthly Salary is required and must be greater than 0");
-        setLoading(false);
-        return;
+        message.error('Monthly Salary is required and must be greater than 0'); return;
       }
 
-      const { 
-        basicPay, 
-        absenceDeduction, 
-        overtimePay, 
-        grossPay, 
-        netPay,
-        dailyRate,
-        hourlyRate 
-      } = calculatedValues;
+      setLoading(true);
+
+      const { basicPay, absenceDeduction, overtimePay, grossPay, netPay, dailyRate, hourlyRate } = calculatedValues;
 
       const submitData = {
         ...values,
         basic_pay: basicPay,
-        overtime_pay: overtimePay,
         absence_deduction: absenceDeduction,
+        overtime_pay: overtimePay,
         total_deduction: Math.round((absenceDeduction + Number(values.other_deduction || 0)) * 100) / 100,
         gross_pay: grossPay,
         net_pay: netPay,
@@ -185,22 +211,20 @@ const PayrollForm = ({
       await onSubmit(submitData);
       setLoading(false);
     } catch (error) {
-      console.error(error);
+      console.error('Form submission error:', error);
       message.error('Please fill all required fields correctly');
       setLoading(false);
     }
   };
 
-  // Helper to get employee display name
   const getEmployeeDisplay = (emp) => {
     if (!emp) return '';
     return `${emp.firstname || ''} ${emp.lastname || ''}`.trim() || emp.id;
   };
 
-  // Calculation Summary Component
   const CalculationSummary = () => {
     const { basicPay, absenceDeduction, overtimePay, grossPay, netPay } = calculatedValues;
-    
+
     return (
       <Card size="small" style={{ background: '#f6f8fa', marginTop: 16 }}>
         <Row gutter={[8, 8]}>
@@ -236,7 +260,7 @@ const PayrollForm = ({
               </div>
             </div>
           </Col>
-          <Col xs={24} sm={24} md={24} style={{ marginTop: 8 }}>
+          <Col xs={24} style={{ marginTop: 8 }}>
             <div style={{ textAlign: 'center', background: '#e6f7ff', padding: '8px', borderRadius: 4 }}>
               <Text strong style={{ fontSize: 14, color: '#1890ff' }}>
                 Net Pay: AED {netPay.toLocaleString()}
@@ -265,9 +289,9 @@ const PayrollForm = ({
       style={{ maxWidth: 900 }}
       footer={[
         <Button key="cancel" onClick={onCancel}>Cancel</Button>,
-        <Button 
-          key="submit" 
-          type="primary" 
+        <Button
+          key="submit"
+          type="primary"
           onClick={handleSubmit}
           loading={loading}
           icon={<SaveOutlined />}
@@ -280,18 +304,10 @@ const PayrollForm = ({
         message="Auto-Calculation"
         description={
           <div>
-            <p style={{ margin: 0 }}>
-              <strong>Basic Pay</strong> = Monthly Salary × (Working Days / Days in Month)
-            </p>
-            <p style={{ margin: 0 }}>
-              <strong>Absence Deduction</strong> = (Monthly Salary / Days in Month) × Absent Days
-            </p>
-            <p style={{ margin: 0 }}>
-              <strong>Gross Pay</strong> = Basic Pay + Overtime
-            </p>
-            <p style={{ margin: 0 }}>
-              <strong>Net Pay</strong> = Gross Pay - Absence Deduction - Other Deduction
-            </p>
+            <p style={{ margin: 0 }}><strong>Basic Pay</strong> = Monthly Salary × (Working Days / Days in Month)</p>
+            <p style={{ margin: 0 }}><strong>Absence Deduction</strong> = (Monthly Salary / Days in Month) × Absent Days</p>
+            <p style={{ margin: 0 }}><strong>Gross Pay</strong> = Basic Pay + Overtime</p>
+            <p style={{ margin: 0 }}><strong>Net Pay</strong> = Gross Pay − Absence Deduction − Other Deduction</p>
           </div>
         }
         type="info"
@@ -304,8 +320,8 @@ const PayrollForm = ({
 
         <Row gutter={[16, 0]}>
           <Col xs={24} md={12}>
-            <Form.Item 
-              name="employee_id" 
+            <Form.Item
+              name="employee_id"
               label="Select Employee"
               rules={[{ required: true, message: 'Please select an employee' }]}
             >
@@ -344,9 +360,9 @@ const PayrollForm = ({
           </Col>
 
           <Col xs={24} md={12}>
-            <Form.Item 
-              name="employee_name" 
-              label="Employee Name" 
+            <Form.Item
+              name="employee_name"
+              label="Employee Name"
               rules={[{ required: true, message: 'Employee Name is required' }]}
             >
               <Input prefix={<UserOutlined />} placeholder="Enter employee name" />
@@ -366,16 +382,16 @@ const PayrollForm = ({
           </Col>
 
           <Col xs={24} md={12}>
-            <Form.Item 
-              name="monthly_salary" 
-              label="Monthly Salary (AED)" 
+            <Form.Item
+              name="monthly_salary"
+              label="Monthly Salary (AED)"
               rules={[{ required: true, message: 'Monthly Salary is required' }]}
             >
-              <InputNumber 
-                style={{ width: '100%' }} 
-                min={0} 
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0}
                 step={100}
-                formatter={value => `AED ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} 
+                formatter={value => `AED ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 parser={value => value.replace(/AED\s?|(,*)/g, '')}
               />
             </Form.Item>
@@ -385,9 +401,9 @@ const PayrollForm = ({
         {selectedEmployee && !isEditing && (
           <Row gutter={[16, 0]} style={{ marginBottom: 16 }}>
             <Col xs={24}>
-              <div style={{ 
-                background: '#f0f5ff', 
-                padding: '8px 16px', 
+              <div style={{
+                background: '#f0f5ff',
+                padding: '8px 16px',
                 borderRadius: 4,
                 display: 'flex',
                 alignItems: 'center',
@@ -397,9 +413,7 @@ const PayrollForm = ({
               }}>
                 <Space>
                   <UserOutlined style={{ color: '#1890ff' }} />
-                  <Text>
-                    Update salary for <strong>{getEmployeeDisplay(selectedEmployee)}</strong>
-                  </Text>
+                  <Text>Update salary for <strong>{getEmployeeDisplay(selectedEmployee)}</strong></Text>
                 </Space>
                 <Space>
                   <Text type="secondary" style={{ fontSize: 12 }}>
@@ -455,11 +469,11 @@ const PayrollForm = ({
           </Col>
           <Col xs={24} sm={12} md={8}>
             <Form.Item name="other_deduction" label="Other Deduction (AED)">
-              <InputNumber 
-                style={{ width: '100%' }} 
-                min={0} 
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0}
                 step={50}
-                formatter={value => `AED ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} 
+                formatter={value => `AED ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 parser={value => value.replace(/AED\s?|(,*)/g, '')}
               />
             </Form.Item>
@@ -468,13 +482,8 @@ const PayrollForm = ({
 
         <CalculationSummary />
 
-        {/* Hidden period fields */}
-        <Form.Item name="period_start" hidden>
-          <Input />
-        </Form.Item>
-        <Form.Item name="period_end" hidden>
-          <Input />
-        </Form.Item>
+        <Form.Item name="period_start" hidden><Input /></Form.Item>
+        <Form.Item name="period_end" hidden><Input /></Form.Item>
       </Form>
     </Modal>
   );

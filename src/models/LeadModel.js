@@ -1,3 +1,4 @@
+// models/LeadModel.js - Updated with new status system
 /**
  * Lead model interface based on Firestore schema
  */
@@ -17,7 +18,7 @@ export const LeadModel = {
   InterestLevel: '',
   Budget: 0,
   Notes: [],
-  // New fields added
+  // New fields
   lookingFor: '',
   meta_lead_id: '',
   meta_form_id: '',
@@ -29,27 +30,63 @@ export const LeadModel = {
   raw_meta_fields: {},
   sourceDetails: {},
 
+  // Assignment tracking
+  assignedTo: null,
+  assignedAt: null,
+  assignedBy: null,
+
   // View tracking
-  lastViewedBy: null,        // Object with sellerId and timestamp
-  viewCount: 0,              // Total number of times viewed
-  firstViewedAt: null,       // First time this seller viewed the lead
-  lastViewedAt: null,        // Last time this seller viewed the lead
+  lastViewedBy: null,
+  viewCount: 0,
+  firstViewedAt: null,
+  lastViewedAt: null,
   
-  // For hiding sensitive info until viewed
-  isRevealed: false,         // Whether seller has "unlocked" the lead
-  revealedAt: null,          // When the lead was revealed
+  // Reveal tracking
+  isRevealed: false,
+  revealedAt: null,
+
+  // Conversion tracking
+  convertedContactId: null,
+  convertedAt: null,
+
+  // Timestamps
+  createdAt: null,
+  updatedAt: null,
 };
 
 /**
- * Lead status options
+ * Lead status options - NEW SYSTEM
  */
 export const LeadStatus = {
-  PENDING: 'Pending',
-  GAIN: 'Gain',
-  LOSS: 'Loss',
-  NO_RESPONSE: 'No Response',
+  NEW: 'New',
+  CONTACTED: 'Contacted',
+  INTERESTED: 'Interested',
   NOT_INTERESTED: 'Not Interested',
-  JUNK_LEAD: 'Junk Lead',
+  CONVERTED: 'Converted',
+  JUNK_LEAD: 'Junk'
+};
+
+/**
+ * Lead status colors for UI
+ */
+export const LeadStatusColors = {
+  [LeadStatus.NEW]: 'blue',
+  [LeadStatus.CONTACTED]: 'geekblue',
+  [LeadStatus.INTERESTED]: 'cyan',
+  [LeadStatus.NOT_INTERESTED]: 'volcano',
+  [LeadStatus.CONVERTED]: 'green',
+  [LeadStatus.JUNK_LEAD]: 'red',
+};
+
+/**
+ * Lead status labels for display
+ */
+export const LeadStatusLabels = {
+  [LeadStatus.NEW]: 'New',
+  [LeadStatus.CONTACTED]: 'Contacted',
+  [LeadStatus.INTERESTED]: 'Interested',
+  [LeadStatus.NOT_INTERESTED]: 'Not Interested',
+  [LeadStatus.CONVERTED]: 'Converted'
 };
 
 /**
@@ -62,15 +99,27 @@ export const LeadInterestLevel = {
 };
 
 /**
+ * Lead interest level colors
+ */
+export const LeadInterestLevelColors = {
+  [LeadInterestLevel.LOW]: 'orange',
+  [LeadInterestLevel.MEDIUM]: 'blue',
+  [LeadInterestLevel.HIGH]: 'green'
+};
+
+/**
  * Lead redirection source options
  */
 export const LeadRedirectionSource = {
   FACEBOOK: 'Facebook',
   INSTAGRAM: 'Instagram',
-  TIKTOK: 'Tiktok',
+  TIKTOK: 'TikTok',
   GOOGLE_ADS: 'GoogleAds',
   WEBSITE: 'Website',
   LINKEDIN: 'LinkedIn',
+  DIRECT: 'Direct',
+  REFERRAL: 'Referral',
+  IMPORT: 'Import',
   OTHER: 'Other'
 };
 
@@ -87,7 +136,7 @@ export const convertToLeadModel = (doc) => {
   return {
     id: doc.id || '',
     
-    // IMPORTANT: Spread ALL data first to keep every field
+    // Spread ALL data first to keep every field
     ...data,
 
     // Explicitly override / ensure critical fields
@@ -96,7 +145,7 @@ export const convertToLeadModel = (doc) => {
     name: data.name || '',
     region: data.region || '',
     RedirectedFrom: data.RedirectedFrom || '',
-    status: data.status || LeadStatus.PENDING,
+    status: data.status || LeadStatus.NEW,
     InterestLevel: data.InterestLevel || LeadInterestLevel.MEDIUM,
     Budget: data.Budget || '',
     lookingFor: data.lookingFor || '',
@@ -113,6 +162,15 @@ export const convertToLeadModel = (doc) => {
     // Raw data backup
     raw_meta_fields: data.raw_meta_fields || {},
     sourceDetails: data.sourceDetails || {},
+
+    // Assignment tracking
+    assignedTo: data.assignedTo || null,
+    assignedAt: data.assignedAt || null,
+    assignedBy: data.assignedBy || null,
+
+    // Conversion tracking
+    convertedContactId: data.convertedContactId || null,
+    convertedAt: data.convertedAt || null,
 
     // Timestamps
     CreationDate: data.CreationDate,

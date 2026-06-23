@@ -1,409 +1,306 @@
-import React, { useEffect, useState } from 'react';
+// @ts-nocheck
+import React, { useState, useEffect } from 'react';
 import { 
   Drawer, Typography, Row, Col, Descriptions, Button, Space, 
-  Tag, Divider, Spin, Card, Tooltip, List, Empty, Popconfirm
+  Tag, Divider, Spin, Card, Tooltip, Empty, Avatar, Dropdown,Modal
 } from 'antd';
 import {
   UserOutlined, PhoneOutlined, MailOutlined, HomeOutlined,
   DollarOutlined, TagOutlined, CalendarOutlined, LinkOutlined,
   EditOutlined, DeleteOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  UserSwitchOutlined
+  UserSwitchOutlined, GlobalOutlined, TeamOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import contactService from 'services/firebase/ContactService';
-import userService from 'services/firebase/UserService';
-import propertyService from 'services/firebase/PropertyService';
-import leadService from 'services/firebase/LeadService';
-import { DealStatus, DealSource, DealSourceEnum } from 'models/DealModel';
+import { DealStatus, DealStatusLabels, DealStatusColors, DealSourceEnum } from 'models/DealModel';
 
 const { Title, Text } = Typography;
 
-const DealDetails = ({ visible, deal, onClose, onEdit, onDelete, onStatusChange }) => {
+// Status options
+const statusOptions = [
+  { value: DealStatus.OPENED, label: 'Opened', color: 'blue' },
+  { value: DealStatus.PROPOSAL, label: 'Proposal', color: 'purple' },
+  { value: DealStatus.WON, label: 'Won', color: 'gold' },
+  { value: DealStatus.LOST, label: 'Lost', color: 'red' }
+];
+
+const DealDetails = ({ 
+  visible, 
+  deal, 
+  onClose, 
+  onEdit, 
+  onDelete, 
+  onStatusChange,
+  onRefresh 
+}) => {
   const [loading, setLoading] = useState(false);
-  const [contact, setContact] = useState(null);
-  const [seller, setSeller] = useState(null);
-  const [property, setProperty] = useState(null);
-  const [lead, setLead] = useState(null);
 
-  useEffect(() => {
-    if (visible && deal) {
-      fetchRelatedData();
-    }
-  }, [visible, deal]);
+  if (!deal) return null;
 
-  const fetchRelatedData = async () => {
-    setLoading(true);
+  // Format date helper
+  const formatDate = (date) => {
+    if (!date) return '—';
     try {
-      // Reset states to prevent showing stale data
-      setContact(null);
-      setSeller(null);
-      setProperty(null);
-      setLead(null);
-      
-      // Fetch related entities in parallel
-      const promises = [];
-      
-      if (deal.contact_id) {
-        promises.push(contactService.getById(deal.contact_id).then(data => setContact(data)));
-      }
-      
-      if (deal.seller_id) {
-        promises.push(userService.getUserData(deal.seller_id).then(data => setSeller(data)));
-      }
-      
-      if (deal.property_id) {
-        promises.push(propertyService.getById(deal.property_id).then(data => setProperty(data)));
-      }
-      
-      if (deal.lead_id) {
-        promises.push(leadService.getById(deal.lead_id).then(data => setLead(data)));
-      }
-      
-      await Promise.allSettled(promises);
-    } catch (error) {
-      console.error('Error fetching related data:', error);
-    } finally {
-      setLoading(false);
+      const d = date.toDate?.() || new Date(date);
+      if (isNaN(d.getTime())) return '—';
+      return dayjs(d).format('DD MMM YYYY, HH:mm');
+    } catch {
+      return '—';
     }
   };
 
-  const renderStatusTag = (status) => {
-    switch(status) {
-      case DealStatus.OPENED:
-        return <Tag color="blue">Open</Tag>;
-      case DealStatus.GAIN:
-        return <Tag color="green">Won</Tag>;
-      case DealStatus.LOSS:
-        return <Tag color="red">Lost</Tag>;
-      default:
-        return <Tag>Unknown</Tag>;
-    }
+  // Format currency
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-AE', {
+      style: 'currency',
+      currency: 'AED',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount || 0);
   };
 
-const renderSourceTag = (source) => {
-  switch (source) {
-    case DealSourceEnum.LEADS:
-      return <Tag color="#1890ff">🧲 Leads</Tag>;
-
-    case DealSourceEnum.CONTACTS:
-      return <Tag color="#52c41a">👥 Contacts</Tag>;
-
-    case DealSourceEnum.FACEBOOK:
-      return <Tag color="#1877F2">📘 Facebook</Tag>;
-
-    case DealSourceEnum.INSTAGRAM:
-      return <Tag color="#E4405F">📷 Instagram</Tag>;
-
-    case DealSourceEnum.WEBSITE:
-      return <Tag color="#52c41a">🌐 Website</Tag>;
-
-    case DealSourceEnum.LINKEDIN:
-      return <Tag color="#0A66C2">💼 LinkedIn</Tag>;
-
-    case DealSourceEnum.TIKTOK:
-      return <Tag color="#ff0050">🎵 TikTok</Tag>;
-
-    case DealSourceEnum.FREELANCE:
-      return <Tag color="#fa8c16">💪 Freelance</Tag>;
-
-    default:
-      return <Tag>{source || 'Other'}</Tag>;
-  }
-};
-
-
-  const handleMarkAsWon = () => {
-    onStatusChange(deal.id, DealStatus.GAIN);
+  // Render status tag
+  const renderStatus = (status) => {
+    const config = statusOptions.find(s => s.value === status);
+    const color = DealStatusColors[status] || config?.color || 'default';
+    const label = DealStatusLabels[status] || config?.label || status || 'Unknown';
+    
+    return (
+      <Tag color={color} style={{ borderRadius: 16, padding: '2px 14px', fontSize: 14 }}>
+        {label}
+      </Tag>
+    );
   };
 
-  const handleMarkAsLost = () => {
-    onStatusChange(deal.id, DealStatus.LOSS);
+  // Render source
+  const renderSource = (source) => {
+    const sources = {
+      [DealSourceEnum.LEADS]: { icon: '🧲', color: '#1890ff' },
+      [DealSourceEnum.CONTACTS]: { icon: '👥', color: '#52c41a' },
+      [DealSourceEnum.FACEBOOK]: { icon: '📘', color: '#1877F2' },
+      [DealSourceEnum.INSTAGRAM]: { icon: '📷', color: '#E4405F' },
+      [DealSourceEnum.WEBSITE]: { icon: '🌐', color: '#52c41a' },
+      [DealSourceEnum.LINKEDIN]: { icon: '💼', color: '#0A66C2' },
+      [DealSourceEnum.TIKTOK]: { icon: '🎵', color: '#ff0050' },
+      [DealSourceEnum.FREELANCE]: { icon: '💪', color: '#fa8c16' }
+    };
+    
+    const src = sources[source];
+    return src ? (
+      <Tag color={src.color}>{src.icon} {source}</Tag>
+    ) : (
+      <Tag>{source || 'Other'}</Tag>
+    );
   };
 
-  const handleMarkAsOpen = () => {
-    onStatusChange(deal.id, DealStatus.OPENED);
+  // Handle status change
+  const handleStatusChange = (newStatus) => {
+    onStatusChange(deal.id, newStatus);
   };
-
-  if (!deal) {
-    return null;
-  }
 
   return (
     <Drawer
-      title={<Title level={4}>Deal Details</Title>}
+      title={
+        <Space>
+          <DollarOutlined style={{ color: '#1890ff' }} />
+          <span>Deal Details</span>
+          {deal.Status && renderStatus(deal.Status)}
+        </Space>
+      }
       placement="right"
       onClose={onClose}
       open={visible}
-      width={600}
-      className="deal-details-drawer"
-      footer={
-        <Space style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-          <div>
-            <Popconfirm
-              title="Are you sure you want to delete this deal?"
-              onConfirm={() => onDelete(deal.id)}
-              okText="Yes"
-              cancelText="No"
-              placement="topRight"
-            >
-              <Button danger type="primary" icon={<DeleteOutlined />}>
-                Delete
-              </Button>
-            </Popconfirm>
-          </div>
-          <div>
-            <Button 
-              type="primary" 
-              icon={<EditOutlined />} 
-              onClick={() => onEdit(deal)}
-              style={{ marginLeft: 8 }}
-            >
-              Edit
-            </Button>
-            <Button onClick={onClose} style={{ marginLeft: 8 }}>
-              Close
-            </Button>
-          </div>
+      width={520}
+      extra={
+        <Space>
+          <Button 
+            icon={<EditOutlined />} 
+            onClick={() => onEdit(deal)}
+          >
+            Edit
+          </Button>
+          <Button 
+            danger 
+            icon={<DeleteOutlined />} 
+            onClick={() => {
+              Modal.confirm({
+                title: 'Delete Deal',
+                content: 'Are you sure you want to delete this deal?',
+                onOk: () => onDelete(deal.id)
+              });
+            }}
+          >
+            Delete
+          </Button>
         </Space>
       }
     >
       <Spin spinning={loading}>
-        <div className="detail-section">
-          <Row gutter={[16, 16]} align="middle">
-            <Col span={16}>
-              <Title level={4}>{deal.Description || 'No Description'}</Title>
+        {/* Deal Header */}
+        <Card style={{ marginBottom: 16, borderRadius: 10 }}>
+          <Row gutter={16}>
+            <Col span={12}>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>Amount</Text>
+                <div style={{ fontSize: 22, fontWeight: 600, color: '#52c41a' }}>
+                  <DollarOutlined /> {formatCurrency(deal.Amount)}
+                </div>
+              </div>
             </Col>
-            <Col span={8} style={{ textAlign: 'right' }}>
-              <Text type="secondary">Deal ID: {deal.id.substring(0, 8)}</Text>
+            <Col span={12}>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>Status</Text>
+                <div style={{ marginTop: 4 }}>
+                  <Dropdown
+                    menu={{
+                      items: statusOptions.map(opt => ({
+                        key: opt.value,
+                        label: <Tag color={opt.color}>{opt.label}</Tag>,
+                        onClick: () => handleStatusChange(opt.value)
+                      }))
+                    }}
+                    trigger={['click']}
+                  >
+                    <Tag 
+                      color={DealStatusColors[deal.Status] || 'default'} 
+                      style={{ 
+                        cursor: 'pointer', 
+                        borderRadius: 16, 
+                        padding: '2px 14px',
+                        fontSize: 14
+                      }}
+                    >
+                      {DealStatusLabels[deal.Status] || deal.Status || 'Unknown'}
+                      <EditOutlined style={{ marginLeft: 6, fontSize: 12 }} />
+                    </Tag>
+                  </Dropdown>
+                </div>
+              </div>
             </Col>
           </Row>
+        </Card>
 
-          <Row gutter={[16, 16]} align="middle" style={{ marginTop: 16 }}>
-            <Col span={8}>
-              <div className="detail-item">
-                <div className="detail-label">Amount</div>
-                <div className="detail-value">
-                  <DollarOutlined /> AED {deal.Amount ? deal.Amount.toLocaleString() : '0'}
+        {/* Contact Info */}
+        {deal.contact_name && (
+          <Card title={<><UserOutlined /> Contact</>} style={{ marginBottom: 16, borderRadius: 10 }}>
+            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Avatar size={40} style={{ backgroundColor: '#1890ff' }}>
+                  {deal.contact_name[0].toUpperCase()}
+                </Avatar>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 16 }}>{deal.contact_name}</div>
+                  {deal.contact_email && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      <MailOutlined /> {deal.contact_email}
+                    </Text>
+                  )}
+                  {deal.contact_phone && (
+                    <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                      <PhoneOutlined /> {deal.contact_phone}
+                    </Text>
+                  )}
+                  {deal.region && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      <GlobalOutlined /> {deal.region}
+                    </Text>
+                  )}
                 </div>
               </div>
-            </Col>
-            <Col span={8}>
-              <div className="detail-item">
-                <div className="detail-label">Status</div>
-                <div className="detail-value">{renderStatusTag(deal.Status)}</div>
-              </div>
-            </Col>
-            <Col span={8}>
-              <div className="detail-item">
-                <div className="detail-label">Source</div>
-                <div className="detail-value">{renderSourceTag(deal.Source)}</div>
-              </div>
-            </Col>
-          </Row>
-        </div>
-
-        <div className="detail-section">
-          <div className="detail-section-title">
-            <UserOutlined /> Contact Information
-          </div>
-          {contact ? (
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <div className="detail-item">
-                  <div className="detail-label">Name</div>
-                  <div className="detail-value">
-                    {contact.name}
-                  </div>
+              {deal.lookingFor && (
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Looking For:</Text>
+                  <Text> {deal.lookingFor}</Text>
                 </div>
-              </Col>
-              <Col span={12}>
-                <div className="detail-item">
-                  <div className="detail-label">Email</div>
-                  <div className="detail-value">
-                    <MailOutlined /> {contact.email || 'N/A'}
-                  </div>
+              )}
+              {deal.interestLevel && (
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Interest:</Text>
+                  <Tag color={deal.interestLevel === 'High' ? 'red' : deal.interestLevel === 'Medium' ? 'orange' : 'blue'}>
+                    {deal.interestLevel}
+                  </Tag>
                 </div>
-              </Col>
-              <Col span={12}>
-                <div className="detail-item">
-                  <div className="detail-label">Phone</div>
-                  <div className="detail-value">
-                    <PhoneOutlined /> {contact.phoneNumber || 'N/A'}
-                  </div>
-                </div>
-              </Col>
-            </Row>
-          ) : lead ? (
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <div className="detail-item">
-                  <div className="detail-label">Lead Name</div>
-                  <div className="detail-value">
-                    {lead.firstName} {lead.lastName}
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="detail-item">
-                  <div className="detail-label">Lead Email</div>
-                  <div className="detail-value">
-                    <MailOutlined /> {lead.email || 'N/A'}
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="detail-item">
-                  <div className="detail-label">Lead Phone</div>
-                  <div className="detail-value">
-                    <PhoneOutlined /> {lead.phoneNumber || 'N/A'}
-                  </div>
-                </div>
-              </Col>
-            </Row>
-          ) : (
-            <Empty description="No contact or lead associated with this deal" />
-          )}
-        </div>
-
-        <div className="detail-section">
-          <div className="detail-section-title">
-            <UserOutlined /> Seller Information
-          </div>
-          {seller ? (
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <div className="detail-item">
-                  <div className="detail-label">Name</div>
-                  <div className="detail-value">
-                    {seller.firstname} {seller.lastname}
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="detail-item">
-                  <div className="detail-label">Email</div>
-                  <div className="detail-value">
-                    <MailOutlined /> {seller.email || 'N/A'}
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="detail-item">
-                  <div className="detail-label">Phone</div>
-                  <div className="detail-value">
-                    <PhoneOutlined /> {seller.phoneNumber || 'N/A'}
-                  </div>
-                </div>
-              </Col>
-            </Row>
-          ) : (
-            <Empty description="No seller associated with this deal" />
-          )}
-        </div>
-
-        {property && (
-          <div className="detail-section">
-            <div className="detail-section-title">
-              <HomeOutlined /> Property Information
-            </div>
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <div className="detail-item">
-                  <div className="detail-label">Address</div>
-                  <div className="detail-value">
-                    {property.address}
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="detail-item">
-                  <div className="detail-label">Type</div>
-                  <div className="detail-value">
-                    {property.type || 'N/A'}
-                  </div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="detail-item">
-                  <div className="detail-label">Price</div>
-                  <div className="detail-value">
-                    <DollarOutlined /> AED {property.OriginalPrice ? property.OriginalPrice.toLocaleString() : 'N/A'}
-                  </div>
-                </div>
-              </Col>
-            </Row>
-          </div>
+              )}
+            </Space>
+          </Card>
         )}
 
-        <div className="detail-section">
-          <div className="detail-section-title">
-            <CalendarOutlined /> Timeline
-          </div>
-          <Descriptions layout="vertical" size="small" column={2}>
-            <Descriptions.Item label="Created">
-              {deal.CreationDate ? dayjs(deal.CreationDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Last Updated">
-              {deal.LastUpdateDate ? dayjs(deal.LastUpdateDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Status Last Changed">
-              {deal.StatusUpdateDate ? dayjs(deal.StatusUpdateDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Closed Date">
-              {deal.ClosedDate ? dayjs(deal.ClosedDate.toDate()).format('MMM DD, YYYY') : 'N/A'}
-            </Descriptions.Item>
-          </Descriptions>
-        </div>
+        {/* Seller Info */}
+        <Card title={<><TeamOutlined /> Seller</>} style={{ marginBottom: 16, borderRadius: 10 }}>
+          {deal.seller_name ? (
+            <Space>
+              <Avatar size={32} style={{ backgroundColor: '#722ed1' }}>
+                {deal.seller_name[0].toUpperCase()}
+              </Avatar>
+              <div>
+                <div style={{ fontWeight: 500 }}>{deal.seller_name}</div>
+                {deal.seller_email && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    <MailOutlined /> {deal.seller_email}
+                  </Text>
+                )}
+                {deal.seller_phone && (
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                    <PhoneOutlined /> {deal.seller_phone}
+                  </Text>
+                )}
+              </div>
+            </Space>
+          ) : (
+            <Text type="secondary">No seller assigned</Text>
+          )}
+        </Card>
 
-        <div className="detail-section">
-          <div className="detail-section-title">
-            Actions
-          </div>
-          <Row gutter={[16, 16]}>
-            <Col span={8}>
-              <Button
-                type="primary"
-                icon={<CheckCircleOutlined />}
-                onClick={handleMarkAsWon}
-                disabled={deal.Status === DealStatus.GAIN}
-                block
-              >
-                Mark as Won
-              </Button>
-            </Col>
-            <Col span={8}>
-              <Button
-                danger
-                icon={<CloseCircleOutlined />}
-                onClick={handleMarkAsLost}
-                disabled={deal.Status === DealStatus.LOSS}
-                block
-              >
-                Mark as Lost
-              </Button>
-            </Col>
-            <Col span={8}>
-              <Button
-                icon={<TagOutlined />}
-                onClick={handleMarkAsOpen}
-                disabled={deal.Status === DealStatus.OPENED}
-                block
-              >
-                Mark as Open
-              </Button>
-            </Col>
-          </Row>
-        </div>
+        {/* Deal Info */}
+        <Card title={<><TagOutlined /> Deal Information</>} style={{ marginBottom: 16, borderRadius: 10 }}>
+          <Space direction="vertical" style={{ width: '100%' }} size={8}>
+            <div>
+              <Text type="secondary">Source:</Text>
+              <div style={{ marginTop: 2 }}>{renderSource(deal.Source)}</div>
+            </div>
+            <div>
+              <Text type="secondary">Description:</Text>
+              <div style={{ marginTop: 2 }}>{deal.Description || '—'}</div>
+            </div>
+            <div>
+              <Text type="secondary">Created:</Text>
+              <div style={{ marginTop: 2 }}>{formatDate(deal.CreationDate)}</div>
+            </div>
+            {deal.LastUpdateDate && (
+              <div>
+                <Text type="secondary">Last Updated:</Text>
+                <div style={{ marginTop: 2 }}>{formatDate(deal.LastUpdateDate)}</div>
+              </div>
+            )}
+            {deal.priority && (
+              <div>
+                <Text type="secondary">Priority:</Text>
+                <Tag color={deal.priority === 'high' ? 'red' : deal.priority === 'medium' ? 'orange' : 'blue'}>
+                  {deal.priority}
+                </Tag>
+              </div>
+            )}
+          </Space>
+        </Card>
 
-        {deal.Notes && (
-          <div className="detail-section notes-section">
-            <div className="detail-section-title">
-              Notes
-            </div>
-            <div className="note-item">
-              <div className="note-content">{deal.Notes}</div>
-            </div>
-          </div>
+        {/* Notes */}
+        {deal.Notes && deal.Notes.length > 0 && (
+          <Card title="Notes" style={{ borderRadius: 10 }}>
+            {deal.Notes.map((note, index) => (
+              <div key={index} style={{ 
+                padding: '8px 12px', 
+                marginBottom: 8, 
+                background: '#fafafa', 
+                borderRadius: 6,
+                border: '1px solid #f0f0f0'
+              }}>
+                <Text>{note.note}</Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  {formatDate(note.CreationDate)}
+                </Text>
+              </div>
+            ))}
+          </Card>
         )}
       </Spin>
     </Drawer>

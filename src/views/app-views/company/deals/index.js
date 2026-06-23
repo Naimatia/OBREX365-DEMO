@@ -1,22 +1,23 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Card, Typography, Table, Input, Button, Row, Col, Tag, Drawer, Space, 
   Statistic, Tooltip, Modal, Spin, Badge, Divider, message, Popconfirm,
-  Select
+  Select, Avatar, Dropdown
 } from 'antd';
-import { db, collection, query, where, getDocs, doc } from 'configs/FirebaseConfig';
+import { db, collection, query, where, getDocs, doc, getDoc } from 'configs/FirebaseConfig';
 import { 
   PlusOutlined, SearchOutlined, FilterOutlined, BarChartOutlined, 
   EditOutlined, DeleteOutlined, EyeOutlined, DollarOutlined, 
-  CheckCircleOutlined, CloseCircleOutlined, InfoCircleOutlined
+  CheckCircleOutlined, CloseCircleOutlined, InfoCircleOutlined,
+  UserOutlined, PhoneOutlined, MailOutlined, MoreOutlined,
+  TeamOutlined, TrophyOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import dealService from 'services/firebase/DealService';
 import contactService from 'services/firebase/ContactService';
 import userService from 'services/firebase/UserService';
-import propertyService from 'services/firebase/PropertyService';
-import { DealStatus, DealSource, DealSourceEnum } from 'models/DealModel';
+import { DealStatus, DealStatusLabels, DealStatusColors, DealSourceEnum } from 'models/DealModel';
 import dayjs from 'dayjs';
 import DealDetails from './DealDetails';
 import DealStatsDrawer from './DealStatsDrawer';
@@ -26,14 +27,18 @@ import './deals.css';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+// Status options with colors
+const statusOptions = [
+  { value: DealStatus.OPENED, label: 'Opened', color: 'blue' },
+  { value: DealStatus.PROPOSAL, label: 'Proposal', color: 'purple' },
+  { value: DealStatus.WON, label: 'Won', color: 'gold' },
+  { value: DealStatus.LOST, label: 'Lost', color: 'red' }
+];
+
 const DealsPage = () => {
-  // Redux state
   const user = useSelector(state => state.auth.user);
-  const companyId = user?.company_id || ''; // Extract company_id directly from the user object
-  console.log('User object:', user);
-  console.log('Company ID from user:', companyId);
-  
-  // Component state
+  const companyId = user?.company_id || '';
+
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDeal, setSelectedDeal] = useState(null);
@@ -44,71 +49,38 @@ const DealsPage = () => {
     sellerId: null,
   });
   const [stats, setStats] = useState({
-    count: { total: 0, opened: 0, gain: 0, loss: 0 },
-    value: { total: 0, opened: 0, gain: 0, loss: 0 }
+    count: { total: 0, opened: 0, proposal: 0, won: 0, lost: 0 },
+    value: { total: 0, opened: 0, proposal: 0, won: 0, lost: 0 }
   });
   
-  // UI state
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [statsDrawerVisible, setStatsDrawerVisible] = useState(false);
   const [formVisible, setFormVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [sellers, setSellers] = useState([]);
-  
-  // Fetch deals and related data
-  useEffect(() => {
-    if (companyId) {
-      fetchDeals();
-      fetchSellers();
-    }
-  }, [companyId]);
-  
-  // Fetch deals with filters
-  const fetchDeals = async () => {
+
+  // Fetch deals with all data
+  const fetchDeals = useCallback(async () => {
     if (!companyId) return;
     
     setLoading(true);
     try {
-      // Get all deals and manually filter to handle Firestore reference objects
+      // Get all deals
       const dealsCollection = collection(db, 'deals');
-      const allDealsSnap = await getDocs(dealsCollection);
-      console.log(`Found ${allDealsSnap.docs.length} total deals in database`);
+      const dealsSnap = await getDocs(dealsCollection);
       
-      // Create possible company ID formats for matching
-      const companyRef = doc(db, 'companies', companyId);
-      const companyPath = `companies/${companyId}`;
-      const companyRefPath = `/companies/${companyId}`;
+      // Process and filter by company
+      const allDeals = dealsSnap.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      }));
       
-      console.log('Looking for company paths:', [companyId, companyPath, companyRefPath]);
+      const companyDeals = allDeals.filter(deal => 
+        deal.company_id === companyId || 
+        deal.company_id?.path?.includes(companyId)
+      );
       
-      // Process all deals and filter by company_id
-      const allDeals = allDealsSnap.docs.map(docSnap => {
-        const data = docSnap.data();
-        return { id: docSnap.id, ...data };
-      });
-      
-      const companyDeals = allDeals.filter(deal => {
-        const dealCompanyId = deal.company_id;
-        if (!dealCompanyId) return false;
-        
-        // If it's a Firebase reference object
-        if (typeof dealCompanyId === 'object' && dealCompanyId.path) {
-          return dealCompanyId.path.includes(companyId);
-        }
-        
-        // If it's a string path
-        if (typeof dealCompanyId === 'string') {
-          return dealCompanyId === companyId || 
-                 dealCompanyId === companyPath || 
-                 dealCompanyId === companyRefPath;
-        }
-        
-        return false;
-      });
-      
-      console.log(`Filtered ${companyDeals.length} deals for company_id: ${companyId}`);
-      
-      // Apply additional filters
+      // Apply filters
       let filteredDeals = companyDeals;
       
       if (filters.status) {
@@ -123,41 +95,54 @@ const DealsPage = () => {
         filteredDeals = filteredDeals.filter(deal => deal.seller_id === filters.sellerId);
       }
       
-      // Filter by search text if provided
       if (searchText) {
+        const term = searchText.toLowerCase();
         filteredDeals = filteredDeals.filter(deal => 
-          deal.Description?.toLowerCase().includes(searchText.toLowerCase())
+          deal.Description?.toLowerCase().includes(term) ||
+          deal.contact_name?.toLowerCase().includes(term) ||
+          deal.contact_email?.toLowerCase().includes(term)
         );
       }
       
-      // Debug information
-      if (companyDeals.length === 0 && allDeals.length > 0) {
-        const sampleDeal = allDeals[0];
-        console.log('Sample deal fields:', Object.keys(sampleDeal));
-        console.log('Sample company_id:', sampleDeal.company_id);
-        if (typeof sampleDeal.company_id === 'object') {
-          console.log('Reference path:', sampleDeal.company_id.path);
-          console.log('Reference ID:', sampleDeal.company_id.id);
-        }
-      }
+      // Fetch seller names for display
+      const dealsWithSellers = await Promise.all(
+        filteredDeals.map(async (deal) => {
+          let sellerName = deal.seller_name || '';
+          if (deal.seller_id && !sellerName) {
+            try {
+              const sellerDoc = await getDoc(doc(db, 'users', deal.seller_id));
+              if (sellerDoc.exists()) {
+                const sellerData = sellerDoc.data();
+                sellerName = `${sellerData.firstname || ''} ${sellerData.lastname || ''}`.trim();
+              }
+            } catch (e) {
+              console.warn('Could not fetch seller:', e);
+            }
+          }
+          return { ...deal, seller_name: sellerName };
+        })
+      );
       
-      setDeals(filteredDeals);
+      setDeals(dealsWithSellers);
       
       // Calculate stats
       const statsCounts = {
         total: filteredDeals.length,
-        opened: filteredDeals.filter(deal => deal.Status === DealStatus.OPENED).length,
-        gain: filteredDeals.filter(deal => deal.Status === DealStatus.GAIN).length,
-        loss: filteredDeals.filter(deal => deal.Status === DealStatus.LOSS).length
+        opened: filteredDeals.filter(d => d.Status === DealStatus.OPENED || d.Status === 'Opened').length,
+        proposal: filteredDeals.filter(d => d.Status === DealStatus.PROPOSAL || d.Status === 'Proposal').length,
+        won: filteredDeals.filter(d => d.Status === DealStatus.WON || d.Status === 'Won').length,
+        lost: filteredDeals.filter(d => d.Status === DealStatus.LOST || d.Status === 'Lost').length
       };
       
       const statsValues = {
         total: filteredDeals.reduce((sum, deal) => sum + (Number(deal.Amount) || 0), 0),
-        opened: filteredDeals.filter(deal => deal.Status === DealStatus.OPENED)
+        opened: filteredDeals.filter(d => d.Status === DealStatus.OPENED || d.Status === 'Opened')
                           .reduce((sum, deal) => sum + (Number(deal.Amount) || 0), 0),
-        gain: filteredDeals.filter(deal => deal.Status === DealStatus.GAIN)
+        proposal: filteredDeals.filter(d => d.Status === DealStatus.PROPOSAL || d.Status === 'Proposal')
+                          .reduce((sum, deal) => sum + (Number(deal.Amount) || 0), 0),
+        won: filteredDeals.filter(d => d.Status === DealStatus.WON || d.Status === 'Won')
                         .reduce((sum, deal) => sum + (Number(deal.Amount) || 0), 0),
-        loss: filteredDeals.filter(deal => deal.Status === DealStatus.LOSS)
+        lost: filteredDeals.filter(d => d.Status === DealStatus.LOST || d.Status === 'Lost')
                         .reduce((sum, deal) => sum + (Number(deal.Amount) || 0), 0)
       };
       
@@ -167,93 +152,113 @@ const DealsPage = () => {
       });
     } catch (error) {
       console.error('Error fetching deals:', error);
-      message.error('Failed to fetch deals. Please try again.');
-      // Even on error, we should stop loading
-      setLoading(false);
+      message.error('Failed to fetch deals');
     } finally {
       setLoading(false);
     }
-  };
-  
-  const fetchSellers = async () => {
+  }, [companyId, filters, searchText]);
+
+  // Fetch sellers
+  const fetchSellers = useCallback(async () => {
     if (!companyId) return;
     
     try {
-      const sellersData = await userService.getUsersByCompany(companyId);
-      setSellers(sellersData);
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const sellersList = [];
+      
+      usersSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.company_id === companyId) {
+          sellersList.push({
+            id: doc.id,
+            ...data,
+            fullName: `${data.firstname || ''} ${data.lastname || ''}`.trim()
+          });
+        }
+      });
+      
+      setSellers(sellersList);
     } catch (error) {
       console.error('Error fetching sellers:', error);
     }
-  };
-  
+  }, [companyId]);
+
+  useEffect(() => {
+    if (companyId) {
+      fetchDeals();
+      fetchSellers();
+    }
+  }, [companyId, fetchDeals, fetchSellers]);
+
+  // Handlers
   const handleSearch = (value) => {
     setSearchText(value);
-    // Debounce fetch to avoid too many requests
-    setTimeout(() => {
-      fetchDeals();
-    }, 500);
+    setTimeout(() => fetchDeals(), 300);
   };
-  
+
   const handleFilterChange = (type, value) => {
-    setFilters(prev => ({
-      ...prev,
-      [type]: value
-    }));
-    fetchDeals();
+    setFilters(prev => ({ ...prev, [type]: value }));
+    setTimeout(() => fetchDeals(), 100);
   };
-  
+
   const handleCreateDeal = () => {
     setSelectedDeal(null);
     setIsEditing(false);
     setFormVisible(true);
   };
-  
+
   const handleEditDeal = (deal) => {
     setSelectedDeal(deal);
     setIsEditing(true);
     setFormVisible(true);
   };
-  
+
   const handleViewDetails = (deal) => {
     setSelectedDeal(deal);
     setDetailsVisible(true);
   };
-  
+
   const handleDeleteDeal = async (dealId) => {
     try {
       await dealService.delete(dealId);
-      message.success('Deal deleted successfully');
+      message.success('Deal deleted');
       fetchDeals();
     } catch (error) {
-      console.error('Error deleting deal:', error);
       message.error('Failed to delete deal');
     }
   };
-  
+
+  const handleStatusChange = async (dealId, newStatus) => {
+    try {
+      await dealService.update(dealId, { Status: newStatus });
+      message.success(`Status updated to ${DealStatusLabels[newStatus] || newStatus}`);
+      fetchDeals();
+    } catch (error) {
+      message.error('Failed to update status');
+    }
+  };
+
   const handleFormSubmit = async (formData) => {
     try {
-      // Clean any remaining undefined values to prevent Firestore errors
       const cleanData = { ...formData };
       Object.keys(cleanData).forEach(key => {
-        if (cleanData[key] === undefined) {
-          delete cleanData[key]; // Remove any undefined values
+        if (cleanData[key] === undefined || cleanData[key] === null) {
+          delete cleanData[key];
         }
       });
       
-      console.log('Final form data before submission:', cleanData);
-      
       if (isEditing && selectedDeal) {
         await dealService.update(selectedDeal.id, cleanData);
-        message.success('Deal updated successfully');
+        message.success('Deal updated');
       } else {
         await dealService.create({
           ...cleanData,
           company_id: companyId,
-          CreationDate: new Date(),
-          LastUpdateDate: new Date(),
+          Status: DealStatus.OPENED
         });
-        message.success('Deal created successfully');
+        message.success('Deal created');
       }
+      
       setFormVisible(false);
       fetchDeals();
     } catch (error) {
@@ -262,311 +267,361 @@ const DealsPage = () => {
     }
   };
 
-  const handleStatusChange = async (dealId, status) => {
-    try {
-      await dealService.updateStatus(dealId, status);
-      message.success(`Deal marked as ${status}`);
-      fetchDeals();
-    } catch (error) {
-      console.error('Error updating deal status:', error);
-      message.error('Failed to update deal status');
-    }
-  };
-  
-  // Render status tag with appropriate color
+  // Render status tag
   const renderStatus = (status) => {
-    switch(status) {
-      case DealStatus.OPENED:
-        return <Tag color="blue">Open</Tag>;
-      case DealStatus.GAIN:
-        return <Tag color="green">Won</Tag>;
-      case DealStatus.LOSS:
-        return <Tag color="red">Lost</Tag>;
-      default:
-        return <Tag>Unknown</Tag>;
-    }
+    const config = statusOptions.find(s => s.value === status);
+    const color = DealStatusColors[status] || config?.color || 'default';
+    const label = DealStatusLabels[status] || config?.label || status || 'Unknown';
+    
+    return (
+      <Tag color={color} style={{ borderRadius: 16, padding: '2px 12px' }}>
+        {label}
+      </Tag>
+    );
   };
 
-  // Render source with appropriate icon
+  // Render source
   const renderSource = (source) => {
-  switch (source) {
-    case DealSourceEnum.LEADS:
-      return <Tag color="#1890ff">🧲 Leads</Tag>;
-
-    case DealSourceEnum.CONTACTS:
-      return <Tag color="#52c41a">👥 Contacts</Tag>;
-
-    case DealSourceEnum.FACEBOOK:
-      return <Tag color="#1877F2">📘 Facebook</Tag>;
-
-    case DealSourceEnum.INSTAGRAM:
-      return <Tag color="#E4405F">📷 Instagram</Tag>;
-
-    case DealSourceEnum.WEBSITE:
-      return <Tag color="#52c41a">🌐 Website</Tag>;
-
-    case DealSourceEnum.LINKEDIN:
-      return <Tag color="#0A66C2">💼 LinkedIn</Tag>;
-
-    case DealSourceEnum.TIKTOK:
-      return <Tag color="#ff0050">🎵 TikTok</Tag>;
-
-    case DealSourceEnum.FREELANCE:
-      return <Tag color="#fa8c16">💪 Freelance</Tag>;
-
-    default:
-      return <Tag>{source || 'Other'}</Tag>;
-  }
+    const sources = {
+      [DealSourceEnum.LEADS]: { icon: '🧲', color: '#1890ff' },
+      [DealSourceEnum.CONTACTS]: { icon: '👥', color: '#52c41a' },
+      [DealSourceEnum.FACEBOOK]: { icon: '📘', color: '#1877F2' },
+      [DealSourceEnum.INSTAGRAM]: { icon: '📷', color: '#E4405F' },
+      [DealSourceEnum.WEBSITE]: { icon: '🌐', color: '#52c41a' },
+      [DealSourceEnum.LINKEDIN]: { icon: '💼', color: '#0A66C2' },
+      [DealSourceEnum.TIKTOK]: { icon: '🎵', color: '#ff0050' },
+      [DealSourceEnum.FREELANCE]: { icon: '💪', color: '#fa8c16' }
+    };
+    
+    const src = sources[source];
+    return src ? (
+      <Tag color={src.color}>{src.icon} {source}</Tag>
+    ) : (
+      <Tag>{source || 'Other'}</Tag>
+    );
   };
-  
-  // Table columns configuration
+
+  // Format currency
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-AE', {
+      style: 'currency',
+      currency: 'AED',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount || 0);
+  };
+
+  // Table columns
   const columns = [
     {
-      title: 'Amount',
-      dataIndex: 'Amount',
-      key: 'amount',
-      sorter: (a, b) => a.Amount - b.Amount,
-      render: (amount) => (
-        <Text strong style={{ color: '#1890ff' }}>
-          AED {amount ? amount.toLocaleString() : '0'}
-        </Text>
+      title: 'Contact',
+      dataIndex: 'contact_name',
+      key: 'contact_name',
+      width: 180,
+      fixed: 'left',
+      render: (text, record) => (
+        <Space>
+          <Avatar size={32} style={{ backgroundColor: '#1890ff' }}>
+            {(text || 'U')[0].toUpperCase()}
+          </Avatar>
+          <div>
+            <div style={{ fontWeight: 500 }}>{text || 'Unknown'}</div>
+            {record.contact_email && (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                <MailOutlined style={{ marginRight: 2 }} />
+                {record.contact_email}
+              </Text>
+            )}
+          </div>
+        </Space>
       ),
+      sorter: (a, b) => (a.contact_name || '').localeCompare(b.contact_name || '')
     },
     {
       title: 'Description',
       dataIndex: 'Description',
       key: 'description',
-      render: (text) => <Text ellipsis={{ tooltip: text }}>{text || 'No description'}</Text>,
+      ellipsis: true,
+      width: 180,
+      render: (text) => (
+        <Tooltip title={text}>
+          <span>{text || '—'}</span>
+        </Tooltip>
+      )
+    },
+    {
+      title: 'Amount',
+      dataIndex: 'Amount',
+      key: 'amount',
+      width: 130,
+      sorter: (a, b) => (a.Amount || 0) - (b.Amount || 0),
+      render: (amount) => (
+        <Text strong style={{ color: '#52c41a', fontSize: 14 }}>
+          <DollarOutlined /> {formatCurrency(amount)}
+        </Text>
+      )
+    },
+    {
+      title: 'Seller',
+      dataIndex: 'seller_name',
+      key: 'seller',
+      width: 140,
+      render: (name) => (
+        <Space>
+          <UserOutlined style={{ color: '#722ed1' }} />
+          <Text>{name || 'Unassigned'}</Text>
+        </Space>
+      ),
+      filters: sellers.map(s => ({ text: s.fullName || s.name || 'Unknown', value: s.id })),
+      onFilter: (value, record) => record.seller_id === value
     },
     {
       title: 'Source',
       dataIndex: 'Source',
       key: 'source',
+      width: 120,
       render: (source) => renderSource(source),
-      filters: Object.values(DealSource).map(source => ({
-        text: source,
-        value: source,
-      })),
-      onFilter: (value, record) => record.Source === value,
+      filters: Object.values(DealSourceEnum).map(src => ({ text: src, value: src })),
+      onFilter: (value, record) => record.Source === value
     },
     {
       title: 'Status',
       dataIndex: 'Status',
       key: 'status',
-      render: (status) => renderStatus(status),
-      filters: Object.values(DealStatus).map(status => ({
-        text: status,
-        value: status,
-      })),
-      onFilter: (value, record) => record.Status === value,
+      width: 130,
+      render: (status, record) => (
+        <Dropdown
+          menu={{
+            items: statusOptions.map(opt => ({
+              key: opt.value,
+              label: <Tag color={opt.color}>{opt.label}</Tag>,
+              onClick: () => handleStatusChange(record.id, opt.value)
+            }))
+          }}
+          trigger={['click']}
+        >
+          <Tag 
+            color={DealStatusColors[status] || 'default'} 
+            style={{ cursor: 'pointer', borderRadius: 16, padding: '2px 12px' }}
+          >
+            {DealStatusLabels[status] || status || 'Unknown'}
+          </Tag>
+        </Dropdown>
+      ),
+      filters: statusOptions.map(opt => ({ text: opt.label, value: opt.value })),
+      onFilter: (value, record) => record.Status === value
     },
     {
       title: 'Created',
       dataIndex: 'CreationDate',
       key: 'created',
-      render: (date) => date ? dayjs(date.toDate()).format('MMM DD, YYYY') : 'N/A',
-      sorter: (a, b) => {
-        if (!a.CreationDate || !b.CreationDate) return 0;
-        return a.CreationDate.toDate() - b.CreationDate.toDate();
+      width: 110,
+      render: (date) => {
+        if (!date) return '—';
+        try {
+          const d = date.toDate?.() || new Date(date);
+          return dayjs(d).format('DD MMM YY');
+        } catch {
+          return '—';
+        }
       },
+      sorter: (a, b) => {
+        const da = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+        const db = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+        return da - db;
+      }
     },
     {
       title: 'Actions',
       key: 'actions',
+      width: 80,
+      fixed: 'right',
       render: (_, record) => (
         <Space>
           <Tooltip title="View Details">
             <Button 
+              type="text" 
+              size="small" 
               icon={<EyeOutlined />} 
-              size="small" 
-              onClick={() => handleViewDetails(record)} 
+              onClick={() => handleViewDetails(record)}
+              style={{ color: '#1890ff' }}
             />
           </Tooltip>
-          <Tooltip title="Edit Deal">
-            <Button 
-              icon={<EditOutlined />} 
-              size="small" 
-              onClick={() => handleEditDeal(record)} 
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Are you sure you want to delete this deal?"
-            onConfirm={() => handleDeleteDeal(record.id)}
-            okText="Yes"
-            cancelText="No"
-            placement="left"
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'edit',
+                  label: 'Edit',
+                  icon: <EditOutlined />,
+                  onClick: () => handleEditDeal(record)
+                },
+                {
+                  type: 'divider'
+                },
+                {
+                  key: 'delete',
+                  label: 'Delete',
+                  icon: <DeleteOutlined />,
+                  danger: true,
+                  onClick: () => {
+                    Modal.confirm({
+                      title: 'Delete Deal',
+                      content: 'Are you sure you want to delete this deal?',
+                      onOk: () => handleDeleteDeal(record.id)
+                    });
+                  }
+                }
+              ]
+            }}
+            trigger={['click']}
           >
-            <Button icon={<DeleteOutlined />} size="small" danger />
-          </Popconfirm>
+            <Button type="text" size="small" icon={<MoreOutlined />} />
+          </Dropdown>
         </Space>
-      ),
-    },
+      )
+    }
   ];
-  
-  // Row class name based on status
+
+  // Row class name
   const getRowClassName = (record) => {
     switch(record.Status) {
-      case DealStatus.OPENED:
-        return 'deal-row-open';
-      case DealStatus.GAIN:
-        return 'deal-row-won';
-      case DealStatus.LOSS:
-        return 'deal-row-lost';
-      default:
-        return '';
+      case DealStatus.OPENED: return 'deal-row-opened';
+      case DealStatus.PROPOSAL: return 'deal-row-proposal';
+      case DealStatus.WON: return 'deal-row-won';
+      case DealStatus.LOST: return 'deal-row-lost';
+      default: return '';
     }
   };
 
   return (
-    <div className="deals-page">
-      {/* Header with Stats Summary */}
-      <Card className="stats-summary-card" bordered={false}>
-        <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} sm={24} md={16} lg={18}>
-            <Row gutter={16}>
-              <Col span={6}>
-                <Statistic 
-                  title="Total Deals" 
-                  value={stats.count.total} 
-                  prefix={<InfoCircleOutlined />} 
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic 
-                  title="Open Deals" 
-                  value={stats.count.opened} 
-                  valueStyle={{ color: '#1890ff' }}
-                  prefix={<InfoCircleOutlined />} 
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic 
-                  title="Won Deals" 
-                  value={stats.count.gain} 
-                  valueStyle={{ color: '#52c41a' }}
-                  prefix={<CheckCircleOutlined />} 
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic 
-                  title="Lost Deals" 
-                  value={stats.count.loss} 
-                  valueStyle={{ color: '#f5222d' }}
-                  prefix={<CloseCircleOutlined />} 
-                />
-              </Col>
-            </Row>
-            <Row style={{ marginTop: 16 }}>
-              <Col span={12}>
-                <Statistic 
-                  title="Total Value" 
-                  value={stats.value.total} 
-                  precision={2}
-                  prefix={<DollarOutlined />} 
-                  formatter={(value) => `AED ${value.toLocaleString()}`}
-                />
-              </Col>
-              <Col span={12}>
-                <Button 
-                  type="default" 
-                  icon={<BarChartOutlined />} 
-                  onClick={() => setStatsDrawerVisible(true)}
-                >
-                  View Detailed Statistics
-                </Button>
-              </Col>
-            </Row>
-          </Col>
-          <Col xs={24} sm={24} md={8} lg={6} style={{ textAlign: 'right' }}>
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />} 
-              onClick={handleCreateDeal}
-              style={{ marginBottom: 16 }}
-              block
-            >
-              Create New Deal
-            </Button>
-          </Col>
-        </Row>
-      </Card>
+    <div className="deals-page" style={{ padding: '24px' }}>
+      {/* Stats Summary */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center' }}>
+            <Statistic title="Total" value={stats.count.total} valueStyle={{ fontSize: 18 }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#e6f7ff' }}>
+            <Statistic title="Opened" value={stats.count.opened} valueStyle={{ fontSize: 18, color: '#1890ff' }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#f9f0ff' }}>
+            <Statistic title="Proposal" value={stats.count.proposal} valueStyle={{ fontSize: 18, color: '#722ed1' }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#f6ffed' }}>
+            <Statistic title="Won" value={stats.count.won} valueStyle={{ fontSize: 18, color: '#52c41a' }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#fff1f0' }}>
+            <Statistic title="Lost" value={stats.count.lost} valueStyle={{ fontSize: 18, color: '#ff4d4f' }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#f0f5ff' }}>
+            <Statistic title="Total Value" value={formatCurrency(stats.value.total)} valueStyle={{ fontSize: 16, color: '#52c41a' }} />
+          </Card>
+        </Col>
+      </Row>
 
-      {/* Filters and Search */}
-      <Card className="filters-card" bordered={false} style={{ marginTop: 16 }}>
-        <Row gutter={16} align="middle">
-          <Col xs={24} sm={12} md={8} lg={6}>
+      {/* Filters */}
+      <Card style={{ marginBottom: 16 }} bodyStyle={{ padding: '12px 16px' }}>
+        <Row gutter={[12, 12]} align="middle">
+          <Col xs={24} sm={6}>
             <Input 
-              placeholder="Search by description"
+              placeholder="Search deals..."
               prefix={<SearchOutlined />}
               value={searchText}
               onChange={(e) => handleSearch(e.target.value)}
               allowClear
             />
           </Col>
-          <Col xs={24} sm={12} md={5} lg={4}>
+          <Col xs={12} sm={4}>
             <Select
-              placeholder="Filter by status"
+              placeholder="Status"
               style={{ width: '100%' }}
               value={filters.status}
               onChange={(value) => handleFilterChange('status', value)}
               allowClear
             >
-              {Object.values(DealStatus).map((status) => (
-                <Option key={status} value={status}>{status}</Option>
+              {statusOptions.map(opt => (
+                <Option key={opt.value} value={opt.value}>
+                  <Tag color={opt.color}>{opt.label}</Tag>
+                </Option>
               ))}
             </Select>
           </Col>
-          <Col xs={24} sm={12} md={5} lg={4}>
+          <Col xs={12} sm={4}>
             <Select
-              placeholder="Filter by source"
+              placeholder="Source"
               style={{ width: '100%' }}
               value={filters.source}
               onChange={(value) => handleFilterChange('source', value)}
               allowClear
             >
-              {Object.values(DealSource).map((source) => (
-                <Option key={source} value={source}>{source}</Option>
+              {Object.values(DealSourceEnum).map(src => (
+                <Option key={src} value={src}>{src}</Option>
               ))}
             </Select>
           </Col>
-          <Col xs={24} sm={12} md={6} lg={6}>
+          <Col xs={12} sm={6}>
             <Select
-              placeholder="Filter by seller"
+              placeholder="Seller"
               style={{ width: '100%' }}
               value={filters.sellerId}
               onChange={(value) => handleFilterChange('sellerId', value)}
               allowClear
+              showSearch
+              optionFilterProp="children"
             >
-              {sellers.map((seller) => (
+              {sellers.map(seller => (
                 <Option key={seller.id} value={seller.id}>
-                  {seller.firstname} {seller.lastname}
+                  {seller.fullName || seller.name || 'Unknown'}
                 </Option>
               ))}
             </Select>
           </Col>
-          <Col xs={24} sm={24} md={24} lg={4} style={{ textAlign: 'right' }}>
-            <Button 
-              onClick={() => {
+          <Col xs={12} sm={4}>
+            <Space>
+              <Button onClick={() => {
                 setFilters({ status: null, source: null, sellerId: null });
                 setSearchText('');
                 fetchDeals();
-              }}
-            >
-              Reset Filters
-            </Button>
+              }}>
+                Reset
+              </Button>
+              <Button 
+                type="primary" 
+                icon={<PlusOutlined />} 
+                onClick={handleCreateDeal}
+              >
+                Add Deal
+              </Button>
+            </Space>
           </Col>
         </Row>
       </Card>
 
       {/* Deals Table */}
-      <Card className="deals-table-card" bordered={false} style={{ marginTop: 16 }}>
+      <Card bodyStyle={{ padding: 0 }}>
         <Table 
           columns={columns} 
           dataSource={deals} 
           rowKey="id" 
           loading={loading}
-          pagination={{ pageSize: 10 }}
+          pagination={{ 
+            pageSize: 10,
+            showSizeChanger: true,
+            showTotal: (total) => `${total} deals`
+          }}
           rowClassName={getRowClassName}
+          scroll={{ x: 1100 }}
         />
       </Card>
       
@@ -581,6 +636,7 @@ const DealsPage = () => {
           setDetailsVisible(false);
           handleDeleteDeal(dealId);
         }}
+        onRefresh={fetchDeals}
       />
       
       {/* Stats Drawer */}
@@ -598,6 +654,7 @@ const DealsPage = () => {
         isEditing={isEditing}
         initialValues={selectedDeal}
         companyId={companyId}
+        sellers={sellers}
       />
     </div>
   );

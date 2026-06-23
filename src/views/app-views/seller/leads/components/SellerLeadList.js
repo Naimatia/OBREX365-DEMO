@@ -1,4 +1,3 @@
-// components/SellerLeadList.js
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Table,
@@ -39,7 +38,7 @@ import {
   CalendarOutlined,
   InfoCircleOutlined,
 } from '@ant-design/icons';
-import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
+import { LeadStatus, LeadInterestLevel, LeadStatusLabels, LeadStatusColors } from 'models/LeadModel';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -48,6 +47,31 @@ const { Option } = Select;
 const { RangePicker } = DatePicker;
 const { confirm } = Modal;
 
+// Status configuration with colors and labels
+const statusConfig = {
+  [LeadStatus.NEW]: { color: 'blue', label: 'New' },
+  [LeadStatus.CONTACTED]: { color: 'orange', label: 'Contacted' },
+  [LeadStatus.INTERESTED]: { color: 'green', label: 'Interested' },
+  [LeadStatus.NOT_INTERESTED]: { color: 'red', label: 'Not Interested' },
+  [LeadStatus.CONVERTED]: { color: 'purple', label: 'Converted' },
+  [LeadStatus.JUNK_LEAD]: { color: 'purple', label: 'Junk' },
+};
+
+const statusOptions = [
+  { value: LeadStatus.NEW, label: 'New', color: 'blue' },
+
+  { value: LeadStatus.CONTACTED, label: 'Contacted', color: 'geekblue' },
+
+  { value: LeadStatus.INTERESTED, label: 'Interested', color: 'cyan' },
+
+  { value: LeadStatus.NOT_INTERESTED, label: 'Not Interested', color: 'volcano' },
+
+  { value: LeadStatus.CONVERTED, label: 'Converted', color: 'green' },
+
+  { value: LeadStatus.JUNK_LEAD, label: 'Junk Lead', color: 'red' },
+];
+
+
 const SellerLeadList = ({
   leads,
   loading,
@@ -55,6 +79,7 @@ const SellerLeadList = ({
   onEditLead,
   onDeleteLead,
   onRevealLead,
+  onStatusChange,
   sellerId,
   sellers = [],
 }) => {
@@ -72,7 +97,6 @@ const SellerLeadList = ({
   useEffect(() => {
     const initialRevealed = {};
     leads.forEach(lead => {
-      // Check if lead has been revealed by this seller
       const hasBeenViewed = lead.lastViewedBy?.sellerId === sellerId;
       initialRevealed[lead.id] = hasBeenViewed || lead.isRevealed || false;
     });
@@ -107,21 +131,18 @@ const SellerLeadList = ({
     return false;
   };
 
-  // ✅ Helper to get the relevant date (Created vs Assigned)
+  // Helper to get the relevant date (Created vs Assigned)
   const getLeadDate = (lead) => {
     if (isMyOwnLead(lead)) {
-      // For own leads: show CreationDate
       return lead.CreationDate;
     }
     if (isAssignedToMe(lead)) {
-      // For assigned leads: show assignedAt timestamp
       return lead.assignedAt;
     }
-    // Fallback to CreationDate
     return lead.CreationDate;
   };
 
-  // ✅ Helper to get date label
+  // Helper to get date label
   const getDateLabel = (lead) => {
     if (isMyOwnLead(lead)) {
       return 'Created';
@@ -211,7 +232,7 @@ const SellerLeadList = ({
       });
     }
 
-    // Sort: newest first (by CreationDate for own leads, assignedAt for assigned leads)
+    // Sort: newest first
     filtered.sort((a, b) => {
       const dateA = getLeadDate(a);
       const dateB = getLeadDate(b);
@@ -271,8 +292,8 @@ const SellerLeadList = ({
     }
   };
 
-  const renderHiddenContent = (lead, fieldName, actualContent, placeholder = '•••••') => {
-    if (!isHidden(lead)) return actualContent;
+  const renderHiddenContent = (record, fieldName, actualContent, placeholder = '•••••') => {
+    if (!isHidden(record)) return actualContent;
     
     return (
       <Tooltip title="Click 'Reveal' to view this information">
@@ -413,25 +434,59 @@ const SellerLeadList = ({
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: 110,
+      width: 180,
       render: (status, record) => {
-        if (isHidden(record)) {
+        const isHiddenLead = isHidden(record);
+        const isConverted = record.convertedContactId || status === LeadStatus.CONVERTED;
+        
+        if (isHiddenLead) {
           return <Tag style={{ filter: 'blur(3px)' }}>•••</Tag>;
         }
-        
-        const statusConfig = {
-          [LeadStatus.PENDING]: { color: 'geekblue', text: 'Pending' },
-          [LeadStatus.GAIN]: { color: 'green', text: 'Gain' },
-          [LeadStatus.LOSS]: { color: 'red', text: 'Loss' },
-          [LeadStatus.NO_RESPONSE]: { color: 'default', text: 'No Response' },
-          [LeadStatus.NOT_INTERESTED]: { color: 'orange', text: 'Not Interested' },
-          [LeadStatus.JUNK_LEAD]: { color: 'purple', text: 'Junk' },
-        };
-        const config = statusConfig[status] || { color: 'default', text: status || 'Unknown' };
-        return <Tag color={config.color}>{config.text}</Tag>;
+
+        // If converted, show as read-only tag
+        if (isConverted) {
+          const config = statusConfig[status] || { color: 'default', label: status || '—' };
+          return (
+            <Tooltip title="This lead has been converted to a contact">
+              <Tag
+                color={config.color}
+                style={{ borderRadius: 20, fontWeight: 500, fontSize: 11, cursor: 'default' }}
+                onClick={e => e.stopPropagation()}
+              >
+                {config.label} ✓
+              </Tag>
+            </Tooltip>
+          );
+        }
+
+        // Status dropdown for non-converted leads
+        return (
+          <div onClick={e => e.stopPropagation()} style={{ display: 'inline-block' }}>
+            <Select
+              value={status || LeadStatus.NEW}
+              onChange={(value) => {
+                if (onStatusChange) {
+                  onStatusChange(record.id, value);
+                }
+              }}
+              style={{ width: 130 }}
+              size="small"
+              dropdownMatchSelectWidth={200}
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+            >
+              {statusOptions.map(option => (
+                <Select.Option key={option.value} value={option.value}>
+                  <Tag color={option.color} style={{ margin: 0 }}>
+                    {option.label}
+                  </Tag>
+                </Select.Option>
+              ))}
+            </Select>
+          </div>
+        );
       },
     },
-    // ✅ MODIFIED: Date column with dynamic label based on lead type
     {
       title: () => (
         <Tooltip title="'Created' for leads you added / 'Assigned' for leads assigned to you">

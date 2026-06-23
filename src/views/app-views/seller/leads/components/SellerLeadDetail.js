@@ -14,6 +14,7 @@ import { useSelector } from 'react-redux';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import UserService from 'services/firebase/UserService';
 import LeadHistoryService from 'services/firebase/LeadHistoryService';
+import sellerActivityService, { ActivityTypes, EntityTypes } from 'services/firebase/SellerActivityService';
 import dayjs from 'dayjs';
 import DealsService from 'services/DealsService';
 import { DealSourceEnum, DealStatus } from 'models/DealModel';
@@ -112,7 +113,7 @@ const interestColors = {
 };
 
 /* ────────────────────── COMPONENT ────────────────────── */
-const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) => {
+const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange, onAddNote }) => {
 
   /* ── state ── */
   const [sellerInfo,   setSellerInfo]   = useState(null);
@@ -123,6 +124,7 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
   const [emailVisible,    setEmailVisible]    = useState(false);
   const [callVisible,     setCallVisible]     = useState(false);
   const [noteVisible,     setNoteVisible]     = useState(false);
+  const [addingNote,      setAddingNote]      = useState(false);
 
   const [whatsappForm] = Form.useForm();
   const [emailForm]    = Form.useForm();
@@ -130,6 +132,8 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
   const [noteForm]     = Form.useForm();
 
   const currentUser = useSelector(state => state.auth.user);
+  const companyId = currentUser?.company_id;
+  const sellerId = currentUser?.id;
 
   /* ── load seller + company ── */
   useEffect(() => {
@@ -171,6 +175,30 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
     if (!lead.contacted) await LeadHistoryService.markAsContacted(lead.id);
   };
 
+  /* ── LOG ACTIVITY HELPER ── */
+  const logActivity = async (activityType, details = {}, metadata = {}) => {
+    try {
+      await sellerActivityService.logActivity({
+        sellerId: sellerId,
+        companyId: companyId,
+        activityType: activityType,
+        entityType: EntityTypes.LEAD,
+        entityId: lead.id,
+        entityName: lead.name || 'Unknown Lead',
+        details: {
+          name: lead.name,
+          ...details,
+        },
+        metadata: {
+          leadStatus: lead.status,
+          ...metadata,
+        }
+      });
+    } catch (error) {
+      console.warn('Failed to log activity:', error);
+    }
+  };
+
   /* ── whatsapp ── */
   const sendWhatsApp = async (values) => {
     const seller      = sellerInfo || currentUser;
@@ -192,6 +220,21 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
       sellerId: currentUser.id,
       createdBy: { id: currentUser.id, name },
     });
+    
+    // Log to unified activity
+    await logActivity(
+      'lead_whatsapp_sent',
+      { 
+        message: msg.substring(0, 200) + (msg.length > 200 ? '...' : ''),
+        template: values.template,
+        phoneNumber: lead.phoneNumber,
+      },
+      { 
+        templateId: values.template,
+        messageLength: msg.length,
+      }
+    );
+    
     await markContactedIfNeeded();
     setWhatsappVisible(false);
     message.success('WhatsApp opened & logged');
@@ -227,6 +270,22 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
       sellerId: currentUser.id,
       createdBy: { id: currentUser.id, name },
     });
+    
+    // Log to unified activity
+    await logActivity(
+      'lead_email_sent',
+      { 
+        subject: subject,
+        template: values.template,
+        recipient: lead.email,
+        message: body.substring(0, 200) + (body.length > 200 ? '...' : ''),
+      },
+      { 
+        templateId: values.template,
+        messageLength: body.length,
+      }
+    );
+    
     await markContactedIfNeeded();
     setEmailVisible(false);
     win ? message.success('Gmail opened – click Send!') : message.warning('Allow pop-ups for Gmail');
@@ -240,24 +299,88 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
       sellerId: currentUser.id,
       createdBy: { id: currentUser.id, name },
     });
+    
+    // Log to unified activity
+    await logActivity(
+      'lead_call_logged',
+      { 
+        duration: values.duration,
+        outcome: values.outcome,
+      },
+      { 
+        durationMinutes: values.duration,
+        callOutcome: values.outcome,
+      }
+    );
+    
     await markContactedIfNeeded();
     callForm.resetFields();
     setCallVisible(false);
     message.success('Call logged');
   };
 
-  /* ── add note ── */
+  /* ── add note (UPDATED to use onAddNote prop) ── */
   const addNote = async () => {
-    const { note } = await noteForm.validateFields();
-    const name = await getCreatedByName();
-    await LeadHistoryService.addHistory(lead.id, {
-      type: 'note', message: note,
-      sellerId: currentUser.id,
-      createdBy: { id: currentUser.id, name },
-    });
-    noteForm.resetFields();
-    setNoteVisible(false);
-    message.success('Note added');
+    try {
+      const { note } = await noteForm.validateFields();
+      
+      if (!note || !note.trim()) {
+        message.warning('Please enter a note');
+        return;
+      }
+      
+      setAddingNote(true);
+      
+      // Use the onAddNote prop from parent
+      if (onAddNote && typeof onAddNote === 'function') {
+        const result = await onAddNote(lead.id, note.trim());
+        if (result) {
+          // Also log to LeadHistoryService for backward compatibility
+          const name = await getCreatedByName();
+          await LeadHistoryService.addHistory(lead.id, {
+            type: 'note', 
+            message: note.trim(),
+            sellerId: currentUser.id,
+            createdBy: { id: currentUser.id, name },
+          });
+          
+          noteForm.resetFields();
+          setNoteVisible(false);
+          message.success('Note added successfully');
+        }
+      } else {
+        // Fallback: just log to LeadHistoryService
+        const name = await getCreatedByName();
+        await LeadHistoryService.addHistory(lead.id, {
+          type: 'note', 
+          message: note.trim(),
+          sellerId: currentUser.id,
+          createdBy: { id: currentUser.id, name },
+        });
+        
+        // Also log to unified activity
+        await logActivity(
+          ActivityTypes.LEAD_NOTE_ADDED,
+          { 
+            note: note.trim(),
+            noteLength: note.length,
+          },
+          { 
+            noteLength: note.length,
+            noteAddedAt: new Date().toISOString(),
+          }
+        );
+        
+        noteForm.resetFields();
+        setNoteVisible(false);
+        message.success('Note added');
+      }
+    } catch (error) {
+      console.error('Error adding note:', error);
+      message.error('Failed to add note: ' + error.message);
+    } finally {
+      setAddingNote(false);
+    }
   };
 
   /* ── status change + auto-deal ── */
@@ -286,6 +409,19 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
           CreationDate:  new Date(),
         });
         message.success('Lead converted to Gain! Deal created.');
+        
+        // Log deal creation
+        await logActivity(
+          'lead_deal_created',
+          { 
+            leadName: lead.name,
+            amount: lead.Budget,
+          },
+          { 
+            amount: lead.Budget,
+            status: 'Gain',
+          }
+        );
       } else {
         message.success(`Status updated to ${newStatus}`);
       }
@@ -296,6 +432,21 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
         sellerId: currentUser.id,
         createdBy: { id: currentUser.id, name },
       });
+      
+      // Log status change to unified activity
+      await logActivity(
+        ActivityTypes.LEAD_STATUS_CHANGED,
+        { 
+          previousStatus: lead.status,
+          newStatus: newStatus,
+        },
+        { 
+          oldStatus: lead.status,
+          newStatus: newStatus,
+          changedAt: new Date().toISOString(),
+        }
+      );
+      
     } catch (err) {
       console.error(err);
       message.error('Failed to update status');
@@ -567,13 +718,15 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
           )}
         </Card>
 
-        {/* ── INLINE NOTE FORM (always visible, like LeadDetailsPro) ── */}
+        {/* ── INLINE NOTE FORM ── */}
         <Card title="Quick Note" size="small">
           <Form form={noteForm} layout="vertical">
             <Form.Item name="note" rules={[{ required: true, message: 'Please type a note' }]} style={{ marginBottom: 8 }}>
               <TextArea rows={3} placeholder="Type your note…" />
             </Form.Item>
-            <Button type="primary" onClick={addNote}>Add Note</Button>
+            <Button type="primary" onClick={addNote} loading={addingNote}>
+              Add Note
+            </Button>
           </Form>
         </Card>
       </div>
@@ -639,14 +792,15 @@ const SellerLeadDetail = ({ visible, lead, onEdit, onClose, onStatusChange }) =>
         </Form>
       </Modal>
 
-      {/* ── NOTE MODAL (from quick-action button) ── */}
+      {/* ── NOTE MODAL ── */}
       <Modal
         title="Add Note"
         open={noteVisible}
         onCancel={() => { setNoteVisible(false); noteForm.resetFields(); }}
         onOk={addNote}
-        okText="Add"
+        okText="Add Note"
         destroyOnClose
+        confirmLoading={addingNote}
       >
         <Form form={noteForm} layout="vertical">
           <Form.Item name="note" rules={[{ required: true, message: 'Please type a note' }]}>

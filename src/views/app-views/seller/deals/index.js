@@ -11,7 +11,8 @@ import {
   Space,
   Progress,
   message,
-  Spin
+  Spin,
+  Tag 
 } from 'antd';
 import {
   PlusOutlined,
@@ -23,14 +24,17 @@ import {
   StarOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
-import DealsService from 'services/DealsService';
-import { DealStatus, DealSource } from 'models/DealModel';
+import DealService from 'services/firebase/DealService';
+import { DealStatus, DealStatusLabels, DealStatusColors } from 'models/DealModel';
 import SellerDealList from './components/SellerDealList';
 import SellerDealForm from './components/SellerDealForm';
 import SellerDealDetail from './components/SellerDealDetail';
 import DealEncouragementModal from './components/DealEncouragementModal';
+import SellerDealKanban from './components/SellerDealKanban';
+import sellerActivityService, { ActivityTypes, EntityTypes } from 'services/firebase/SellerActivityService';
 
 const { Title, Text } = Typography;
+
 
 /**
  * Seller Deals page - View and manage deals assigned to the current seller
@@ -49,20 +53,21 @@ const SellerDealsPage = () => {
   const [monthlyStats, setMonthlyStats] = useState({
     total: 0,
     opened: 0,
-    gain: 0,
-    loss: 0,
+    proposal: 0,
+    won: 0,
+    lost: 0,
     totalValue: 0,
     avgDealValue: 0
   });
   
-  // Encouragement modal state
-  const [encouragementModal, setEncouragementModal] = useState({
-    visible: false,
-    status: null,
-    amount: 0
-  });
+const [encouragementModal, setEncouragementModal] = useState({
+  visible: false,
+  status: null,
+  amount: 0,
+  contactName: ''
+});
 
-  // Fetch deals
+  // Fetch deals assigned to current seller
   const fetchDeals = useCallback(async () => {
     if (!sellerId || !companyId) {
       console.log('Missing user data:', { sellerId, companyId });
@@ -73,7 +78,8 @@ const SellerDealsPage = () => {
     try {
       console.log('Fetching deals for seller:', sellerId);
       setLoading(true);
-      const dealsData = await DealsService.getSellerDeals(sellerId);
+      // Get deals by seller
+      const dealsData = await DealService.getDealsBySeller(sellerId);
       console.log('Fetched deals:', dealsData);
       setDeals(dealsData);
       
@@ -87,13 +93,13 @@ const SellerDealsPage = () => {
     }
   }, [sellerId, companyId]);
 
-  // Calculate monthly statistics
+  // Calculate monthly statistics with new statuses
   const calculateMonthlyStats = (dealsData) => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     
     const monthlyDeals = dealsData.filter(deal => {
-      const dealDate = new Date(deal.CreationDate);
+      const dealDate = deal.CreationDate?.toDate?.() || new Date(deal.CreationDate);
       return dealDate.getMonth() === currentMonth && dealDate.getFullYear() === currentYear;
     });
     
@@ -101,9 +107,10 @@ const SellerDealsPage = () => {
     
     const stats = {
       total: monthlyDeals.length,
-      opened: monthlyDeals.filter(d => d.Status === DealStatus.OPENED).length,
-      gain: monthlyDeals.filter(d => d.Status === DealStatus.GAIN).length,
-      loss: monthlyDeals.filter(d => d.Status === DealStatus.LOSS).length,
+      opened: monthlyDeals.filter(d => d.Status === DealStatus.OPENED || d.Status === 'Opened').length,
+      proposal: monthlyDeals.filter(d => d.Status === DealStatus.PROPOSAL || d.Status === 'Proposal').length,
+      won: monthlyDeals.filter(d => d.Status === DealStatus.WON || d.Status === 'Won').length,
+      lost: monthlyDeals.filter(d => d.Status === DealStatus.LOST || d.Status === 'Lost').length,
       totalValue: totalValue,
       avgDealValue: monthlyDeals.length > 0 ? totalValue / monthlyDeals.length : 0
     };
@@ -122,11 +129,71 @@ const SellerDealsPage = () => {
     try {
       if (selectedDeal) {
         // Edit existing deal
-        await DealsService.updateDeal(selectedDeal.id, dealData);
+        const oldDeal = deals.find(d => d.id === selectedDeal.id);
+        await DealService.update(selectedDeal.id, dealData);
+        
+        // Log update activity
+        if (sellerId && companyId) {
+          await sellerActivityService.logActivity({
+            sellerId: sellerId,
+            companyId: companyId,
+            activityType: ActivityTypes.DEAL_UPDATED,
+            entityType: EntityTypes.DEAL,
+            entityId: selectedDeal.id,
+            entityName: dealData.Description || selectedDeal.Description || 'Untitled Deal',
+            details: {
+              name: dealData.Description || selectedDeal.Description,
+              amount: dealData.Amount || selectedDeal.Amount,
+              contactName: dealData.contact_name || selectedDeal.contact_name,
+              updatedFields: Object.keys(dealData).join(', '),
+            },
+            metadata: {
+              oldStatus: oldDeal?.Status,
+              newStatus: dealData.Status || oldDeal?.Status,
+              oldAmount: oldDeal?.Amount,
+              newAmount: dealData.Amount || oldDeal?.Amount,
+              updatedAt: new Date().toISOString(),
+            }
+          });
+        }
+        
         message.success('Deal updated successfully');
       } else {
         // Create new deal
-        await DealsService.createDeal(dealData);
+        const newDeal = {
+          ...dealData,
+          seller_id: sellerId,
+          company_id: companyId,
+          Status: DealStatus.OPENED,
+          CreationDate: new Date()
+        };
+        
+        const createdDeal = await DealService.create(newDeal);
+        
+        // Log creation activity
+        if (sellerId && companyId && createdDeal) {
+          await sellerActivityService.logActivity({
+            sellerId: sellerId,
+            companyId: companyId,
+            activityType: ActivityTypes.DEAL_CREATED,
+            entityType: EntityTypes.DEAL,
+            entityId: createdDeal.id,
+            entityName: createdDeal.Description || 'Untitled Deal',
+            details: {
+              name: createdDeal.Description,
+              amount: createdDeal.Amount,
+              contactName: createdDeal.contact_name,
+              source: createdDeal.Source || 'Manual',
+            },
+            metadata: {
+              status: createdDeal.Status,
+              amount: createdDeal.Amount,
+              source: createdDeal.Source || 'Manual',
+              createdAt: new Date().toISOString(),
+            }
+          });
+        }
+        
         message.success('Deal created successfully');
       }
       
@@ -135,7 +202,7 @@ const SellerDealsPage = () => {
       fetchDeals(); // Refresh the list
     } catch (error) {
       console.error('Error saving deal:', error);
-      message.error('Failed to save deal');
+      message.error('Failed to save deal: ' + error.message);
     } finally {
       setFormLoading(false);
     }
@@ -144,7 +211,7 @@ const SellerDealsPage = () => {
   // Handle deal deletion
   const handleDelete = async (dealId) => {
     try {
-      await DealsService.deleteDeal(dealId);
+      await DealService.delete(dealId);
       message.success('Deal deleted successfully');
       fetchDeals(); // Refresh the list
       setDetailVisible(false);
@@ -154,44 +221,150 @@ const SellerDealsPage = () => {
     }
   };
 
-  // Handle status update
+  // FIXED: Handle status update with activity logging
   const handleStatusUpdate = async (dealId, newStatus) => {
     try {
       const deal = deals.find(d => d.id === dealId);
-      await DealsService.updateDeal(dealId, { Status: newStatus });
+      if (!deal) {
+        message.error('Deal not found');
+        return;
+      }
+
+      const oldStatus = deal.Status;
+      
+      // Update the deal status
+      await DealService.updateStatus(dealId, newStatus);
+      
+      // Log status change activity
+      if (sellerId && companyId) {
+        await sellerActivityService.logActivity({
+          sellerId: sellerId,
+          companyId: companyId,
+          activityType: ActivityTypes.DEAL_STATUS_CHANGED,
+          entityType: EntityTypes.DEAL,
+          entityId: dealId,
+          entityName: deal.Description || 'Untitled Deal',
+          details: {
+            name: deal.Description,
+            amount: deal.Amount,
+            contactName: deal.contact_name,
+            previousStatus: oldStatus,
+            newStatus: newStatus,
+          },
+          metadata: {
+            oldStatus: oldStatus,
+            newStatus: newStatus,
+            amount: deal.Amount,
+            changedAt: new Date().toISOString(),
+          }
+        });
+        
+        // If WON, log specific won activity
+        if (newStatus === DealStatus.WON || newStatus === 'Won') {
+          await sellerActivityService.logActivity({
+            sellerId: sellerId,
+            companyId: companyId,
+            activityType: ActivityTypes.DEAL_WON,
+            entityType: EntityTypes.DEAL,
+            entityId: dealId,
+            entityName: deal.Description || 'Untitled Deal',
+            details: {
+              name: deal.Description,
+              amount: deal.Amount,
+              contactName: deal.contact_name,
+            },
+            metadata: {
+              amount: deal.Amount,
+              wonAt: new Date().toISOString(),
+              previousStatus: oldStatus,
+            }
+          });
+        }
+        
+        // If LOST, log specific lost activity
+        if (newStatus === DealStatus.LOST || newStatus === 'Lost') {
+          await sellerActivityService.logActivity({
+            sellerId: sellerId,
+            companyId: companyId,
+            activityType: ActivityTypes.DEAL_LOST,
+            entityType: EntityTypes.DEAL,
+            entityId: dealId,
+            entityName: deal.Description || 'Untitled Deal',
+            details: {
+              name: deal.Description,
+              amount: deal.Amount,
+              contactName: deal.contact_name,
+              reason: 'Status changed to Lost',
+            },
+            metadata: {
+              amount: deal.Amount,
+              lostAt: new Date().toISOString(),
+              previousStatus: oldStatus,
+            }
+          });
+        }
+      }
       
       // Show encouragement modal for status changes
-      if (newStatus === DealStatus.GAIN || newStatus === DealStatus.LOSS) {
+      if (newStatus === DealStatus.WON || newStatus === DealStatus.LOST || 
+          newStatus === DealStatus.PROPOSAL || newStatus === DealStatus.OPENED) {
         setEncouragementModal({
           visible: true,
           status: newStatus,
-          amount: deal?.Amount || 0
+          amount: deal?.Amount || 0,
+          contactName: deal?.contact_name || ''
         });
       }
       
       fetchDeals(); // Refresh the list
+      message.success(`Deal status updated to ${DealStatusLabels[newStatus] || newStatus}`);
     } catch (error) {
       console.error('Error updating deal status:', error);
-      throw error;
+      message.error('Failed to update deal status: ' + error.message);
     }
   };
 
   // Handle adding note
-  const handleAddNote = async (dealId, noteText) => {
+const handleAddNote = async (dealId, noteText) => {
     try {
-      await DealsService.addNote(dealId, noteText);
+      const deal = deals.find(d => d.id === dealId);
+      
+      await DealService.addNote(dealId, noteText);
+      
+      // Log note activity
+      if (sellerId && companyId && deal) {
+        await sellerActivityService.logActivity({
+          sellerId: sellerId,
+          companyId: companyId,
+          activityType: ActivityTypes.DEAL_NOTE_ADDED,
+          entityType: EntityTypes.DEAL,
+          entityId: dealId,
+          entityName: deal.Description || 'Untitled Deal',
+          details: {
+            name: deal.Description,
+            note: noteText.substring(0, 100) + (noteText.length > 100 ? '...' : ''),
+            noteLength: noteText.length,
+          },
+          metadata: {
+            noteAddedAt: new Date().toISOString(),
+          }
+        });
+      }
+      
       fetchDeals(); // Refresh to get updated deal with new note
       
       // Update the selected deal if detail view is open
       if (selectedDeal && selectedDeal.id === dealId) {
-        const updatedDeal = deals.find(d => d.id === dealId);
+        const updatedDeal = await DealService.getById(dealId);
         if (updatedDeal) {
           setSelectedDeal(updatedDeal);
         }
       }
+      
+      message.success('Note added successfully');
     } catch (error) {
       console.error('Error adding note:', error);
-      throw error;
+      message.error('Failed to add note');
     }
   };
 
@@ -224,8 +397,9 @@ const SellerDealsPage = () => {
   };
 
   // Calculate progress percentage
+  const completedDeals = monthlyStats.won + monthlyStats.lost;
   const progressPercentage = monthlyStats.total > 0 
-    ? Math.round(((monthlyStats.gain + monthlyStats.loss) / monthlyStats.total) * 100)
+    ? Math.round((completedDeals / monthlyStats.total) * 100)
     : 0;
 
   if (!user) {
@@ -246,6 +420,7 @@ const SellerDealsPage = () => {
             <Space>
               <FileProtectOutlined style={{ fontSize: 24, color: '#1890ff' }} />
               <Title level={2} style={{ margin: 0 }}>My Deals</Title>
+              <Tag color="blue">{deals.length} Total</Tag>
             </Space>
           </Col>
           <Col>
@@ -269,81 +444,8 @@ const SellerDealsPage = () => {
         </Row>
       </div>
 
-      {/* Monthly Statistics */}
-      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Total Deals"
-              value={monthlyStats.total}
-              prefix={<FileProtectOutlined style={{ color: '#1890ff' }} />}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Total Value"
-              value={formatCurrency(monthlyStats.totalValue)}
-              prefix={<DollarOutlined style={{ color: '#52c41a' }} />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Deals Won"
-              value={monthlyStats.gain}
-              prefix={<TrophyOutlined style={{ color: '#faad14' }} />}
-              valueStyle={{ color: '#faad14' }}
-            />
-          </Card>
-        </Col>
-        
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Deals Lost"
-              value={monthlyStats.loss}
-              prefix={<CloseCircleOutlined style={{ color: '#ff4d4f' }} />}
-              valueStyle={{ color: '#ff4d4f' }}
-            />
-          </Card>
-        </Col>
-      </Row>
 
-      {/* Progress Bar */}
-      <Row style={{ marginBottom: '24px' }}>
-        <Col xs={24}>
-          <Card>
-            <div style={{ marginBottom: '16px' }}>
-              <Text strong>Monthly Progress</Text>
-              <Text style={{ float: 'right' }}>
-                {monthlyStats.gain + monthlyStats.loss} / {monthlyStats.total} deals processed
-              </Text>
-            </div>
-            <Progress
-              percent={progressPercentage}
-              strokeColor={{
-                '0%': '#87d068',
-                '100%': '#52c41a',
-              }}
-              trailColor="#f0f0f0"
-              size={10}
-            />
-            <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
-              <Text type="secondary">Average Deal: {formatCurrency(monthlyStats.avgDealValue)}</Text>
-              <Text type="secondary">Completion Rate: {progressPercentage}%</Text>
-            </div>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Deals List */}
+      {/* Deals List 
       <SellerDealList
         deals={deals}
         loading={loading}
@@ -353,7 +455,7 @@ const SellerDealsPage = () => {
         onStatusUpdate={handleStatusUpdate}
         onRefresh={fetchDeals}
       />
-
+*/}
       {/* Deal Form Modal */}
       <SellerDealForm
         visible={formVisible}
@@ -376,22 +478,31 @@ const SellerDealsPage = () => {
           setSelectedDeal(null);
         }}
         deal={selectedDeal}
-        onEdit={(deal) => {
-          setDetailVisible(false);
-          setSelectedDeal(deal);
-          setFormVisible(true);
-        }}
+        onEdit={handleEdit}
         onDelete={handleDelete}
         onAddNote={handleAddNote}
+        onStatusUpdate={handleStatusUpdate}
       />
 
       {/* Encouragement Modal */}
-      <DealEncouragementModal
-        visible={encouragementModal.visible}
-        onClose={() => setEncouragementModal({ visible: false, status: null, amount: 0 })}
-        status={encouragementModal.status}
-        amount={encouragementModal.amount}
-      />
+<DealEncouragementModal
+  visible={encouragementModal.visible}
+  onClose={() => setEncouragementModal({ visible: false, status: null, amount: 0, contactName: '' })}
+  status={encouragementModal.status}
+  amount={encouragementModal.amount}
+  contactName={encouragementModal.contactName}
+/>
+
+{/* Deals Kanban Board */}
+<SellerDealKanban
+  deals={deals}
+  loading={loading}
+  onView={handleView}
+  onEdit={handleEdit}
+  onDelete={handleDelete}
+  onStatusUpdate={handleStatusUpdate}
+  onRefresh={fetchDeals}
+/>
     </div>
   );
 };

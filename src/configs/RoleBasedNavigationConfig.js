@@ -127,19 +127,20 @@ const hrNavigation = [
     icon: AppstoreOutlined,
     breadcrumb: true,
     submenu: [
-      {
-        key: 'contacts',
-        path: `${APP_PREFIX_PATH}/contacts`,
-        title: 'Contacts',
-        icon: UserOutlined,
-        breadcrumb: true,
-        submenu: []
-      },
+
       {
         key: 'leads',
         path: `${APP_PREFIX_PATH}/leads`,
         title: 'Leads',
         icon: TeamOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+            {
+        key: 'contacts',
+        path: `${APP_PREFIX_PATH}/contacts`,
+        title: 'Contacts',
+        icon: UserOutlined,
         breadcrumb: true,
         submenu: []
       },
@@ -220,7 +221,7 @@ const ceoNavigation = [
            {
         key: 'seller-performance',
         path: `${APP_PREFIX_PATH}/sales-dashboard`,
-        title: 'Saller Dashboard',
+        title: 'Team Activity Log',
         icon: DashboardOutlined ,
         breadcrumb: true,
         submenu: []
@@ -338,18 +339,18 @@ const ceoNavigation = [
     breadcrumb: true,
     submenu: [
       {
-        key: 'contacts',
-        path: `${APP_PREFIX_PATH}/contacts`,
-        title: 'Contacts',
-        icon: UserOutlined,
-        breadcrumb: true,
-        submenu: []
-      },
-      {
         key: 'leads',
         path: `${APP_PREFIX_PATH}/leads`,
         title: 'Leads',
         icon: TeamOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+           {
+        key: 'contacts',
+        path: `${APP_PREFIX_PATH}/contacts`,
+        title: 'Contacts',
+        icon: UserOutlined,
         breadcrumb: true,
         submenu: []
       },
@@ -487,14 +488,6 @@ const sellerNavigation = [
     breadcrumb: true,
     submenu: [
       {
-        key: 'seller.contacts',
-        path: `${APP_PREFIX_PATH}/seller/contacts`,
-        title: 'Contacts',
-        icon: UserOutlined,
-        breadcrumb: true,
-        submenu: []
-      },
-      {
         key: 'seller.leads',
         path: `${APP_PREFIX_PATH}/seller/leads`,
         title: 'Leads',
@@ -502,6 +495,16 @@ const sellerNavigation = [
         breadcrumb: true,
         submenu: []
       },
+
+            {
+        key: 'seller.contacts',
+        path: `${APP_PREFIX_PATH}/seller/contacts`,
+        title: 'Contacts',
+        icon: UserOutlined,
+        breadcrumb: true,
+        submenu: []
+      },
+
       {
         key: 'seller.deals',
         path: `${APP_PREFIX_PATH}/seller/deals`,

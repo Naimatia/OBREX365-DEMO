@@ -11,7 +11,8 @@ import {
   message,
   Spin,
   Alert,
-  Drawer
+  Drawer,
+  Tag
 } from 'antd';
 import {
   UserAddOutlined,
@@ -19,7 +20,10 @@ import {
   ReloadOutlined,
   TeamOutlined,
   PhoneOutlined,
-  FileSearchOutlined
+  FileSearchOutlined,
+  UserOutlined,
+  MailOutlined,
+  PhoneFilled
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import ContactsService from 'services/ContactsService';
@@ -28,13 +32,22 @@ import ContactForm from './components/ContactForm';
 import ContactDetail from './components/ContactDetail';
 import BulkActions from './components/BulkActions';
 import { ContactStatus } from 'models/ContactModel';
+import { db, collection, getDocs, query, where } from 'configs/FirebaseConfig';
+import { UserRoles } from 'models/UserModel';
 
 const { Title, Text } = Typography;
-const { TabPane } = Tabs;
 
-/**
- * ContactsPage component for CEO and HR to manage contacts
- */
+// Sales roles for filtering sellers
+const salesRoles = [
+  UserRoles.SELLER,
+  UserRoles.SALES_EXECUTIVE,
+  UserRoles.AGENT,
+  UserRoles.TEAM_LEADER,
+  UserRoles.SALES_MANAGER,
+  UserRoles.OFF_PLAN_SALES,
+  UserRoles.READY_TO_MOVE_SALES,
+];
+
 const ContactsPage = () => {
   const [contacts, setContacts] = useState([]);
   const [sellers, setSellers] = useState([]);
@@ -49,31 +62,77 @@ const ContactsPage = () => {
   const { user } = useSelector((state) => state.auth);
   const companyId = user?.company_id;
 
-  // Fetch contacts
-const fetchContacts = useCallback(async () => {
-  if (!companyId) return [];
+  // Fetch all contacts with seller information
+  const fetchContacts = useCallback(async () => {
+    if (!companyId) return [];
 
-  try {
-    setLoading(true);
-    const contactsData = await ContactsService.getCompanyContacts(companyId);
-    setContacts(contactsData);
-    setError(null);
-    return contactsData; // ✅ important
-  } catch (err) {
-    console.error('Error fetching contacts:', err);
-    setError('Failed to load contacts. Please try again.');
-    return [];
-  } finally {
-    setLoading(false);
-  }
-}, [companyId]);
+    try {
+      setLoading(true);
+      
+      const contactsData = await ContactsService.getCompanyContacts(companyId);
+      
+      // Fetch all users to get seller names
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const usersMap = {};
+      usersSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.company_id === companyId) {
+          usersMap[doc.id] = {
+            id: doc.id,
+            ...data,
+            fullName: `${data.firstname || ''} ${data.lastname || ''}`.trim()
+          };
+        }
+      });
 
+      // Enrich contacts with seller information
+      const enrichedContacts = contactsData.map(contact => {
+        const sellerInfo = contact.seller_id ? usersMap[contact.seller_id] : null;
+        return {
+          ...contact,
+          sellerName: sellerInfo ? sellerInfo.fullName : null,
+          sellerEmail: sellerInfo ? sellerInfo.email : null,
+          sellerPhone: sellerInfo ? sellerInfo.phoneNumber || sellerInfo.phone : null,
+          sellerData: sellerInfo || null
+        };
+      });
+
+      setContacts(enrichedContacts);
+      setError(null);
+      return enrichedContacts;
+    } catch (err) {
+      console.error('Error fetching contacts:', err);
+      setError('Failed to load contacts. Please try again.');
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+
+  // Fetch sellers
   const fetchSellers = useCallback(async () => {
     if (!companyId) return;
+    
     try {
-      const data = await ContactsService.getCompanySellers(companyId);
-      setSellers(data);
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const sellersList = [];
+      
+      usersSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.company_id === companyId && salesRoles.includes(data.Role)) {
+          sellersList.push({
+            id: doc.id,
+            name: `${data.firstname || ''} ${data.lastname || ''}`.trim(),
+            email: data.email || '',
+            phoneNumber: data.phoneNumber || data.phone || '',
+            role: data.Role || 'Seller'
+          });
+        }
+      });
+      
+      setSellers(sellersList);
     } catch (err) {
+      console.error('Error fetching sellers:', err);
       message.error('Failed to load sellers');
     }
   }, [companyId]);
@@ -83,31 +142,27 @@ const fetchContacts = useCallback(async () => {
     fetchSellers();
   }, [fetchContacts, fetchSellers]);
 
-  // ==================== REFRESH FUNCTION ====================
-const refreshData = useCallback(async (contactId = null) => {
-  const freshContacts = await fetchContacts();
+  // Refresh data
+  const refreshData = useCallback(async (contactId = null) => {
+    const freshContacts = await fetchContacts();
 
-  if (contactId && detailDrawerVisible) {
-    const updated = freshContacts.find(c => c.id === contactId);
-    if (updated) {
-      setViewingContact(updated); // ✅ direct update
+    if (contactId && detailDrawerVisible) {
+      const updated = freshContacts.find(c => c.id === contactId);
+      if (updated) {
+        setViewingContact(updated);
+      }
     }
-  }
-}, [fetchContacts, detailDrawerVisible]);
+  }, [fetchContacts, detailDrawerVisible]);
 
-  // Note Handlers
+  // Note Handlers - FIXED with proper refresh
   const handleAddNote = async (contactId, noteText) => {
     try {
       await ContactsService.addNote(contactId, noteText);
       message.success('Note added successfully');
-      const updated = await fetchContacts();
-
-if (contactId) {
-  const fresh = updated.find(c => c.id === contactId);
-  setViewingContact(fresh);
-}
+      await refreshData(contactId);
       return true;
     } catch (err) {
+      console.error('Error adding note:', err);
       message.error('Failed to add note');
       return false;
     }
@@ -117,14 +172,12 @@ if (contactId) {
     try {
       await ContactsService.updateNote(contactId, noteId, newText);
       message.success('Note updated successfully');
-      const updated = await fetchContacts();
-
-if (contactId) {
-  const fresh = updated.find(c => c.id === contactId);
-  setViewingContact(fresh);
-}
+      await refreshData(contactId);
+      return true;
     } catch (err) {
+      console.error('Error updating note:', err);
       message.error('Failed to update note');
+      return false;
     }
   };
 
@@ -132,82 +185,70 @@ if (contactId) {
     try {
       await ContactsService.deleteNote(contactId, noteId);
       message.success('Note deleted successfully');
-      const updated = await fetchContacts();
-
-if (contactId) {
-  const fresh = updated.find(c => c.id === contactId);
-  setViewingContact(fresh);
-}
+      await refreshData(contactId);
+      return true;
     } catch (err) {
+      console.error('Error deleting note:', err);
       message.error('Failed to delete note');
+      return false;
     }
   };
 
-
-
-  // Handle opening the contact form for creating a new contact
+  // Contact CRUD
   const handleAddContact = () => {
-    setCurrentContact(null); // Set to null for new contact
+    setCurrentContact(null);
     setFormModalVisible(true);
   };
 
-  // Handle opening the contact form for editing an existing contact
   const handleEditContact = (contact) => {
     setCurrentContact(contact);
     setFormModalVisible(true);
   };
 
-  // Handle submitting the contact form (create or update)
   const handleSubmitContact = async (formData) => {
     try {
       if (currentContact?.id) {
-        // Update existing contact
         await ContactsService.updateContact(currentContact.id, formData);
         message.success('Contact updated successfully');
       } else {
-        // Create new contact
         const contactData = {
           ...formData,
           company_id: companyId,
-          // Add initial note if provided
           Notes: formData.initialNote ? [
             {
+              id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               note: formData.initialNote,
               CreationDate: new Date()
             }
           ] : []
         };
 
-        // Remove initialNote from the data to match Firestore schema
         delete contactData.initialNote;
-
         await ContactsService.createContact(contactData);
         message.success('Contact created successfully');
       }
 
-      // Refresh contacts list and close modal
-      fetchContacts();
+      await fetchContacts();
       setFormModalVisible(false);
-
+      setCurrentContact(null);
     } catch (err) {
       console.error('Error saving contact:', err);
       message.error('Failed to save contact. Please try again.');
     }
   };
 
-  // Handle deleting a contact
   const handleDeleteContact = async (contactId) => {
     try {
       await ContactsService.deleteContact(contactId);
       message.success('Contact deleted successfully');
-      fetchContacts();
+      await fetchContacts();
     } catch (err) {
       console.error('Error deleting contact:', err);
       message.error('Failed to delete contact. Please try again.');
     }
   };
 
-  // Handle bulk deletion of contacts
+  // Bulk operations
   const handleBulkDeleteContacts = async (contactIds) => {
     try {
       const deletePromises = contactIds.map(id => ContactsService.deleteContact(id));
@@ -215,14 +256,13 @@ if (contactId) {
 
       message.success(`${contactIds.length} contacts deleted successfully`);
       setSelectedContactIds([]);
-      fetchContacts();
+      await fetchContacts();
     } catch (err) {
       console.error('Error bulk deleting contacts:', err);
       message.error('Failed to delete contacts. Please try again.');
     }
   };
 
-  // Handle bulk assignment of contacts to a seller
   const handleBulkAssignSellers = async (contactIds, sellerId, affectingDate) => {
     try {
       await ContactsService.bulkUpdateContacts(contactIds, {
@@ -232,34 +272,31 @@ if (contactId) {
 
       message.success(`${contactIds.length} contacts assigned to seller`);
       setSelectedContactIds([]);
-      fetchContacts();
+      await fetchContacts();
     } catch (err) {
       console.error('Error assigning contacts to seller:', err);
       message.error('Failed to assign contacts. Please try again.');
     }
   };
 
-  // Handle bulk update of contact status
   const handleBulkUpdateStatus = async (contactIds, status) => {
     try {
       await ContactsService.bulkUpdateContacts(contactIds, { status });
 
       message.success(`${contactIds.length} contacts updated to ${status}`);
       setSelectedContactIds([]);
-      fetchContacts();
+      await fetchContacts();
     } catch (err) {
       console.error('Error updating contacts status:', err);
       message.error('Failed to update contacts status. Please try again.');
     }
   };
 
-  // Handle viewing a contact's details
   const handleViewContact = (contact) => {
     setViewingContact(contact);
     setDetailDrawerVisible(true);
   };
 
-  // Render error message if there's an error
   if (error) {
     return (
       <Alert
@@ -277,7 +314,7 @@ if (contactId) {
   }
 
   return (
-    <div className="contacts-page">
+    <div className="contacts-page" style={{ padding: '24px' }}>
       <Card>
         <div className="contacts-header" style={{ marginBottom: '24px' }}>
           <Row justify="space-between" align="middle">
@@ -285,6 +322,9 @@ if (contactId) {
               <Space align="center">
                 <TeamOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
                 <Title level={4} style={{ margin: 0 }}>Contacts Management</Title>
+                <Tag color="blue" style={{ marginLeft: 8 }}>
+                  {contacts.length} Total
+                </Tag>
               </Space>
             </Col>
             <Col>
@@ -308,7 +348,6 @@ if (contactId) {
           </Row>
         </div>
 
-        {/* Display bulk actions when contacts are selected */}
         {selectedContactIds.length > 0 && (
           <div className="bulk-actions-container" style={{ marginBottom: '16px' }}>
             <BulkActions
@@ -328,11 +367,7 @@ if (contactId) {
             items={[
               {
                 key: 'all',
-                label: (
-                  <span>
-                    <UsergroupAddOutlined /> All Contacts
-                  </span>
-                ),
+                label: <span><UsergroupAddOutlined /> All Contacts</span>,
                 children: (
                   <Spin spinning={loading}>
                     <ContactList
@@ -352,11 +387,7 @@ if (contactId) {
               },
               {
                 key: 'unassigned',
-                label: (
-                  <span>
-                    <PhoneOutlined /> Unassigned
-                  </span>
-                ),
+                label: <span><PhoneOutlined /> Unassigned</span>,
                 children: (
                   <Spin spinning={loading}>
                     <ContactList
@@ -376,87 +407,27 @@ if (contactId) {
               },
               {
                 key: 'byStatus',
-                label: (
-                  <span>
-                    <FileSearchOutlined /> By Status
-                  </span>
-                ),
+                label: <span><FileSearchOutlined /> By Status</span>,
                 children: (
                   <Tabs
-                    items={[
-                      {
-                        key: 'pending',
-                        label: 'Pending',
-                        children: (
-                          <ContactList
-                            contacts={contacts.filter(c => c.status === ContactStatus.PENDING)}
-                            loading={loading}
-                            sellers={sellers}
-                            onViewContact={handleViewContact}
-                            onEditContact={handleEditContact}
-                            onDeleteContact={handleDeleteContact}
-                            onSelectChange={setSelectedContactIds}
-                            onAssignSeller={handleBulkAssignSellers}
-                            onUpdateStatus={handleBulkUpdateStatus}
-                            onAddNote={handleAddNote}
-                          />
-                        ),
-                      },
-                      {
-                        key: 'contacted',
-                        label: 'Contacted',
-                        children: (
-                          <ContactList
-                            contacts={contacts.filter(c => c.status === ContactStatus.CONTACTED)}
-                            loading={loading}
-                            sellers={sellers}
-                            onViewContact={handleViewContact}
-                            onEditContact={handleEditContact}
-                            onDeleteContact={handleDeleteContact}
-                            onSelectChange={setSelectedContactIds}
-                            onAssignSeller={handleBulkAssignSellers}
-                            onUpdateStatus={handleBulkUpdateStatus}
-                            onAddNote={handleAddNote}
-                          />
-                        ),
-                      },
-                      {
-                        key: 'deal',
-                        label: 'Deal',
-                        children: (
-                          <ContactList
-                            contacts={contacts.filter(c => c.status === ContactStatus.DEAL)}
-                            loading={loading}
-                            sellers={sellers}
-                            onViewContact={handleViewContact}
-                            onEditContact={handleEditContact}
-                            onDeleteContact={handleDeleteContact}
-                            onSelectChange={setSelectedContactIds}
-                            onAssignSeller={handleBulkAssignSellers}
-                            onUpdateStatus={handleBulkUpdateStatus}
-                            onAddNote={handleAddNote}
-                          />
-                        ),
-                      },
-                      {
-                        key: 'loss',
-                        label: 'Loss',
-                        children: (
-                          <ContactList
-                            contacts={contacts.filter(c => c.status === ContactStatus.LOSS)}
-                            loading={loading}
-                            sellers={sellers}
-                            onViewContact={handleViewContact}
-                            onEditContact={handleEditContact}
-                            onDeleteContact={handleDeleteContact}
-                            onSelectChange={setSelectedContactIds}
-                            onAssignSeller={handleBulkAssignSellers}
-                            onUpdateStatus={handleBulkUpdateStatus}
-                            onAddNote={handleAddNote}
-                          />
-                        ),
-                      },
-                    ]}
+                    items={Object.values(ContactStatus).map(status => ({
+                      key: status,
+                      label: status,
+                      children: (
+                        <ContactList
+                          contacts={contacts.filter(c => c.status === status)}
+                          loading={loading}
+                          sellers={sellers}
+                          onViewContact={handleViewContact}
+                          onEditContact={handleEditContact}
+                          onDeleteContact={handleDeleteContact}
+                          onSelectChange={setSelectedContactIds}
+                          onAssignSeller={handleBulkAssignSellers}
+                          onUpdateStatus={handleBulkUpdateStatus}
+                          onAddNote={handleAddNote}
+                        />
+                      ),
+                    }))}
                   />
                 ),
               },
@@ -465,11 +436,10 @@ if (contactId) {
         </div>
       </Card>
 
-      {/* Modal for adding/editing contacts */}
       <Modal
         title={currentContact ? 'Edit Contact' : 'Add New Contact'}
-        open={formModalVisible} // Changed from `visible`
-        onCancel={() => setFormModalVisible(false)}
+        open={formModalVisible}
+        onCancel={() => { setFormModalVisible(false); setCurrentContact(null); }}
         footer={null}
         width={800}
         destroyOnClose
@@ -478,17 +448,16 @@ if (contactId) {
           contact={currentContact}
           sellers={sellers}
           onSubmit={handleSubmitContact}
-          onCancel={() => setFormModalVisible(false)}
+          onCancel={() => { setFormModalVisible(false); setCurrentContact(null); }}
           loading={loading}
         />
       </Modal>
 
-      {/* Drawer for contact details */}
       <Drawer
         title="Contact Details"
         placement="right"
         width={600}
-        onClose={() => setDetailDrawerVisible(false)}
+        onClose={() => { setDetailDrawerVisible(false); setViewingContact(null); }}
         open={detailDrawerVisible}
         destroyOnClose
       >
@@ -500,7 +469,7 @@ if (contactId) {
             onAddNote={handleAddNote}
             onUpdateNote={handleUpdateNote}
             onDeleteNote={handleDeleteNote}
-            onClose={() => setDetailDrawerVisible(false)}
+            onClose={() => { setDetailDrawerVisible(false); setViewingContact(null); }}
           />
         )}
       </Drawer>

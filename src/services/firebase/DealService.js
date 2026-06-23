@@ -1,311 +1,422 @@
-import BaseFirebaseService from './BaseFirebaseService';
-import { convertToDealModel, DealStatus, DealSource } from 'models/DealModel';
+// services/firebase/DealService.js
+import { db } from 'configs/FirebaseConfig';
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  getDoc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  where, 
+  serverTimestamp,
+  orderBy,
+  limit,
+  arrayUnion
+} from 'firebase/firestore';
+import { convertToDealModel, DealStatus, DealSourceEnum, DealPriority } from 'models/DealModel';
+import sellerActivityService, { ActivityTypes, EntityTypes } from './SellerActivityService';
 
-/**
- * Service for managing deals with Firebase
- * Extends BaseFirebaseService for common CRUD operations
- */
-class DealService extends BaseFirebaseService {
-  /**
-   * Constructor
-   */
-  constructor() {
-    super('deals', convertToDealModel);
-  }
+class DealService {
 
-  /**
-   * Get deals by company ID
-   * @param {string} companyId - Company ID
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of deals
-   */
-  async getDealsByCompany(companyId, options = {}) {
-    return this.getAllByCompany(companyId, options);
-  }
-
-  /**
-   * Get deals by status
-   * @param {string} companyId - Company ID
-   * @param {string} status - Deal status
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of deals
-   */
-  async getDealsByStatus(companyId, status, options = {}) {
-    const statusFilter = ['Status', '==', status];
-    const filters = options.filters ? [...options.filters, statusFilter] : [statusFilter];
-    
-    return this.getAllByCompany(companyId, {
-      ...options,
-      filters
-    });
-  }
-
-  /**
-   * Get deals by seller
-   * @param {string} companyId - Company ID
-   * @param {string} sellerId - Seller ID
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of deals
-   */
-  async getDealsBySeller(companyId, sellerId, options = {}) {
-    const sellerFilter = ['seller_id', '==', sellerId];
-    const filters = options.filters ? [...options.filters, sellerFilter] : [sellerFilter];
-    
-    return this.getAllByCompany(companyId, {
-      ...options,
-      filters
-    });
-  }
+  async logDealActivity(sellerId, companyId, activityType, dealId, dealData, details = {}, metadata = {}) {
+  return sellerActivityService.logActivity({
+    sellerId,
+    companyId,
+    activityType,
+    entityType: EntityTypes.DEAL,
+    entityId: dealId,
+    entityName: dealData?.Description || details?.name || 'Unknown Deal',
+    details: {
+      ...details,
+      name: dealData?.Description || details?.name,
+      amount: dealData?.Amount || details?.amount,
+      status: dealData?.Status || details?.status,
+      contactName: dealData?.contact_name || details?.contactName,
+    },
+    metadata: {
+      ...metadata,
+      amount: dealData?.Amount || details?.amount || metadata?.amount,
+      status: dealData?.Status || details?.status || metadata?.status,
+    },
+  });
+}
 
   /**
-   * Get deals for a specific contact
-   * @param {string} companyId - Company ID
-   * @param {string} contactId - Contact ID
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of deals
+   * Create a new deal
    */
-  async getDealsByContact(companyId, contactId, options = {}) {
-    const contactFilter = ['contact_id', '==', contactId];
-    const filters = options.filters ? [...options.filters, contactFilter] : [contactFilter];
-    
-    return this.getAllByCompany(companyId, {
-      ...options,
-      filters
-    });
-  }
-
-  /**
-   * Get deals for a specific property
-   * @param {string} companyId - Company ID
-   * @param {string} propertyId - Property ID
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of deals
-   */
-  async getDealsByProperty(companyId, propertyId, options = {}) {
-    const propertyFilter = ['property_id', '==', propertyId];
-    const filters = options.filters ? [...options.filters, propertyFilter] : [propertyFilter];
-    
-    return this.getAllByCompany(companyId, {
-      ...options,
-      filters
-    });
-  }
-
-  /**
-   * Get deals by value range
-   * @param {string} companyId - Company ID
-   * @param {number} minValue - Minimum deal value
-   * @param {number} maxValue - Maximum deal value
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of deals
-   */
-  async getDealsByValueRange(companyId, minValue, maxValue, options = {}) {
-    const minValueFilter = ['value', '>=', minValue];
-    const maxValueFilter = ['value', '<=', maxValue];
-    const filters = options.filters ? 
-      [...options.filters, minValueFilter, maxValueFilter] : 
-      [minValueFilter, maxValueFilter];
-    
-    return this.getAllByCompany(companyId, {
-      ...options,
-      filters
-    });
-  }
-
-  /**
-   * Update deal status
-   * @param {string} dealId - Deal ID
-   * @param {string} status - New status (Opened, Gain, Loss)
-   * @returns {Promise<Object>} - Updated deal
-   */
-  async updateStatus(dealId, status) {
-    // Validate status
-    if (!Object.values(DealStatus).includes(status)) {
-      throw new Error(`Invalid deal status: ${status}`);
-    }
-    
-    return this.update(dealId, { 
-      Status: status,
-      LastUpdateDate: new Date()
-    });
-  }
-
-  /**
-   * Assign deal to a user
-   * @param {string} dealId - Deal ID
-   * @param {Object} user - User object with id and name
-   * @returns {Promise<Object>} - Updated deal
-   */
-  async assignTo(dealId, user) {
-    return this.update(dealId, { 
-      assignedTo: {
-        id: user.id,
-        name: user.firstName + ' ' + user.lastName
-      }
-    });
-  }
-
-  /**
-   * Add an activity to a deal
-   * @param {string} dealId - Deal ID
-   * @param {Object} activity - Activity object
-   * @returns {Promise<Object>} - Updated deal
-   */
-  async addActivity(dealId, activity) {
-    const deal = await this.getById(dealId);
-    
-    if (!deal) {
-      throw new Error('Deal not found');
-    }
-    
-    const activities = deal.activities || [];
-    activities.push({
-      ...activity,
-      createdAt: new Date()
-    });
-    
-    return this.update(dealId, { activities });
-  }
-
-  /**
-   * Update deal value
-   * @param {string} dealId - Deal ID
-   * @param {number} value - New deal value
-   * @returns {Promise<Object>} - Updated deal
-   */
-  async updateValue(dealId, value) {
-    if (typeof value !== 'number' || value < 0) {
-      throw new Error('Invalid deal value');
-    }
-    
-    return this.update(dealId, { value });
-  }
-
-  /**
-   * Mark deal as won
-   * @param {string} dealId - Deal ID
-   * @returns {Promise<Object>} - Updated deal
-   */
-  async markAsWon(dealId) {
-    return this.update(dealId, { 
-      Status: DealStatus.GAIN,
-      LastUpdateDate: new Date()
-    });
-  }
-
-  /**
-   * Mark deal as lost
-   * @param {string} dealId - Deal ID
-   * @param {string} reason - Reason for losing the deal
-   * @returns {Promise<Object>} - Updated deal
-   */
-  async markAsLost(dealId, reason) {
-    return this.update(dealId, { 
-      Status: DealStatus.LOSS,
-      Description: reason || undefined,
-      LastUpdateDate: new Date()
-    });
-  }
-
-  /**
-   * Get recent deals for a company
-   * @param {string} companyId - Company ID
-   * @param {number} limit - Number of deals to return
-   * @returns {Promise<Array>} - Array of deals
-   */
-  async getRecentDeals(companyId, limit = 5) {
-    return this.getAllByCompany(companyId, {
-      orderByFields: [['createdAt', 'desc']],
-      limitCount: limit
-    });
-  }
-
-  /**
-   * Get deals by expected close date range
-   * @param {string} companyId - Company ID
-   * @param {Date} startDate - Start date
-   * @param {Date} endDate - End date
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of deals
-   */
-  async getDealsByCloseDateRange(companyId, startDate, endDate, options = {}) {
-    const startFilter = ['expectedCloseDate', '>=', startDate];
-    const endFilter = ['expectedCloseDate', '<=', endDate];
-    const filters = options.filters ? 
-      [...options.filters, startFilter, endFilter] : 
-      [startFilter, endFilter];
-    
-    return this.getAllByCompany(companyId, {
-      ...options,
-      filters
-    });
-  }
-
-  /**
-   * Calculate deal analytics for a company
-   * @param {string} companyId - Company ID
-   * @returns {Promise<Object>} - Deal analytics
-   */
-  async calculateDealAnalytics(companyId) {
+  async create(dealData) {
     try {
-      // Get all opened deals
-      const openedDeals = await this.getAllByCompany(companyId, {
-        filters: [
-          ['Status', '==', DealStatus.OPENED]
-        ]
-      });
-      
-      // Get won deals
-      const wonDeals = await this.getAllByCompany(companyId, {
-        filters: [['Status', '==', DealStatus.GAIN]]
-      });
-      
-      // Get lost deals
-      const lostDeals = await this.getAllByCompany(companyId, {
-        filters: [['Status', '==', DealStatus.LOSS]]
-      });
-      
-      // Calculate total values
-      const openedDealValue = openedDeals.reduce((sum, deal) => sum + (deal.Amount || 0), 0);
-      const wonDealValue = wonDeals.reduce((sum, deal) => sum + (deal.Amount || 0), 0);
-      const lostDealValue = lostDeals.reduce((sum, deal) => sum + (deal.Amount || 0), 0);
-      
-      // Calculate counts by status
-      const dealsByStatus = {};
-      Object.values(DealStatus).forEach(status => {
-        dealsByStatus[status] = 0;
-      });
-      
-      [...openedDeals, ...wonDeals, ...lostDeals].forEach(deal => {
-        if (deal.Status) {
-          dealsByStatus[deal.Status] = (dealsByStatus[deal.Status] || 0) + 1;
+      // Prepare deal data with all fields
+      const deal = {
+        // Core fields
+        Amount: dealData.Amount || 0,
+        Description: dealData.Description || '',
+        Status: dealData.Status || DealStatus.OPENED,
+        Source: dealData.Source || DealSourceEnum.CONTACTS,
+        contact_id: dealData.contact_id || '',
+        lead_id: dealData.lead_id || '',
+        seller_id: dealData.seller_id || '',
+        company_id: dealData.company_id || '',
+        property_id: dealData.property_id || '',
+        
+        // Contact data
+        contact_name: dealData.contact_name || '',
+        contact_email: dealData.contact_email || '',
+        contact_phone: dealData.contact_phone || '',
+        region: dealData.region || '',
+        lookingFor: dealData.lookingFor || '',
+        interestLevel: dealData.interestLevel || '',
+        source: dealData.source || '',
+        
+        // Seller data
+        seller_name: dealData.seller_name || '',
+        seller_email: dealData.seller_email || '',
+        seller_phone: dealData.seller_phone || '',
+        
+        // Assignment
+        assignedTo: dealData.assignedTo || null,
+        assignedAt: dealData.assignedAt || serverTimestamp(),
+        createdBy: dealData.createdBy || '',
+        
+        // Additional fields
+        source_url: dealData.source_url || '',
+        expected_close_date: dealData.expected_close_date || null,
+        priority: dealData.priority || DealPriority.MEDIUM,
+        tags: dealData.tags || [],
+        contact_data: dealData.contact_data || null,
+        
+        // Notes
+        Notes: dealData.Notes || [],
+        
+        // Timestamps
+        CreationDate: serverTimestamp(),
+        LastUpdateDate: serverTimestamp()
+      };
+
+      // Clean undefined/null values
+      Object.keys(deal).forEach(key => {
+        if (deal[key] === undefined || deal[key] === null) {
+          delete deal[key];
         }
       });
 
-      // Return stats
+      const docRef = await addDoc(collection(db, 'deals'), deal);
+      const dealId = docRef.id;
+    
+    // Log activity
+    if (dealData.seller_id || dealData.createdBy) {
+      const sellerId = dealData.seller_id || dealData.createdBy;
+      await this.logDealActivity(
+        sellerId,
+        dealData.company_id,
+        ActivityTypes.DEAL_CREATED,
+        dealId,
+        dealData,
+        { 
+          name: dealData.Description,
+          amount: dealData.Amount,
+          contactName: dealData.contact_name,
+          source: dealData.Source,
+        },
+        { 
+          status: dealData.Status || DealStatus.OPENED,
+          amount: dealData.Amount,
+          source: dealData.Source,
+        }
+      );
+    }
       return {
-        count: {
-          total: openedDeals.length + wonDeals.length + lostDeals.length,
-          opened: openedDeals.length,
-          gain: wonDeals.length,
-          loss: lostDeals.length,
-        },
-        value: {
-          opened: openedDealValue,
-          gain: wonDealValue,
-          loss: lostDealValue,
-          total: openedDealValue + wonDealValue + lostDealValue
-        },
-        winRate: wonDeals.length / (wonDeals.length + lostDeals.length) || 0,
-        dealsByStatus
+        id: docRef.id,
+        ...deal,
+        CreationDate: deal.CreationDate,
+        LastUpdateDate: deal.LastUpdateDate
       };
     } catch (error) {
-      console.error('Error calculating deal analytics:', error);
+      console.error('Error creating deal:', error);
       throw error;
     }
   }
+
+  /**
+   * Get deals for a seller
+   */
+  async getDealsBySeller(sellerId) {
+    try {
+      const q = query(
+        collection(db, 'deals'),
+        where('seller_id', '==', sellerId),
+        orderBy('CreationDate', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const deals = [];
+      
+      querySnapshot.forEach((doc) => {
+        deals.push(convertToDealModel(doc));
+      });
+      
+      return deals;
+    } catch (error) {
+      console.error('Error getting seller deals:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get deals by company
+   */
+  async getDealsByCompany(companyId) {
+    try {
+      const q = query(
+        collection(db, 'deals'),
+        where('company_id', '==', companyId),
+        orderBy('CreationDate', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const deals = [];
+      
+      querySnapshot.forEach((doc) => {
+        deals.push(convertToDealModel(doc));
+      });
+      
+      return deals;
+    } catch (error) {
+      console.error('Error getting company deals:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get deals by contact ID
+   */
+  async getDealsByContact(contactId) {
+    try {
+      const q = query(
+        collection(db, 'deals'),
+        where('contact_id', '==', contactId),
+        orderBy('CreationDate', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const deals = [];
+      
+      querySnapshot.forEach((doc) => {
+        deals.push(convertToDealModel(doc));
+      });
+      
+      return deals;
+    } catch (error) {
+      console.error('Error getting deals by contact:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a deal
+   */
+  async update(dealId, updateData) {
+    try {
+      const dealRef = doc(db, 'deals', dealId);
+      
+      // Clean undefined/null values
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined || updateData[key] === null) {
+          delete updateData[key];
+        }
+      });
+      
+      await updateDoc(dealRef, {
+        ...updateData,
+        LastUpdateDate: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error updating deal:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a deal
+   */
+  async delete(dealId) {
+    try {
+      await deleteDoc(doc(db, 'deals', dealId));
+    } catch (error) {
+      console.error('Error deleting deal:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a deal by ID
+   */
+async getById(dealId, sellerId = null) {
+  try {
+    const docRef = doc(db, 'deals', dealId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const deal = convertToDealModel(docSnap);
+      
+      // Log view if sellerId provided
+      if (sellerId) {
+        await this.logDealActivity(
+          sellerId,
+          deal.company_id,
+          ActivityTypes.DEAL_VIEWED,
+          dealId,
+          deal,
+          { 
+            name: deal.Description,
+            amount: deal.Amount,
+            contactName: deal.contact_name,
+          },
+          { 
+            status: deal.Status,
+            amount: deal.Amount,
+          }
+        );
+      }
+      
+      return deal;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting deal:', error);
+    throw error;
+  }
 }
 
-// Create and export a singleton instance
+  /**
+   * Add a note to a deal
+   */
+async addNote(dealId, noteText) {
+  try {
+    const dealRef = doc(db, 'deals', dealId);
+    const deal = await this.getById(dealId);
+    
+    const newNote = {
+      id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      note: noteText.trim(),
+      CreationDate: new Date(),
+      CreatedBy: null
+    };
+
+    await updateDoc(dealRef, {
+      Notes: arrayUnion(newNote),
+      LastUpdateDate: serverTimestamp()
+    });
+    
+    // Log note addition
+    if (deal) {
+      await this.logDealActivity(
+        deal.seller_id || deal.createdBy,
+        deal.company_id,
+        ActivityTypes.DEAL_NOTE_ADDED,
+        dealId,
+        deal,
+        { 
+          name: deal.Description,
+          note: noteText.substring(0, 100) + (noteText.length > 100 ? '...' : ''),
+          noteId: newNote.id,
+        },
+        { 
+          noteLength: noteText.length,
+        }
+      );
+    }
+  } catch (error) {
+    console.error('Error adding note:', error);
+    throw error;
+  }
+}
+
+  /**
+   * Update deal status
+   */
+async updateStatus(dealId, newStatus) {
+  try {
+    const deal = await this.getById(dealId);
+    if (!deal) {
+      throw new Error('Deal not found');
+    }
+
+    const oldStatus = deal.Status;
+
+    await this.update(dealId, { Status: newStatus });
+    
+    // Log status change
+    await this.logDealActivity(
+      deal.seller_id || deal.createdBy,
+      deal.company_id,
+      ActivityTypes.DEAL_STATUS_CHANGED,
+      dealId,
+      deal,
+      { 
+        name: deal.Description,
+        amount: deal.Amount,
+        previousStatus: oldStatus,
+        newStatus: newStatus,
+        contactName: deal.contact_name,
+      },
+      { 
+        oldStatus: oldStatus, 
+        newStatus: newStatus,
+        amount: deal.Amount,
+      }
+    );
+    
+    // If won or lost, log specifically
+    if (newStatus === DealStatus.WON) {
+      await this.logDealActivity(
+        deal.seller_id || deal.createdBy,
+        deal.company_id,
+        ActivityTypes.DEAL_WON,
+        dealId,
+        deal,
+        { 
+          name: deal.Description,
+          amount: deal.Amount,
+          contactName: deal.contact_name,
+        },
+        { 
+          wonAt: new Date().toISOString(),
+          amount: deal.Amount,
+        }
+      );
+    } else if (newStatus === DealStatus.LOST) {
+      await this.logDealActivity(
+        deal.seller_id || deal.createdBy,
+        deal.company_id,
+        ActivityTypes.DEAL_LOST,
+        dealId,
+        deal,
+        { 
+          name: deal.Description,
+          amount: deal.Amount,
+          contactName: deal.contact_name,
+        },
+        { 
+          lostAt: new Date().toISOString(),
+          amount: deal.Amount,
+        }
+      );
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating deal status:', error);
+    throw error;
+  }
+}
+}
+
+// Create and export the instance
 const dealService = new DealService();
+
+// Export both the class and the instance
+export { DealService };
 export default dealService;

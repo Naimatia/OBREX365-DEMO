@@ -8,11 +8,16 @@ import {
   Tooltip, 
   Input, 
   Select,
-  DatePicker,
   Dropdown,
-  Menu,
   Modal,
-  message
+  message,
+  Avatar,
+  Typography,
+  Badge,
+  Empty,
+  Row,
+  Col,
+  Card
 } from 'antd';
 import { 
   EyeOutlined, 
@@ -20,26 +25,30 @@ import {
   DeleteOutlined, 
   SearchOutlined, 
   FilterOutlined,
-  FileTextOutlined,
   MoreOutlined,
   ExclamationCircleOutlined,
   WhatsAppOutlined,
   MailOutlined,
-  PhoneOutlined
+  PhoneOutlined,
+  UserOutlined,
+  DollarOutlined,
+  GlobalOutlined,
+  StarOutlined,
+  CheckCircleOutlined,
+  LinkOutlined,
+  ClockCircleOutlined,
+  TrophyOutlined,
+  TagOutlined
 } from '@ant-design/icons';
 import { ContactStatus } from 'models/ContactModel';
+import { LeadInterestLevel } from 'models/LeadModel';
 import dayjs from 'dayjs';
-import isBetween from 'dayjs/plugin/isBetween';   // ← Add this
-dayjs.extend(isBetween);
 
 const { Search } = Input;
 const { Option } = Select;
-const { RangePicker } = DatePicker;
 const { confirm } = Modal;
+const { Text } = Typography;
 
-/**
- * ContactList component for sellers to view and manage their contacts
- */
 const SellerContactList = ({ 
   contacts, 
   loading, 
@@ -51,293 +60,524 @@ const SellerContactList = ({
 }) => {
   const [searchText, setSearchText] = useState('');
   const [filteredStatus, setFilteredStatus] = useState(null);
-  const [dateRange, setDateRange] = useState(null);
+  const [filteredSource, setFilteredSource] = useState(null);
 
-  // Filter contacts based on search and filters
-  const filteredContacts = useMemo(() => {
-    let filtered = [...contacts];
+  // Status config - ADD NEW STATUSES
+  const getStatusConfig = (status) => {
+    const configs = {
+      'new': { color: 'blue', label: 'New' },
+      'contacted': { color: 'orange', label: 'Contacted' },
+      'qualified': { color: 'green', label: 'Qualified' },
+      'proposal': { color: 'purple', label: 'Proposal' },
+      'won': { color: 'gold', label: 'Won' },
+      'lost': { color: 'red', label: 'Lost' },
+      'active': { color: 'green', label: 'Active' },
+      'hot': { color: 'red', label: 'Hot' },
+      'cold': { color: 'blue', label: 'Cold' },
+      [ContactStatus.PENDING]: { color: 'orange', label: 'Pending' },
+      [ContactStatus.CONTACTED]: { color: 'blue', label: 'Contacted' },
+      [ContactStatus.DEAL]: { color: 'green', label: 'Deal' },
+      [ContactStatus.LOSS]: { color: 'red', label: 'Loss' },
+      [ContactStatus.NO_RESPONSE]: { color: 'default', label: 'No Response' },
+      [ContactStatus.NOT_INTERESTED]: { color: 'volcano', label: 'Not Interested' },
+      [ContactStatus.JUNK_LEAD]: { color: 'purple', label: 'Junk Lead' },
+    };
+    return configs[status] || { color: 'default', label: status || 'Unknown' };
+  };
 
-    // Search filter
-    if (searchText) {
-      filtered = filtered.filter(contact =>
-        contact.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-        contact.email?.toLowerCase().includes(searchText.toLowerCase()) ||
-        contact.phoneNumber?.includes(searchText)
-      );
-    }
-
-    // Status filter
-    if (filteredStatus) {
-      filtered = filtered.filter(contact => contact.status === filteredStatus);
-    }
-
-    // Date range filter
-    if (dateRange && dateRange.length === 2) {
-      filtered = filtered.filter(contact => {
-        if (!contact.AffectingDate) return false;
-        const contactDate = dayjs(contact.AffectingDate);
-        return contactDate.isBetween(dateRange[0], dateRange[1], 'day', '[]');
-      });
-    }
-
-    return filtered;
-  }, [contacts, searchText, filteredStatus, dateRange]);
-
-  // Get tag color based on status
-  const getStatusColor = (status) => {
-    switch (status) {
-      case ContactStatus.PENDING:        return 'orange';
-      case ContactStatus.CONTACTED:      return 'blue';
-      case ContactStatus.DEAL:           return 'green';
-      case ContactStatus.LOSS:           return 'red';
-      case ContactStatus.NO_RESPONSE:    return 'default';     // Gray
-      case ContactStatus.NOT_INTERESTED: return 'volcano';     // Orange-Red
-      case ContactStatus.JUNK_LEAD:      return 'purple';      // Purple
-      default:                           return 'default';
+  // Get interest level color
+  const getInterestColor = (level) => {
+    switch (level) {
+      case LeadInterestLevel.HIGH: return 'red';
+      case LeadInterestLevel.MEDIUM: return 'orange';
+      case LeadInterestLevel.LOW: return 'blue';
+      default: return 'default';
     }
   };
 
+  // Get source icon
+  const getSourceInfo = (source) => {
+    const sources = {
+      'Facebook': { icon: '📘', color: '#1877F2' },
+      'Instagram': { icon: '📷', color: '#E4405F' },
+      'Website': { icon: '🌐', color: '#52c41a' },
+      'LinkedIn': { icon: '💼', color: '#0A66C2' },
+      'TikTok': { icon: '🎵', color: '#ff0050' },
+      'Direct': { icon: '✋', color: '#8c8c8c' },
+      'Referral': { icon: '🤝', color: '#722ed1' },
+      'Import': { icon: '📥', color: '#13c2c2' },
+      'Freelance': { icon: '💪', color: '#fa8c16' }
+    };
+    return sources[source] || { icon: '📌', color: '#8c8c8c' };
+  };
 
-  // Handle delete confirmation
+  // Filter contacts
+  const filteredContacts = useMemo(() => {
+    let filtered = [...contacts];
+
+    if (searchText) {
+      const term = searchText.toLowerCase();
+      filtered = filtered.filter(c =>
+        c.name?.toLowerCase().includes(term) ||
+        c.email?.toLowerCase().includes(term) ||
+        c.phoneNumber?.includes(term) ||
+        c.lookingFor?.toLowerCase().includes(term)
+      );
+    }
+
+    if (filteredStatus) {
+      filtered = filtered.filter(c => c.status === filteredStatus);
+    }
+
+    if (filteredSource) {
+      filtered = filtered.filter(c => c.source === filteredSource);
+    }
+
+    return filtered;
+  }, [contacts, searchText, filteredStatus, filteredSource]);
+
+  // Status options - ADD NEW STATUSES
+  const statusOptions = [
+  { value: ContactStatus.PROPOSAL, label: 'Proposal', color: 'purple' },
+  { value: ContactStatus.LOSS, label: 'Lost', color: 'red' },
+
+  { value: ContactStatus.ACTIVE, label: 'Active', color: 'green' },
+  { value: ContactStatus.HOT, label: 'Hot', color: 'red' },
+  { value: ContactStatus.COLD, label: 'Cold', color: 'blue' },
+  { value: ContactStatus.DEAL, label: 'Deal', color: 'green' },
+];
+
+  const sourceOptions = [
+    'Facebook', 'Instagram', 'Website', 'LinkedIn', 
+    'TikTok', 'Direct', 'Referral', 'Import'
+  ];
+
+  // Handlers
   const handleDelete = (contact) => {
     confirm({
       title: 'Delete Contact',
       icon: <ExclamationCircleOutlined />,
-      content: `Are you sure you want to delete "${contact.name}"? This action cannot be undone.`,
+      content: `Delete "${contact.name}"?`,
       okText: 'Delete',
       okType: 'danger',
-      cancelText: 'Cancel',
-      onOk() {
-        onDeleteContact(contact.id);
-      },
+      onOk() { onDeleteContact(contact.id); },
     });
   };
 
-  // Handle status update with contact info
+  // Handle status update with auto-deal creation confirmation
   const handleStatusUpdate = (contact, newStatus) => {
+    // Check if status is Proposal or Deal
+    const isProposal = newStatus === 'proposal' || newStatus === 'Proposal' || newStatus === ContactStatus.PROPOSAL;
+    const isDeal = newStatus === 'deal' || newStatus === 'Deal' || newStatus === ContactStatus.DEAL;
+    
+    // Show confirmation for Proposal status
+    if (isProposal || isDeal) {
+      Modal.confirm({
+        title: 'Create Deal',
+        icon: <TrophyOutlined style={{ color: '#52c41a' }} />,
+        content: (
+          <div>
+            <p>This will create a new deal from this contact.</p>
+            <p><strong>Contact:</strong> {contact.name}</p>
+            <p><strong>Budget:</strong> {contact.Budget ? `AED ${Number(contact.Budget).toLocaleString()}` : 'Not set'}</p>
+            <p style={{ color: '#52c41a', marginTop: 8 }}>
+              ✓ A deal will be created with "Opened" status
+            </p>
+          </div>
+        ),
+        okText: 'Create Deal & Update',
+        cancelText: 'Cancel',
+        onOk: () => {
+          onUpdateStatus(contact.id, newStatus);
+        }
+      });
+      return;
+    }
+
+    // Regular status update
     onUpdateStatus(contact.id, newStatus);
   };
 
-  // Handle quick actions
+  const handleSendWhatsApp = (contact) => {
+    const phone = contact.phoneNumber || contact.phone;
+    if (phone) {
+      const clean = phone.replace(/[\s\-\(\)]/g, '');
+      window.open(`https://wa.me/${clean}?text=${encodeURIComponent(`Hi ${contact.name}, following up on your inquiry.`)}`, '_blank');
+    } else {
+      message.warning('No phone number');
+    }
+  };
+
   const handleSendEmail = (contact) => {
     if (contact.email) {
-      const subject = `Follow up - ${contact.name}`;
-      const body = `Hi ${contact.name},\n\nI wanted to follow up with you.\n\nBest regards`;
-      window.open(`mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+      window.open(`mailto:${contact.email}?subject=${encodeURIComponent(`Follow up - ${contact.name}`)}`, '_blank');
     } else {
-      message.warning('No email address available');
+      message.warning('No email address');
     }
   };
 
-  const handleSendWhatsApp = (contact) => {
-    if (contact.phoneNumber) {
-      const cleanPhone = contact.phoneNumber.replace(/[\s\-\(\)]/g, '');
-      const message = `Hi ${contact.name}, I wanted to follow up with you regarding your inquiry.`;
-      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
-    } else {
-      message.warning('No phone number available');
-    }
-  };
+  // Status badge counts
+  const statusCounts = useMemo(() => {
+    const counts = {};
+    statusOptions.forEach(opt => {
+      counts[opt.value] = contacts.filter(c => c.status === opt.value).length;
+    });
+    counts.total = contacts.length;
+    return counts;
+  }, [contacts]);
 
-  // Table columns
+  // Columns
   const columns = [
     {
-      title: 'Name',
+      title: 'Contact',
       dataIndex: 'name',
       key: 'name',
+      width: 200,
+      fixed: 'left',
+      render: (text, record) => {
+        const isFromLead = record.leadId || record.convertedFromLeadId;
+        const source = getSourceInfo(record.source);
+        const hasDeal = record.dealId;
+        
+        return (
+          <Space>
+            <Avatar size={40} style={{ backgroundColor: stringToColor(text || 'U'), fontSize: 14, fontWeight: 600 }}>
+              {(text || 'U')[0]?.toUpperCase()}
+            </Avatar>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{text || 'Unknown'}</div>
+              <Space size={4} wrap>
+                {record.region && (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    <GlobalOutlined style={{ marginRight: 2 }} />
+                    {record.region}
+                  </Text>
+                )}
+                {isFromLead && (
+                  <Tag color="purple" style={{ fontSize: 10, margin: 0, padding: '0 6px' }}>
+                    <LinkOutlined /> Lead
+                  </Tag>
+                )}
+                {hasDeal && (
+                  <Tag color="gold" style={{ fontSize: 10, margin: 0, padding: '0 6px' }}>
+                    <TrophyOutlined /> Deal
+                  </Tag>
+                )}
+                {record.source && (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {source.icon} {record.source}
+                  </Text>
+                )}
+              </Space>
+            </div>
+          </Space>
+        );
+      },
       sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
-      render: (text, record) => (
-        <Button type="link" onClick={() => onViewContact(record)} style={{ padding: 0 }}>
-          {text || 'Unknown'}
-        </Button>
+    },
+    {
+      title: 'Contact Info',
+      key: 'info',
+      width: 200,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          {record.email && (
+            <Space size={4}>
+              <MailOutlined style={{ fontSize: 12, color: '#1677ff' }} />
+              <Text style={{ fontSize: 12 }}>{record.email}</Text>
+              <Button 
+                type="text" 
+                size="small" 
+                icon={<MailOutlined />} 
+                onClick={() => handleSendEmail(record)}
+                style={{ color: '#1677ff', padding: '0 4px' }}
+              />
+            </Space>
+          )}
+          {(record.phoneNumber || record.phone) && (
+            <Space size={4}>
+              <PhoneOutlined style={{ fontSize: 12, color: '#52c41a' }} />
+              <Text style={{ fontSize: 12 }}>{record.phoneNumber || record.phone}</Text>
+              <Button 
+                type="text" 
+                size="small" 
+                icon={<WhatsAppOutlined />} 
+                onClick={() => handleSendWhatsApp(record)}
+                style={{ color: '#25D366', padding: '0 4px' }}
+              />
+            </Space>
+          )}
+        </Space>
       ),
     },
     {
-      title: 'Email',
-      dataIndex: 'email',
-      key: 'email',
-      render: (text, record) => text ? (
-        <Space>
-          <span>{text}</span>
-          <Tooltip title="Send Email">
-            <Button 
-              type="text" 
-              size="small" 
-              icon={<MailOutlined />}
-              onClick={() => handleSendEmail(record)}
-            />
-          </Tooltip>
-        </Space>
-      ) : '-',
+      title: 'Looking For',
+      dataIndex: 'lookingFor',
+      key: 'lookingFor',
+      width: 150,
+      ellipsis: true,
+      render: (text) => text ? (
+        <Tag color="blue" style={{ maxWidth: '100%', margin: 0 }}>
+          <TagOutlined style={{ marginRight: 4 }} />
+          {text}
+        </Tag>
+      ) : (
+        <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+      ),
     },
     {
-      title: 'Phone',
-      dataIndex: 'phoneNumber',
-      key: 'phoneNumber',
-      render: (text, record) => text ? (
-        <Space>
-          <span>{text}</span>
-          <Tooltip title="WhatsApp">
-            <Button 
-              type="text" 
-              size="small" 
-              icon={<WhatsAppOutlined />}
-              onClick={() => handleSendWhatsApp(record)}
-              style={{ color: '#25D366' }}
-            />
-          </Tooltip>
-        </Space>
-      ) : '-',
+      title: 'Budget',
+      dataIndex: 'Budget',
+      key: 'budget',
+      width: 120,
+      render: (budget) => {
+        if (!budget) return <Text type="secondary">—</Text>;
+        const num = Number(budget);
+        return !isNaN(num) ? (
+          <Tag color="green" style={{ margin: 0 }}>
+            <DollarOutlined style={{ marginRight: 4 }} />
+            AED {num.toLocaleString()}
+          </Tag>
+        ) : (
+          <Tag color="green" style={{ margin: 0 }}>
+            <DollarOutlined style={{ marginRight: 4 }} />
+            {budget}
+          </Tag>
+        );
+      },
     },
     {
-      title: 'Country',
-      dataIndex: 'country',
-      key: 'country',
-      render: (text) => text || '-',
+      title: 'Interest',
+      dataIndex: 'InterestLevel',
+      key: 'interest',
+      width: 100,
+      render: (level) => {
+        if (!level) return <Text type="secondary">—</Text>;
+        return (
+          <Tag color={getInterestColor(level)} style={{ margin: 0 }}>
+            <StarOutlined style={{ marginRight: 4 }} />
+            {level}
+          </Tag>
+        );
+      },
     },
- {
+    {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      filters: [
-        { text: 'Pending', value: ContactStatus.PENDING },
-        { text: 'Contacted', value: ContactStatus.CONTACTED },
-        { text: 'Deal', value: ContactStatus.DEAL },
-        { text: 'Loss', value: ContactStatus.LOSS },
-        { text: 'No Response', value: ContactStatus.NO_RESPONSE },
-        { text: 'Not Interested', value: ContactStatus.NOT_INTERESTED },
-        { text: 'Junk Lead', value: ContactStatus.JUNK_LEAD },
-      ],
+      width: 140,
       render: (status, record) => {
-        const color = getStatusColor(status);
+        const config = getStatusConfig(status);
+        const isConverted = record.leadId || record.convertedFromLeadId;
+        const hasDeal = record.dealId;
+        const isProposal = status === 'proposal' || status === 'Proposal';
         
         return (
-          <Dropdown 
+          <Dropdown
             menu={{
-              items: [
-                { key: ContactStatus.PENDING,        label: <Tag color="orange">Pending</Tag>,        onClick: () => handleStatusUpdate(record, ContactStatus.PENDING) },
-                { key: ContactStatus.CONTACTED,      label: <Tag color="blue">Contacted</Tag>,      onClick: () => handleStatusUpdate(record, ContactStatus.CONTACTED) },
-                { key: ContactStatus.DEAL,           label: <Tag color="green">Deal</Tag>,           onClick: () => handleStatusUpdate(record, ContactStatus.DEAL) },
-                { key: ContactStatus.LOSS,           label: <Tag color="red">Loss</Tag>,           onClick: () => handleStatusUpdate(record, ContactStatus.LOSS) },
-                { key: ContactStatus.NO_RESPONSE,    label: <Tag color="default">No Response</Tag>,    onClick: () => handleStatusUpdate(record, ContactStatus.NO_RESPONSE) },
-                { key: ContactStatus.NOT_INTERESTED, label: <Tag color="volcano">Not Interested</Tag>, onClick: () => handleStatusUpdate(record, ContactStatus.NOT_INTERESTED) },
-                { key: ContactStatus.JUNK_LEAD,      label: <Tag color="purple">Junk Lead</Tag>,      onClick: () => handleStatusUpdate(record, ContactStatus.JUNK_LEAD) },
-              ]
+              items: statusOptions.map(opt => ({
+                key: opt.value,
+                label: <Tag color={opt.color} style={{ margin: 0 }}>{opt.label}</Tag>,
+                onClick: () => handleStatusUpdate(record, opt.value)
+              }))
             }}
             trigger={['click']}
           >
-            <Tag color={color} style={{ cursor: 'pointer' }}>
-              {status || 'Unknown'}
+            <Tag 
+              color={config.color} 
+              style={{ 
+                cursor: 'pointer', 
+                borderRadius: 16, 
+                padding: '2px 14px',
+                fontSize: 12
+              }}
+            >
+              {config.label}
+              {(isProposal || hasDeal) && <TrophyOutlined style={{ marginLeft: 4, fontSize: 10, color: '#52c41a' }} />}
+              {isConverted && <CheckCircleOutlined style={{ marginLeft: 4, fontSize: 10, color: '#52c41a' }} />}
             </Tag>
           </Dropdown>
         );
       },
     },
     {
-      title: 'Assignment Date',
-      dataIndex: 'AffectingDate',
-      key: 'AffectingDate',
-      sorter: (a, b) => {
-        if (!a.AffectingDate || !b.AffectingDate) return 0;
-        return dayjs(a.AffectingDate).unix() - dayjs(b.AffectingDate).unix();
+      title: 'Created',
+      dataIndex: 'CreationDate',
+      key: 'created',
+      width: 110,
+      render: (date) => {
+        if (!date) return <Text type="secondary">—</Text>;
+        const d = date.toDate?.() || new Date(date);
+        return (
+          <Tooltip title={dayjs(d).format('DD MMM YYYY HH:mm:ss')}>
+            <Text style={{ fontSize: 12 }}>
+              <ClockCircleOutlined style={{ marginRight: 4, color: '#8c8c8c' }} />
+              {dayjs(d).format('DD MMM YYYY')}
+            </Text>
+          </Tooltip>
+        );
       },
-      render: (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-',
+      sorter: (a, b) => {
+        const da = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+        const db = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+        return da - db;
+      },
     },
     {
-      title: 'Actions',
+      title: '',
       key: 'actions',
-      width: 120,
+      width: 80,
+      fixed: 'right',
       render: (_, record) => (
-        <Dropdown 
-          menu={{
-            items: [
-              {
-                key: 'view',
-                icon: <EyeOutlined />,
-                label: 'View Details',
-                onClick: () => onViewContact(record)
-              },
-              {
-                key: 'edit',
-                icon: <EditOutlined />,
-                label: 'Edit',
-                onClick: () => onEditContact(record)
-              },
-              {
-                type: 'divider'
-              },
-              {
-                key: 'delete',
-                icon: <DeleteOutlined />,
-                label: 'Delete',
-                danger: true,
-                onClick: () => handleDelete(record)
-              }
-            ]
-          }}
-          trigger={['click']}
-        >
-          <Button type="text" icon={<MoreOutlined />} />
-        </Dropdown>
+        <Space>
+          <Tooltip title="View Details">
+            <Button 
+              type="text" 
+              size="small" 
+              icon={<EyeOutlined />} 
+              onClick={() => onViewContact(record)}
+              style={{ color: '#1890ff' }}
+            />
+          </Tooltip>
+          <Dropdown
+            menu={{
+              items: [
+                { 
+                  key: 'edit', 
+                  icon: <EditOutlined />, 
+                  label: 'Edit', 
+                  onClick: () => onEditContact(record) 
+                },
+                { type: 'divider' },
+                { 
+                  key: 'delete', 
+                  icon: <DeleteOutlined />, 
+                  label: 'Delete', 
+                  danger: true, 
+                  onClick: () => handleDelete(record) 
+                }
+              ]
+            }}
+            trigger={['click']}
+          >
+            <Button type="text" size="small" icon={<MoreOutlined />} />
+          </Dropdown>
+        </Space>
       ),
     },
   ];
 
-  // Clear all filters
+  // Clear filters
   const clearFilters = () => {
     setSearchText('');
     setFilteredStatus(null);
-    setDateRange(null);
+    setFilteredSource(null);
   };
 
   return (
-    <div>
-      {/* Filters */}
-      <Space style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <Space wrap>
-          <Search
-            placeholder="Search contacts..."
-            allowClear
-            style={{ width: 250 }}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            prefix={<SearchOutlined />}
-          />
-          
-          <Select
-            placeholder="Filter by status"
-            allowClear
-            style={{ width: 150 }}
-            value={filteredStatus}
-            onChange={setFilteredStatus}
-          >
-           <Option value={ContactStatus.PENDING}>Pending</Option>
-            <Option value={ContactStatus.CONTACTED}>Contacted</Option>
-            <Option value={ContactStatus.DEAL}>Deal</Option>
-            <Option value={ContactStatus.LOSS}>Loss</Option>
-            <Option value={ContactStatus.NO_RESPONSE}>No Response</Option>
-            <Option value={ContactStatus.NOT_INTERESTED}>Not Interested</Option>
-            <Option value={ContactStatus.JUNK_LEAD}>Junk Lead</Option>
-          </Select>
-          
-          <RangePicker
-            placeholder={['Start Date', 'End Date']}
-            value={dateRange}
-            onChange={setDateRange}
-            style={{ width: 250 }}
-          />
-          
-          <Button onClick={clearFilters} icon={<FilterOutlined />}>
-            Clear Filters
-          </Button>
-        </Space>
+    <div style={{ padding: '12px' }}>
+      {/* Filter Bar */}
+      <div style={{ 
+        display: 'flex', 
+        flexWrap: 'wrap', 
+        gap: 8, 
+        marginBottom: 16,
+        padding: '12px 16px',
+        background: '#fafafa',
+        borderRadius: 8,
+        border: '1px solid #f0f0f0',
+        alignItems: 'center'
+      }}>
+        <Search
+          placeholder="Search contacts..."
+          allowClear
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{ width: 200 }}
+          size="middle"
+          prefix={<SearchOutlined style={{ color: '#8c8c8c' }} />}
+        />
         
-        <Space>
-          <span style={{ color: '#8c8c8c' }}>
-            Total: {filteredContacts.length} contacts
-          </span>
-        </Space>
-      </Space>
+        <Select
+          placeholder="Status"
+          allowClear
+          value={filteredStatus}
+          onChange={setFilteredStatus}
+          style={{ width: 130 }}
+          size="middle"
+        >
+          {statusOptions.map(opt => (
+            <Option key={opt.value} value={opt.value}>
+              <Tag color={opt.color} style={{ margin: 0 }}>{opt.label}</Tag>
+            </Option>
+          ))}
+        </Select>
+
+        <Select
+          placeholder="Source"
+          allowClear
+          value={filteredSource}
+          onChange={setFilteredSource}
+          style={{ width: 130 }}
+          size="middle"
+        >
+          {sourceOptions.map(source => {
+            const info = getSourceInfo(source);
+            return <Option key={source} value={source}>{info.icon} {source}</Option>;
+          })}
+        </Select>
+
+        <Button size="middle" onClick={clearFilters} icon={<FilterOutlined />}>
+          Clear
+        </Button>
+
+        <div style={{ marginLeft: 'auto' }}>
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            <strong>{filteredContacts.length}</strong> of {contacts.length}
+          </Text>
+        </div>
+      </div>
+
+      {/* Status Badges - Quick Filter */}
+      <div style={{ 
+        display: 'flex', 
+        gap: 8, 
+        flexWrap: 'wrap', 
+        marginBottom: 16,
+        padding: '8px 12px',
+        background: '#f5f5f5',
+        borderRadius: 8,
+        alignItems: 'center'
+      }}>
+        <Text type="secondary" style={{ fontSize: 12 }}>Quick Filter:</Text>
+        <Badge count={statusCounts.total} showZero color="blue" size="small">
+          <Tag 
+            style={{ cursor: 'pointer', padding: '0 12px' }}
+            onClick={() => setFilteredStatus(null)}
+          >
+            All
+          </Tag>
+        </Badge>
+        {statusOptions.map(opt => {
+          const count = statusCounts[opt.value] || 0;
+          if (count === 0) return null;
+          return (
+            <Badge key={opt.value} count={count} size="small">
+              <Tag 
+                color={opt.color}
+                style={{ 
+                  cursor: 'pointer', 
+                  padding: '0 12px',
+                  opacity: filteredStatus === opt.value ? 1 : 0.7
+                }}
+                onClick={() => setFilteredStatus(filteredStatus === opt.value ? null : opt.value)}
+              >
+                {opt.label}
+              </Tag>
+            </Badge>
+          );
+        })}
+      </div>
 
       {/* Table */}
       <Table
@@ -346,17 +586,52 @@ const SellerContactList = ({
         rowKey="id"
         loading={loading}
         pagination={{
-          total: filteredContacts.length,
           pageSize: 10,
           showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total, range) => 
-            `${range[0]}-${range[1]} of ${total} contacts`,
+          pageSizeOptions: ['10', '20', '50'],
+          showTotal: (total) => `${total} contacts`,
+          size: 'small',
         }}
-        scroll={{ x: 800 }}
+        scroll={{ x: 1100 }}
+        size="middle"
+        bordered={false}
+        rowClassName={(record) => {
+          if (record.leadId || record.convertedFromLeadId) return 'converted-row';
+          if (record.status === 'hot') return 'hot-row';
+          if (record.status === 'active') return 'active-row';
+          if (record.dealId) return 'deal-row';
+          if (record.status === 'proposal' || record.status === 'Proposal') return 'proposal-row';
+          return '';
+        }}
+        className="contact-table"
       />
+
+      <style>{`
+        .converted-row { background: #f9f0ff; }
+        .converted-row:hover { background: #efdbff !important; }
+        .hot-row { background: #fff1f0; }
+        .hot-row:hover { background: #ffccc7 !important; }
+        .active-row { background: #f6ffed; }
+        .active-row:hover { background: #d9f7be !important; }
+        .deal-row { background: #fffbe6; }
+        .deal-row:hover { background: #fff1b8 !important; }
+        .proposal-row { background: #f9f0ff; }
+        .proposal-row:hover { background: #efdbff !important; }
+        .contact-table .ant-table-row { transition: background 0.2s; }
+        .contact-table .ant-table-cell { padding: 12px 8px !important; }
+      `}</style>
     </div>
   );
 };
+
+// Helper function to generate color from string
+function stringToColor(str) {
+  const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2', '#eb2f96', '#fa8c16'];
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
 
 export default SellerContactList;

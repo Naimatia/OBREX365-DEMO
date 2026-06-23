@@ -10,7 +10,9 @@ import {
   message,
   Statistic,
   Progress,
-  Drawer
+  Tag,
+  Skeleton,
+  Empty
 } from 'antd';
 import { 
   UserAddOutlined, 
@@ -23,21 +25,18 @@ import {
   UploadOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
-import ContactsService from 'services/ContactsService';
+import ContactService from 'services/firebase/ContactService';
 import { ContactStatus } from 'models/ContactModel';
 import SellerContactList from './components/SellerContactList';
 import SellerContactForm from './components/SellerContactForm';
 import SellerContactDetail from './components/SellerContactDetail';
 import EncouragementModal from './components/EncouragementModal';
 import ContactsCSVImportModal from './components/ContactsCSVImportModal';
+import sellerActivityService, { ActivityTypes, EntityTypes } from 'services/firebase/SellerActivityService';
 
 const { Title, Text } = Typography;
 
-/**
- * Seller Contacts page - View and manage contacts assigned to the current seller
- */
 const SellerContactsPage = () => {
-  // State management
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -51,19 +50,19 @@ const SellerContactsPage = () => {
   const [csvImportVisible, setCsvImportVisible] = useState(false);
   const [monthlyStats, setMonthlyStats] = useState({
     total: 0,
-    target: 50, // Default target - could be configurable
+    target: 50,
     pending: 0,
     contacted: 0,
     deal: 0,
-    loss: 0
+    loss: 0,
+    converted: 0
   });
   
-  // Get current user data
   const user = useSelector(state => state.auth.user);
   const companyId = user?.company_id;
   const sellerId = user?.id;
-  
-  // Fetch contacts assigned to current seller
+
+  // Fetch contacts
   const fetchContacts = useCallback(async () => {
     if (!companyId || !sellerId) {
       setLoading(false);
@@ -72,302 +71,499 @@ const SellerContactsPage = () => {
     
     setLoading(true);
     try {
-      const allContacts = await ContactsService.getCompanyContacts(companyId);
+      const allContacts = await ContactService.getContactsByCompany(companyId);
       
-      // Filter contacts for current seller only
-      const sellerContacts = allContacts.filter(contact => contact.seller_id === sellerId);
+      const sellerContacts = allContacts.filter(contact => {
+        return contact.seller_id === sellerId || 
+               contact.assignedTo?.id === sellerId ||
+               contact.createdBy === sellerId;
+      });
       
       setContacts(sellerContacts);
-      
-      // Calculate monthly statistics
       calculateMonthlyStats(sellerContacts);
       
-    } catch (err) {
-      console.error('Error fetching contacts:', err);
-      message.error('Failed to load contacts. Please try again later.');
-    } finally {
-      setLoading(false);
-    }
-  }, [companyId, sellerId]);
-  
-  // Calculate monthly statistics for progress tracking
-  const calculateMonthlyStats = (contactList) => {
-    const currentDate = new Date();
-    const currentMonth = currentDate.getMonth();
-    const currentYear = currentDate.getFullYear();
-    
-    // Filter contacts by current month's affecting date
-    const monthlyContacts = contactList.filter(contact => {
-      if (!contact.AffectingDate) return false;
-      const contactDate = new Date(contact.AffectingDate);
-      return contactDate.getMonth() === currentMonth && contactDate.getFullYear() === currentYear;
-    });
-    
-    const stats = {
-      total: monthlyContacts.length,
-      target: 50, // Could be made configurable per seller
-      pending: monthlyContacts.filter(c => c.status === ContactStatus.PENDING).length,
-      contacted: monthlyContacts.filter(c => c.status === ContactStatus.CONTACTED).length,
-      deal: monthlyContacts.filter(c => c.status === ContactStatus.DEAL).length,
-      loss: monthlyContacts.filter(c => c.status === ContactStatus.LOSS).length
-    };
-    
-    setMonthlyStats(stats);
-  };
-  
-  // Load contacts on component mount
-  useEffect(() => {
-    fetchContacts();
-  }, [fetchContacts]);
-  
-  // Handle submitting the contact form (create or update)
-  const handleFormSubmit = async (formData) => {
-    try {
+      // Update selected contact if it exists
       if (selectedContact?.id) {
-        // Update existing contact
-        await ContactsService.updateContact(selectedContact.id, formData);
-        message.success('Contact updated successfully');
-      } else {
-        // Create new contact
-        const contactData = {
-          ...formData,
-          company_id: companyId,
-          seller_id: sellerId, // Automatically assign to current seller
-          status: ContactStatus.PENDING, // New contacts start as pending
-          // Add initial note if provided
-          Notes: formData.initialNote ? [
-            {
-              note: formData.initialNote,
-              CreationDate: new Date()
-            }
-          ] : []
-        };
-        
-        // Remove initialNote from the data
-        delete contactData.initialNote;
-        
-        await ContactsService.createContact(contactData);
-        message.success('Contact created successfully');
-      }
-      
-      fetchContacts();
-      setIsFormVisible(false);
-      
-    } catch (err) {
-      console.error('Error saving contact:', err);
-      message.error('Failed to save contact. Please try again.');
-    }
-  };
-  
-  // Handle opening the contact form for creating a new contact
-  const handleAddContact = () => {
-    setSelectedContact(null);
-    setIsFormVisible(true);
-  };
-  
-  // Handle viewing contact details
-  const handleViewContact = (contact) => {
-    setSelectedContact(contact);
-    setIsDetailVisible(true);
-  };
-  
-  // Handle editing a contact
-  const handleEditContact = (contact) => {
-    setSelectedContact(contact);
-    setIsFormVisible(true);
-  };
-  
-  // Handle updating contact status
-  const handleUpdateStatus = async (contactId, status) => {
-    try {
-      // Find the contact to get the name
-      const contact = contacts.find(c => c.id === contactId);
-      
-      await ContactsService.updateContact(contactId, { status });
-      message.success('Contact status updated successfully');
-      
-      // Show encouragement modal for meaningful status changes
-      if ([ContactStatus.CONTACTED, ContactStatus.DEAL, ContactStatus.LOSS].includes(status)) {
-        setEncouragementModal({
-          visible: true,
-          status: status,
-          contactName: contact?.name || 'Unknown Contact'
-        });
-      }
-      
-      fetchContacts();
-    } catch (err) {
-      console.error('Error updating contact status:', err);
-      message.error('Failed to update contact status.');
-    }
-  };
-  
-  // Handle adding a note to a contact
-  const handleAddNote = async (contactId, noteText) => {
-    try {
-      await ContactsService.addNote(contactId, noteText);
-      message.success('Note added successfully');
-      
-      // Refresh contacts and update viewing contact if drawer is open
-      await fetchContacts();
-      
-      if (selectedContact?.id === contactId) {
-        const updatedContact = contacts.find(c => c.id === contactId);
-        if (updatedContact) {
-          setSelectedContact(updatedContact);
+        const updated = sellerContacts.find(c => c.id === selectedContact.id);
+        if (updated) {
+          setSelectedContact(updated);
         }
       }
       
+    } catch (err) {
+      console.error('Error fetching contacts:', err);
+      message.error('Failed to load contacts');
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, sellerId, selectedContact?.id]);
+
+  const calculateMonthlyStats = (contactList) => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    const monthlyContacts = contactList.filter(contact => {
+      const date = contact.CreationDate || contact.createdAt;
+      if (!date) return false;
+      const contactDate = date?.toDate ? date.toDate() : new Date(date);
+      return contactDate.getMonth() === currentMonth && contactDate.getFullYear() === currentYear;
+    });
+    
+    setMonthlyStats({
+      total: monthlyContacts.length,
+      target: 50,
+      pending: monthlyContacts.filter(c => c.status === ContactStatus.PENDING || c.status === 'pending').length,
+      contacted: monthlyContacts.filter(c => c.status === ContactStatus.CONTACTED || c.status === 'contacted').length,
+      deal: monthlyContacts.filter(c => c.status === ContactStatus.DEAL || c.status === 'deal').length,
+      loss: monthlyContacts.filter(c => c.status === ContactStatus.LOSS || c.status === 'loss').length,
+      converted: monthlyContacts.filter(c => c.leadId || c.convertedFromLeadId || c.status === 'converted').length
+    });
+  };
+
+  useEffect(() => {
+    fetchContacts();
+  }, [fetchContacts]);
+
+    const handleUpdateContact = async (contactId, updateData) => {
+    try {
+      await ContactService.update(contactId, updateData);
+      await fetchContacts();
+      message.success('Contact updated');
       return true;
     } catch (err) {
-      console.error('Error adding note:', err);
-      message.error('Failed to add note.');
+      message.error('Failed to update contact');
       return false;
     }
   };
-  
-  // Handle deleting a contact
+
+const handleFormSubmit = async (formData) => {
+  try {
+    if (selectedContact?.id) {
+      // UPDATE existing contact
+      const oldContact = contacts.find(c => c.id === selectedContact.id);
+      
+      await ContactService.update(selectedContact.id, formData);
+      
+      // Log update activity
+      if (sellerId && companyId && oldContact) {
+        await sellerActivityService.logActivity({
+          sellerId: sellerId,
+          companyId: companyId,
+          activityType: ActivityTypes.CONTACT_UPDATED,
+          entityType: EntityTypes.CONTACT,
+          entityId: selectedContact.id,
+          entityName: oldContact.name || 'Unknown Contact',
+          details: {
+            name: oldContact.name,
+            email: oldContact.email,
+            phone: oldContact.phoneNumber,
+            updatedFields: Object.keys(formData).join(', '),
+          },
+          metadata: {
+            updatedAt: new Date().toISOString(),
+            fields: Object.keys(formData),
+          }
+        });
+      }
+      
+      message.success('Contact updated successfully');
+    } else {
+      // CREATE new contact
+      const contactData = {
+        ...formData,
+        company_id: companyId,
+        seller_id: sellerId,
+        createdBy: sellerId,
+        status: ContactStatus.PENDING,
+        CreationDate: new Date(),
+        Notes: formData.initialNote ? [{
+          note: formData.initialNote,
+          CreationDate: new Date()
+        }] : []
+      };
+      delete contactData.initialNote;
+      
+      const newContact = await ContactService.create(contactData);
+      
+      // Log create activity
+      if (sellerId && companyId && newContact) {
+        await sellerActivityService.logActivity({
+          sellerId: sellerId,
+          companyId: companyId,
+          activityType: ActivityTypes.CONTACT_CREATED,
+          entityType: EntityTypes.CONTACT,
+          entityId: newContact.id,
+          entityName: contactData.name || 'Unknown Contact',
+          details: {
+            name: contactData.name,
+            email: contactData.email,
+            phone: contactData.phoneNumber,
+            source: contactData.source,
+          },
+          metadata: {
+            status: ContactStatus.PENDING,
+            source: contactData.source,
+            createdAt: new Date().toISOString(),
+          }
+        });
+      }
+      
+      message.success('Contact created successfully');
+    }
+    
+    await fetchContacts();
+    setIsFormVisible(false);
+    setSelectedContact(null);
+  } catch (err) {
+    console.error('Error saving contact:', err);
+    message.error('Failed to save contact: ' + err.message);
+  }
+};
+
+// Handle updating status with auto-deal creation - FIXED with activity logging
+const handleUpdateStatus = async (contactId, status) => {
+  try {
+    setLoading(true);
+    
+    // Get the contact before update
+    const contact = contacts.find(c => c.id === contactId);
+    if (!contact) {
+      message.error('Contact not found');
+      setLoading(false);
+      return;
+    }
+    
+    const oldStatus = contact.status;
+    
+    // Use the method that auto-creates deals
+    const result = await ContactService.updateStatusWithDeal(contactId, status);
+    
+    await fetchContacts();
+    
+    // Log status change activity (already logged in updateStatusWithDeal, but we can add additional context)
+    if (sellerId && companyId) {
+      await sellerActivityService.logActivity({
+        sellerId: sellerId,
+        companyId: companyId,
+        activityType: ActivityTypes.CONTACT_STATUS_CHANGED,
+        entityType: EntityTypes.CONTACT,
+        entityId: contactId,
+        entityName: contact.name || 'Unknown Contact',
+        details: {
+          name: contact.name,
+          previousStatus: oldStatus,
+          newStatus: status,
+          dealCreated: !!result?.dealId,
+          dealId: result?.dealId || null,
+        },
+        metadata: {
+          oldStatus: oldStatus,
+          newStatus: status,
+          dealId: result?.dealId || null,
+          amount: result?.deal?.Amount || 0,
+          statusChangedAt: new Date().toISOString(),
+        }
+      });
+    }
+    
+    // Check if a deal was created
+    if (result?.dealId) {
+      const isProposal = status === 'proposal' || status === 'Proposal' || status === ContactStatus.PROPOSAL;
+      const isDeal = status === 'deal' || status === 'Deal' || status === ContactStatus.DEAL;
+      
+      if (isProposal || isDeal) {
+        message.success(`Status updated to ${status} and deal created!`);
+        
+        // Log deal creation specifically
+        if (sellerId && companyId && result.deal) {
+          await sellerActivityService.logActivity({
+            sellerId: sellerId,
+            companyId: companyId,
+            activityType: ActivityTypes.CONTACT_CONVERTED_TO_DEAL,
+            entityType: EntityTypes.DEAL,
+            entityId: result.dealId,
+            entityName: result.deal.Description || 'New Deal',
+            details: {
+              contactName: contact.name,
+              contactId: contactId,
+              dealId: result.dealId,
+              amount: result.deal.Amount,
+              dealName: result.deal.Description,
+            },
+            metadata: {
+              contactId: contactId,
+              contactName: contact.name,
+              amount: result.deal.Amount,
+              convertedAt: new Date().toISOString(),
+            }
+          });
+        }
+        
+        // You can add logic here to open the deal or show a notification
+        if (result.deal) {
+          console.log('Deal created:', result.deal);
+          // Optionally navigate to deal detail
+          // navigate(`/deals/${result.dealId}`);
+        }
+      } else {
+        message.success(`Status updated to ${status}`);
+      }
+    } else {
+      message.success(`Status updated to ${status}`);
+    }
+    
+    // Show encouragement modal for certain statuses
+    if (status === ContactStatus.DEAL || status === ContactStatus.PROPOSAL || 
+        status === ContactStatus.LOSS || status === ContactStatus.WON) {
+      setEncouragementModal({
+        visible: true,
+        status: status,
+        contactName: contact.name
+      });
+    }
+    
+  } catch (err) {
+    console.error('Error updating status:', err);
+    message.error('Failed to update status: ' + err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+// FIXED: Handle adding a note with proper refresh and activity logging
+const handleAddNote = async (contactId, noteText) => {
+  try {
+    // Get the contact before adding note
+    const contact = contacts.find(c => c.id === contactId);
+    
+    // Add the note
+    await ContactService.addNote(contactId, noteText);
+    
+    // Refresh the entire contacts list
+    await fetchContacts();
+    
+    // Log note activity
+    if (sellerId && companyId && contact) {
+      await sellerActivityService.logActivity({
+        sellerId: sellerId,
+        companyId: companyId,
+        activityType: ActivityTypes.CONTACT_NOTE_ADDED,
+        entityType: EntityTypes.CONTACT,
+        entityId: contactId,
+        entityName: contact.name || 'Unknown Contact',
+        details: {
+          name: contact.name,
+          note: noteText.substring(0, 100) + (noteText.length > 100 ? '...' : ''),
+          noteLength: noteText.length,
+          contactStatus: contact.status,
+        },
+        metadata: {
+          noteAddedAt: new Date().toISOString(),
+          contactStatus: contact.status,
+        }
+      });
+    }
+    
+    // Update selected contact if detail view is open
+    if (selectedContact && selectedContact.id === contactId) {
+      const updatedContact = await ContactService.getById(contactId);
+      if (updatedContact) {
+        setSelectedContact(updatedContact);
+      }
+    }
+    
+    message.success('Note added successfully');
+    return true;
+  } catch (err) {
+    console.error('Error adding note:', err);
+    message.error('Failed to add note: ' + err.message);
+    return false;
+  }
+};
+
+  // FIXED: Handle updating a note with proper refresh
+  const handleUpdateNote = async (contactId, noteId, newText) => {
+    try {
+      await ContactService.updateNote(contactId, noteId, newText);
+      
+      // Refresh the entire contacts list
+      await fetchContacts();
+      
+      message.success('Note updated successfully');
+      return true;
+    } catch (err) {
+      console.error('Error updating note:', err);
+      message.error('Failed to update note');
+      return false;
+    }
+  };
+
+  // FIXED: Handle deleting a note with proper refresh
+  const handleDeleteNote = async (contactId, noteId) => {
+    try {
+      await ContactService.deleteNote(contactId, noteId);
+      
+      // Refresh the entire contacts list
+      await fetchContacts();
+      
+      message.success('Note deleted successfully');
+      return true;
+    } catch (err) {
+      console.error('Error deleting note:', err);
+      message.error('Failed to delete note');
+      return false;
+    }
+  };
+
   const handleDeleteContact = async (contactId) => {
     try {
-      await ContactsService.deleteContact(contactId);
-      message.success('Contact deleted successfully');
-      fetchContacts();
-      
-      // Close detail drawer if viewing the deleted contact
+      await ContactService.delete(contactId);
+      message.success('Contact deleted');
+      await fetchContacts();
       if (selectedContact?.id === contactId) {
         setIsDetailVisible(false);
         setSelectedContact(null);
       }
     } catch (err) {
-      console.error('Error deleting contact:', err);
-      message.error('Failed to delete contact.');
+      message.error('Failed to delete contact');
     }
   };
 
-  // Handle successful CSV import
-  const handleCsvImportSuccess = (importedCount) => {
-    message.success(`Successfully imported ${importedCount} contacts from CSV`);
+  const handleCsvImportSuccess = (count) => {
+    message.success(`Imported ${count} contacts`);
     setCsvImportVisible(false);
-    fetchContacts(); // Refresh the contacts list
+    fetchContacts();
   };
-  
+
+  const handleAddContact = () => {
+    setSelectedContact(null);
+    setIsFormVisible(true);
+  };
+
+  const handleViewContact = (contact) => {
+    setSelectedContact(contact);
+    setIsDetailVisible(true);
+  };
+
+  const handleEditContact = (contact) => {
+    setSelectedContact(contact);
+    setIsFormVisible(true);
+  };
+
+  // Get status counts for badges
+  const getStatusCount = (status) => {
+    return contacts.filter(c => c.status === status).length;
+  };
+
+  const statusCounts = {
+    total: contacts.length,
+    pending: getStatusCount(ContactStatus.PENDING) + getStatusCount('pending'),
+    contacted: getStatusCount(ContactStatus.CONTACTED) + getStatusCount('contacted'),
+    deal: getStatusCount(ContactStatus.DEAL) + getStatusCount('deal'),
+    loss: getStatusCount(ContactStatus.LOSS) + getStatusCount('loss'),
+    active: getStatusCount('active'),
+    hot: getStatusCount('hot'),
+    cold: getStatusCount('cold')
+  };
+
   return (
-    <div style={{ padding: '24px' }}>
-      {/* Page Header */}
-      <Row justify="space-between" align="middle" style={{ marginBottom: '24px' }}>
-        <Col>
-          <Title level={2} style={{ margin: 0 }}>
-            <TeamOutlined style={{ marginRight: '12px', color: '#1890ff' }} />
-            My Contacts
-          </Title>
-          <Text type="secondary">
-            Manage your assigned contacts and track progress
-          </Text>
-        </Col>
-        <Col>
+    <div style={{ padding: '16px 24px' }}>
+      {/* Header */}
+      <Row justify="space-between" align="middle" gutter={[16, 16]} style={{ marginBottom: 20 }}>
+        <Col xs={24} md={12}>
           <Space>
-            <Button 
-              type="primary" 
-              icon={<UserAddOutlined />}
-              onClick={handleAddContact}
-            >
-              Add Contact
-            </Button>
-            <Button 
-              icon={<UploadOutlined />}
-              onClick={() => setCsvImportVisible(true)}
-            >
-              Import CSV
-            </Button>
-            <Button 
-              icon={<ReloadOutlined />}
-              onClick={fetchContacts}
-              loading={loading}
-            >
+            <TeamOutlined style={{ fontSize: 24, color: '#1890ff' }} />
+            <Title level={3} style={{ margin: 0 }}>My Contacts</Title>
+            <Tag color="blue">{contacts.length}</Tag>
+          </Space>
+        </Col>
+        <Col xs={24} md={12}>
+          <Space wrap style={{ width: '100%', justifyContent: 'flex-end' }}>
+            <Button icon={<ReloadOutlined />} onClick={fetchContacts} loading={loading}>
               Refresh
+            </Button>
+            <Button icon={<UploadOutlined />} onClick={() => setCsvImportVisible(true)}>
+              Import
+            </Button>
+            <Button type="primary" icon={<UserAddOutlined />} onClick={handleAddContact}>
+              Add Contact
             </Button>
           </Space>
         </Col>
       </Row>
-      
-      {/* Monthly Progress Statistics */}
-      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="This Month"
-              value={monthlyStats.total}
-              suffix={` Total`}
-              valueStyle={{ color: '#1890ff' }}
-              prefix={<CalendarOutlined />}
-            />
-            <div style={{ marginTop: '8px', fontSize: '12px', color: '#8c8c8c' }}>
-              Progress: {monthlyStats.contacted + monthlyStats.deal + monthlyStats.loss} / {monthlyStats.total}
-            </div>
-            <Progress 
-              percent={monthlyStats.total > 0 ? Math.round(((monthlyStats.contacted + monthlyStats.deal + monthlyStats.loss) / monthlyStats.total) * 100) : 0}
-              size="small"
-              status={(monthlyStats.contacted + monthlyStats.deal + monthlyStats.loss) >= monthlyStats.total ? 'success' : 'active'}
-            />
+
+      {/* Stats Cards */}
+      <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center' }}>
+            <Statistic title="Total" value={statusCounts.total} valueStyle={{ fontSize: 20 }} />
           </Card>
         </Col>
-        
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Pending"
-              value={monthlyStats.pending}
-              valueStyle={{ color: '#faad14' }}
-              prefix={<ClockCircleOutlined />}
-            />
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#f6ffed' }}>
+            <Statistic title="Deals" value={statusCounts.deal} valueStyle={{ fontSize: 20, color: '#52c41a' }} />
           </Card>
         </Col>
-        
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Contacted"
-              value={monthlyStats.contacted}
-              valueStyle={{ color: '#1890ff' }}
-              prefix={<PhoneOutlined />}
-            />
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#fff7e6' }}>
+            <Statistic title="Pending" value={statusCounts.pending} valueStyle={{ fontSize: 20, color: '#faad14' }} />
           </Card>
         </Col>
-        
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Deals"
-              value={monthlyStats.deal}
-              valueStyle={{ color: '#52c41a' }}
-              prefix={<TrophyOutlined />}
-            />
-            <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '4px' }}>
-              Lost: {monthlyStats.loss}
-            </div>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#e6f7ff' }}>
+            <Statistic title="Contacted" value={statusCounts.contacted} valueStyle={{ fontSize: 20, color: '#1890ff' }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#f9f0ff' }}>
+            <Statistic title="Converted" value={monthlyStats.converted} valueStyle={{ fontSize: 20, color: '#722ed1' }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Card size="small" style={{ textAlign: 'center', background: '#fff1f0' }}>
+            <Statistic title="Lost" value={statusCounts.loss} valueStyle={{ fontSize: 20, color: '#ff4d4f' }} />
           </Card>
         </Col>
       </Row>
-      
-      {/* Contacts List */}
-      <Card title="Contacts" style={{ marginBottom: '24px' }}>
+
+      {/* Monthly Progress */}
+      <Card size="small" style={{ marginBottom: 20 }}>
+        <Row align="middle" gutter={[16, 16]}>
+          <Col xs={24} md={6}>
+            <Space>
+              <CalendarOutlined style={{ color: '#1890ff' }} />
+              <Text strong>This Month</Text>
+              <Tag color="blue">{monthlyStats.total}</Tag>
+            </Space>
+          </Col>
+          <Col xs={24} md={18}>
+            <Progress 
+              percent={monthlyStats.total > 0 ? Math.round(((monthlyStats.contacted + monthlyStats.deal) / monthlyStats.total) * 100) : 0}
+              size="small"
+              status="active"
+              format={() => `${monthlyStats.contacted + monthlyStats.deal}/${monthlyStats.total}`}
+            />
+          </Col>
+        </Row>
+      </Card>
+
+      {/* Contact List */}
+      <Card bodyStyle={{ padding: 0 }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '50px' }}>
-            Loading contacts...
+          <div style={{ padding: 24 }}>
+            <Skeleton active paragraph={{ rows: 5 }} />
           </div>
         ) : contacts.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '50px', color: '#8c8c8c' }}>
-            <UserAddOutlined style={{ fontSize: '48px', marginBottom: '16px' }} />
-            <div style={{ fontSize: '16px', marginBottom: '8px' }}>No contacts assigned yet</div>
-            <div style={{ fontSize: '14px', marginBottom: '16px' }}>Start by adding your first contact</div>
-            <Button 
-              type="primary" 
-              icon={<UserAddOutlined />}
-              onClick={handleAddContact}
-            >
-              Add First Contact
+          <Empty 
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="No contacts yet"
+            style={{ padding: '40px 0' }}
+          >
+            <Button type="primary" icon={<UserAddOutlined />} onClick={handleAddContact}>
+              Add Your First Contact
             </Button>
-          </div>
+          </Empty>
         ) : (
           <SellerContactList
             contacts={contacts}
@@ -381,41 +577,40 @@ const SellerContactsPage = () => {
         )}
       </Card>
 
-      {/* Add/Edit Contact Modal */}
+      {/* Modals */}
       <Modal
-        title={selectedContact ? 'Edit Contact' : 'Add New Contact'}
+        title={selectedContact ? 'Edit Contact' : 'Add Contact'}
         open={isFormVisible}
-        onCancel={() => {
-          setIsFormVisible(false);
-          setSelectedContact(null);
-        }}
+        onCancel={() => { setIsFormVisible(false); setSelectedContact(null); }}
         footer={null}
-        width={800}
+        width={600}
+        destroyOnClose
       >
         <SellerContactForm
           contact={selectedContact}
           onSubmit={handleFormSubmit}
-          onCancel={() => {
-            setIsFormVisible(false);
-            setSelectedContact(null);
-          }}
+          onCancel={() => { setIsFormVisible(false); setSelectedContact(null); }}
           loading={loading}
         />
       </Modal>
 
-      {/* Contact Detail Drawer */}
+      {/* FIXED: Pass the correct handlers */}
       <SellerContactDetail
         visible={isDetailVisible}
         contact={selectedContact}
+        loading={loading}
         onEdit={handleEditContact}
         onAddNote={handleAddNote}
-        onClose={() => {
-          setIsDetailVisible(false);
-          setSelectedContact(null);
+        onUpdateNote={handleUpdateNote}
+        onDeleteNote={handleDeleteNote}
+        onUpdateStatus={handleUpdateStatus}
+        onUpdateContact={handleUpdateContact}
+        onClose={() => { 
+          setIsDetailVisible(false); 
+          setSelectedContact(null); 
         }}
       />
 
-      {/* Encouragement Modal */}
       <EncouragementModal
         visible={encouragementModal.visible}
         status={encouragementModal.status}
@@ -423,7 +618,6 @@ const SellerContactsPage = () => {
         onClose={() => setEncouragementModal({ visible: false, status: null, contactName: null })}
       />
 
-      {/* CSV Import Modal */}
       <ContactsCSVImportModal
         visible={csvImportVisible}
         onClose={() => setCsvImportVisible(false)}

@@ -12,10 +12,11 @@ import {
   FacebookOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
+  UserAddOutlined,
 } from '@ant-design/icons';
 import { db, collection, getDocs } from 'configs/FirebaseConfig';
 import LeadService from 'services/firebase/LeadService';
-import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
+import { LeadStatus, LeadInterestLevel, LeadStatusLabels, LeadStatusColors } from 'models/LeadModel';
 import { serverTimestamp } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 
@@ -69,7 +70,7 @@ const mapMetaLeadToModel = (metaLead, companyId) => {
     secondaryEmail:  raw.secondary_email || '',
     phoneNumber2:    raw.secondary_phone || raw.additional_phone || '',
     region:          nationality || 'UAE',
-    status:          LeadStatus.PENDING,
+    status:          LeadStatus.NEW, // Changed from PENDING to NEW
     InterestLevel:   LeadInterestLevel.MEDIUM,
     Budget:          budget ? String(budget) : null,
     lookingFor:      lookingFor || null,
@@ -92,9 +93,10 @@ const mapMetaLeadToModel = (metaLead, companyId) => {
     },
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-    // ✅ ADDED: Track when lead was assigned
     assignedAt: null,
-    assignedBy: null
+    assignedBy: null,
+    convertedContactId: null,
+    convertedAt: null,
   };
 };
 
@@ -275,6 +277,8 @@ const LeadsPage = () => {
           name: `${u.firstname ?? ''} ${u.lastname ?? ''}${u.country ? ` (${u.country})` : ''}`.trim(),
           phoneNumber: u.phoneNumber || u.phone || '',
           email: u.email || '',
+          firstName: u.firstname || '',
+          lastName: u.lastname || '',
         }));
       setSellers(list);
     } catch (error) {
@@ -341,21 +345,37 @@ const LeadsPage = () => {
   const handleAddLead = async (values) => {
     setConfirmLoading(true);
     try {
-      await LeadService.create({
+      const leadData = {
         ...values,
-        company_id:     companyId,
-        CreationDate:   values.CreationDate?.toDate() || serverTimestamp(),
-        Notes:          [],
+        company_id: companyId,
+        CreationDate: values.CreationDate?.toDate() || serverTimestamp(),
+        Notes: values.Notes || [],
         secondaryEmail: values.secondaryEmail || '',
-        phoneNumber2:   values.phoneNumber2   || '',
-        assignedAt:     null,
-        assignedBy:     null
-      });
-      message.success('Lead created successfully');
+        phoneNumber2: values.phoneNumber2 || '',
+        assignedAt: null,
+        assignedBy: null,
+        status: values.status || LeadStatus.NEW,
+        convertedContactId: null,
+        convertedAt: null,
+      };
+
+      // If autoConvert is true or status is CONVERTED, create contact
+      if (values.autoConvert || values.status === LeadStatus.CONVERTED) {
+        await LeadService.create(leadData, true); // Pass true to auto-create contact
+        message.success('Lead created successfully with contact');
+      } else {
+        await LeadService.create(leadData, false);
+        message.success('Lead created successfully');
+      }
+      
       setFormVisible(false);
       fetchLeads();
-    } catch { message.error('Failed to create lead'); }
-    finally { setConfirmLoading(false); }
+    } catch (error) {
+      console.error('Error creating lead:', error);
+      message.error('Failed to create lead: ' + error.message);
+    } finally {
+      setConfirmLoading(false);
+    }
   };
 
   const handleUpdateLead = async (values) => {
@@ -363,20 +383,144 @@ const LeadsPage = () => {
     try {
       const data = {
         ...values,
-        CreationDate:   values.CreationDate?.toDate() || editingLead.CreationDate,
+        CreationDate: values.CreationDate?.toDate() || editingLead.CreationDate,
         secondaryEmail: values.secondaryEmail || '',
-        phoneNumber2:   values.phoneNumber2   || '',
+        phoneNumber2: values.phoneNumber2 || '',
+        Notes: values.Notes || [],
+        updatedAt: serverTimestamp(),
       };
+
+      // If status is CONVERTED and no contact exists, create one
+      if (values.status === LeadStatus.CONVERTED && !editingLead.convertedContactId) {
+        await LeadService.convertToContact(editingLead.id);
+        message.success('Lead converted to contact');
+      }
+
       await LeadService.update(editingLead.id, data);
-      message.success('Lead updated');
+      message.success('Lead updated successfully');
       setFormVisible(false);
       setEditingLead(null);
       fetchLeads();
-      if (selectedLead?.id === editingLead.id) setSelectedLead({ ...selectedLead, ...data });
-    } catch { message.error('Failed to update lead'); }
-    finally { setConfirmLoading(false); }
+      
+      if (selectedLead?.id === editingLead.id) {
+        const updatedLead = await LeadService.getById(editingLead.id);
+        setSelectedLead(updatedLead);
+      }
+    } catch (error) {
+      console.error('Error updating lead:', error);
+      message.error('Failed to update lead: ' + error.message);
+    } finally {
+      setConfirmLoading(false);
+    }
   };
 
+  // ─── Convert Lead to Contact ──────────────────────────────────────────────
+  const handleConvertToContact = async (leadId) => {
+    try {
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) {
+        message.error('Lead not found');
+        return;
+      }
+
+      // Check if already converted
+      if (lead.convertedContactId || lead.status === LeadStatus.CONVERTED) {
+        message.warning('Lead already converted to contact');
+        return;
+      }
+
+      confirm({
+        title: 'Convert Lead to Contact',
+        icon: <ExclamationCircleOutlined />,
+        content: (
+          <div>
+            <p>This will convert the lead to a contact and create a new contact record with all lead information.</p>
+            <p><strong>Lead:</strong> {lead.name}</p>
+            <p><strong>Email:</strong> {lead.email}</p>
+            <p><strong>Phone:</strong> {lead.phoneNumber}</p>
+          </div>
+        ),
+        okText: 'Convert',
+        cancelText: 'Cancel',
+        onOk: async () => {
+          try {
+            setConfirmLoading(true);
+            await LeadService.convertToContact(leadId);
+            message.success('Lead successfully converted to contact!');
+            fetchLeads();
+            
+            if (selectedLead?.id === leadId) {
+              const updatedLead = await LeadService.getById(leadId);
+              setSelectedLead(updatedLead);
+            }
+          } catch (error) {
+            message.error('Failed to convert lead: ' + error.message);
+          } finally {
+            setConfirmLoading(false);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error converting lead:', error);
+      message.error('Failed to convert lead');
+    }
+  };
+
+  // ─── Bulk Convert Leads ───────────────────────────────────────────────────
+  const handleBulkConvertToContacts = async (leadIds) => {
+    try {
+      const leadsToConvert = leads.filter(l => 
+        leadIds.includes(l.id) && 
+        !l.convertedContactId && 
+        l.status !== LeadStatus.CONVERTED
+      );
+
+      if (leadsToConvert.length === 0) {
+        message.warning('No leads to convert');
+        return;
+      }
+
+      confirm({
+        title: `Convert ${leadsToConvert.length} Lead(s) to Contacts`,
+        icon: <ExclamationCircleOutlined />,
+        content: (
+          <div>
+            <p>This will convert the selected leads to contacts.</p>
+            <p><strong>Leads to convert:</strong> {leadsToConvert.map(l => l.name).join(', ')}</p>
+          </div>
+        ),
+        okText: 'Convert All',
+        cancelText: 'Cancel',
+        onOk: async () => {
+          try {
+            setConfirmLoading(true);
+            const results = await LeadService.bulkConvertToContacts(leadIds);
+            
+            if (results.converted.length > 0) {
+              message.success(`${results.converted.length} leads converted to contacts`);
+            }
+            if (results.skipped.length > 0) {
+              message.info(`${results.skipped.length} leads already converted`);
+            }
+            if (results.failed.length > 0) {
+              message.error(`${results.failed.length} leads failed to convert`);
+            }
+            
+            fetchLeads();
+          } catch (error) {
+            message.error('Failed to convert leads: ' + error.message);
+          } finally {
+            setConfirmLoading(false);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error bulk converting leads:', error);
+      message.error('Failed to convert leads');
+    }
+  };
+
+  // ─── Delete Lead ──────────────────────────────────────────────────────────
   const handleDeleteLead = (lead) =>
     confirm({
       title:      'Delete this lead?',
@@ -427,6 +571,7 @@ const LeadsPage = () => {
       `*Lead Details:*\n` +
       `👤 Name: ${leadData.name || 'N/A'}\n` +
       `📍 Region: ${leadData.region || 'Not specified'}\n` +
+      `📊 Status: ${leadData.status || 'New'}\n` +
       `*Next Steps:*\n` +
       `1. Contact the lead within 24 hours\n` +
       `2. Update lead status in CRM\n` +
@@ -455,7 +600,7 @@ const LeadsPage = () => {
       `Best regards,\n${companyName || APP_NAME} Team`;
   };
 
-  // ✅ MODIFIED: Handle single lead assignment with timestamp tracking
+  // ─── Assignment Handlers ──────────────────────────────────────────────────
   const handleAssignSeller = async (leadId, sellerId, whatsappEnabled = true) => {
     setConfirmLoading(true);
     try {
@@ -465,11 +610,10 @@ const LeadsPage = () => {
       const lead = leads.find(l => l.id === leadId);
       if (!lead) throw new Error('Lead not found');
       
-      // ✅ ADDED: Track assignment timestamp and assigner
       const assignmentData = { 
         id: sellerId, 
-        firstName: seller.name.split(' ')[0] || '', 
-        lastName: seller.name.split(' ').slice(1).join(' ') || '',
+        firstName: seller.firstName || seller.name.split(' ')[0] || '', 
+        lastName: seller.lastName || seller.name.split(' ').slice(1).join(' ') || '',
         assignedAt: new Date().toISOString(),
         assignedBy: {
           id: user?.uid,
@@ -504,7 +648,6 @@ const LeadsPage = () => {
     }
   };
 
-  // ✅ MODIFIED: Handle bulk lead assignment with timestamp tracking
   const handleBulkAssignSeller = async (leadIds, sellerId, whatsappEnabled = true) => {
     setConfirmLoading(true);
     try {
@@ -514,11 +657,10 @@ const LeadsPage = () => {
       const leadsToAssign = leads.filter(l => leadIds.includes(l.id));
       if (leadsToAssign.length === 0) throw new Error('No leads found to assign');
       
-      // ✅ ADDED: Track assignment timestamp for each lead
       const assignmentData = {
         id: sellerId,
-        firstName: seller.name.split(' ')[0] || '',
-        lastName: seller.name.split(' ').slice(1).join(' ') || '',
+        firstName: seller.firstName || seller.name.split(' ')[0] || '',
+        lastName: seller.lastName || seller.name.split(' ').slice(1).join(' ') || '',
         assignedAt: new Date().toISOString(),
         assignedBy: {
           id: user?.uid,
@@ -593,18 +735,28 @@ const LeadsPage = () => {
             const phone = row['Phone']     || row['phoneNumber'] || row['Phone Number'];
             if (!name || !email || !phone) { message.warning(`Row ${i + 2}: Missing required fields`); return null; }
             return {
-              name: name.trim(), email: email.trim(), phoneNumber: phone.toString().trim(),
-              region: row['Region'] || 'UAE', status: row['Status'],
-              InterestLevel: row['Interest Level'], Budget: Number(row['Budget']) || 0,
-              secondaryEmail: row['Secondary Email'] || '', RedirectedFrom: row['Lead Source'],
-              phoneNumber2: row['Secondary Phone'] || '', CreationDate: new Date(),
-              company_id: companyId, Notes: [],
-              assignedAt: null, assignedBy: null
+              name: name.trim(), 
+              email: email.trim(), 
+              phoneNumber: phone.toString().trim(),
+              region: row['Region'] || 'UAE', 
+              status: row['Status'] || LeadStatus.NEW,
+              InterestLevel: row['Interest Level'] || LeadInterestLevel.MEDIUM, 
+              Budget: Number(row['Budget']) || 0,
+              secondaryEmail: row['Secondary Email'] || '', 
+              RedirectedFrom: row['Lead Source'] || 'Import',
+              phoneNumber2: row['Secondary Phone'] || '', 
+              CreationDate: new Date(),
+              company_id: companyId, 
+              Notes: [],
+              assignedAt: null, 
+              assignedBy: null,
+              convertedContactId: null,
+              convertedAt: null,
             };
           })
           .filter(Boolean);
         if (!valid.length) { message.error('No valid leads to import'); return; }
-        for (const lead of valid) await LeadService.create(lead);
+        for (const lead of valid) await LeadService.create(lead, false);
         message.success(`${valid.length} leads imported`);
         fetchLeads();
       };
@@ -612,6 +764,76 @@ const LeadsPage = () => {
     } catch { message.error('Failed to import file'); }
     finally { setConfirmLoading(false); e.target.value = ''; }
   };
+
+  const handleStatusChange = async (leadId, newStatus) => {
+  try {
+    // Update the lead status using LeadService
+    await LeadService.updateStatus(leadId, newStatus);
+    
+    // Refresh the leads list
+    await fetchLeads();
+    
+    // Update selected lead if it's the same
+    if (selectedLead?.id === leadId) {
+      const updatedLead = await LeadService.getById(leadId);
+      setSelectedLead(updatedLead);
+    }
+  } catch (error) {
+    console.error('Error updating status:', error);
+    throw error;
+  }
+};
+
+  // Add to LeadsPage.js - Reassign seller handler
+const handleReassignSeller = async (leadId, sellerId) => {
+  try {
+    let seller = null;
+    if (sellerId) {
+      seller = sellers.find(s => s.id === sellerId);
+      if (!seller) {
+        throw new Error('Seller not found');
+      }
+    }
+
+    // If sellerId is empty or null, unassign the lead
+    if (!sellerId || sellerId === '') {
+      await LeadService.update(leadId, { 
+        seller_id: null,
+        assignedTo: null,
+        assignedAt: null,
+        updatedAt: serverTimestamp()
+      });
+      message.success('Lead unassigned successfully');
+    } else {
+      // Prepare assignment data
+      const assignmentData = { 
+        id: sellerId, 
+        firstName: seller.firstName || seller.name.split(' ')[0] || '', 
+        lastName: seller.lastName || seller.name.split(' ').slice(1).join(' ') || '',
+        assignedAt: new Date().toISOString(),
+        assignedBy: {
+          id: user?.uid,
+          name: `${user?.firstname || ''} ${user?.lastname || ''}`.trim()
+        }
+      };
+      
+      await LeadService.assignTo(leadId, assignmentData);
+      message.success(`Lead reassigned to ${seller.name}`);
+    }
+    
+    // Refresh leads
+    await fetchLeads();
+    
+    // Update selected lead if it's the same
+    if (selectedLead?.id === leadId) {
+      const updatedLead = await LeadService.getById(leadId);
+      setSelectedLead(updatedLead);
+    }
+  } catch (error) {
+    console.error('Error reassigning seller:', error);
+    throw error;
+  }
+};
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -726,14 +948,19 @@ const LeadsPage = () => {
             </div>
 
             <LeadTable
-              leads={leads}
-              loading={loading}
-              onEdit={handleEditLead}
-              onDelete={handleDeleteLead}
-              onAssignSeller={handleShowAssignSeller}
-              onViewDetails={handleViewDetails}
-              onBulkAssign={handleBulkAssignOpen}
-            />
+  leads={leads}
+  loading={loading}
+  onEdit={handleEditLead}
+  onDelete={handleDeleteLead}
+  onAssignSeller={handleShowAssignSeller}
+  onViewDetails={handleViewDetails}
+  onBulkAssign={handleBulkAssignOpen}
+  onConvertToContact={handleConvertToContact}
+  onBulkConvert={handleBulkConvertToContacts}
+  onStatusChange={handleStatusChange} // Add this
+  sellers={sellers} // Add this
+  onReassignSeller={handleReassignSeller} // Add this
+/>
           </Card>
         </Col>
       </Row>
@@ -754,6 +981,7 @@ const LeadsPage = () => {
         lead={selectedLead}
         onEdit={handleEditLead}
         onAddNote={handleAddNote}
+        onConvertToContact={handleConvertToContact}
       />
 
       <AssignSellerForm

@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+// @ts-nocheck
+import React, { useEffect, useState } from 'react';
 import {
   Form,
   Input,
@@ -11,6 +12,10 @@ import {
   Space,
   message,
   Spin,
+  Avatar,
+  Tag,
+  Divider,
+  Typography 
 } from 'antd';
 import {
   DollarOutlined,
@@ -18,37 +23,67 @@ import {
   UserOutlined,
   HomeOutlined,
   TeamOutlined,
+  MailOutlined,
+  PhoneOutlined,
+  GlobalOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
-import { DealStatus, DealSource } from 'models/DealModel';
+import { DealStatus, DealStatusLabels, DealStatusColors, DealSourceEnum } from 'models/DealModel';
 import LeadsService from 'services/LeadsService';
 import ContactsService from 'services/ContactsService';
 import PropertyService from 'services/PropertiesService';
 
 const { Option } = Select;
 const { TextArea } = Input;
+const { Text } = Typography;
+
+// Status options with new statuses
+const statusOptions = [
+  { value: DealStatus.OPENED, label: 'Opened', color: 'blue' },
+  { value: DealStatus.PROPOSAL, label: 'Proposal', color: 'purple' },
+  { value: DealStatus.WON, label: 'Won', color: 'gold' },
+  { value: DealStatus.LOST, label: 'Lost', color: 'red' }
+];
+
+// Source options
+const sourceOptions = [
+  { value: DealSourceEnum.LEADS, label: 'Leads', icon: '🧲', color: '#1890ff' },
+  { value: DealSourceEnum.CONTACTS, label: 'Contacts', icon: '👥', color: '#52c41a' },
+  { value: DealSourceEnum.FACEBOOK, label: 'Facebook', icon: '📘', color: '#1877F2' },
+  { value: DealSourceEnum.INSTAGRAM, label: 'Instagram', icon: '📷', color: '#E4405F' },
+  { value: DealSourceEnum.WEBSITE, label: 'Website', icon: '🌐', color: '#52c41a' },
+  { value: DealSourceEnum.LINKEDIN, label: 'LinkedIn', icon: '💼', color: '#0A66C2' },
+  { value: DealSourceEnum.TIKTOK, label: 'TikTok', icon: '🎵', color: '#ff0050' },
+  { value: DealSourceEnum.FREELANCE, label: 'Freelance', icon: '💪', color: '#fa8c16' }
+];
 
 const SellerDealForm = ({
   visible,
   onCancel,
   onSubmit,
-  deal,           // existing deal when editing
+  deal,
   loading,
   sellerId,
   companyId,
 }) => {
   const [form] = Form.useForm();
+  const [leads, setLeads] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [properties, setProperties] = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [selectedSource, setSelectedSource] = useState(DealSourceEnum.LEADS);
 
-  const [leads, setLeads] = React.useState([]);
-  const [contacts, setContacts] = React.useState([]);
-  const [properties, setProperties] = React.useState([]);
-  const [dataLoading, setDataLoading] = React.useState(false);
-
-  // Watch current source (fallback to Leads)
-  const source = Form.useWatch('Source', form) ?? DealSource[0].value; // DealSource[0] = Leads
+  // Watch source changes
+  const source = Form.useWatch('Source', form) || DealSourceEnum.LEADS;
 
   useEffect(() => {
-    if (!visible || !sellerId || !companyId) return;
+    if (!visible) {
+      form.resetFields();
+      setSelectedSource(DealSourceEnum.LEADS);
+      return;
+    }
 
+    // Load data
     const loadData = async () => {
       setDataLoading(true);
       try {
@@ -72,33 +107,31 @@ const SellerDealForm = ({
     };
 
     loadData();
-  }, [visible, sellerId, companyId]);
 
-  useEffect(() => {
-    if (!visible) {
-      form.resetFields();
-      return;
-    }
-
-    const defaultSource = DealSource[0].value; // Leads
-
+    // Set form values when editing
     if (deal) {
-      form.setFieldsValue({
+      const formValues = {
         ...deal,
-        Amount: deal.Amount ?? 0,
-        Source: deal.Source ?? defaultSource,        // Prevent empty source
-        lead_id: deal.lead_id ?? undefined,
-        contact_id: deal.contact_id ?? undefined,
-        property_id: deal.property_id ?? undefined,
-      });
+        Amount: deal.Amount || 0,
+        Source: deal.Source || DealSourceEnum.LEADS,
+        lead_id: deal.lead_id || undefined,
+        contact_id: deal.contact_id || undefined,
+        property_id: deal.property_id || undefined,
+        Status: deal.Status || DealStatus.OPENED,
+        Description: deal.Description || '',
+      };
+      form.setFieldsValue(formValues);
+      setSelectedSource(formValues.Source);
     } else {
+      // Set default values for new deal
       form.setFieldsValue({
         Status: DealStatus.OPENED,
-        Source: defaultSource,
+        Source: DealSourceEnum.LEADS,
         Amount: 0,
       });
+      setSelectedSource(DealSourceEnum.LEADS);
     }
-  }, [visible, deal, form]);
+  }, [visible, deal, form, companyId, sellerId]);
 
   const handleSubmit = async () => {
     try {
@@ -106,33 +139,31 @@ const SellerDealForm = ({
 
       const dealData = {
         ...values,
-        lead_id:    source === DealSource[0].value ? values.lead_id    : null,
-        contact_id: source === DealSource[1].value ? values.contact_id : null, // Contacts is index 1
-        property_id: values.property_id ?? null,
+        lead_id: source === DealSourceEnum.LEADS ? values.lead_id : null,
+        contact_id: source === DealSourceEnum.CONTACTS ? values.contact_id : null,
+        property_id: values.property_id || null,
         seller_id: sellerId,
         company_id: companyId,
+        // Ensure status is set
+        Status: values.Status || DealStatus.OPENED,
       };
 
       await onSubmit(dealData);
-      message.success(deal ? 'Deal updated successfully' : 'Deal created successfully');
       form.resetFields();
     } catch (error) {
       console.log('Form validation/submit failed:', error);
     }
   };
 
-  const getLeadRules = () => [
-    { required: source === DealSource[0].value, message: 'Please select a lead!' },
-  ];
-
-  const getContactRules = () => [
-    { required: source === DealSource[1].value, message: 'Please select a contact!' },
-  ];
-
+  // Render related selector based on source
   const renderRelatedSelector = () => {
-    if (source === DealSource[0].value) { // Leads
+    if (source === DealSourceEnum.LEADS) {
       return (
-        <Form.Item name="lead_id" label="Select Lead" rules={getLeadRules()}>
+        <Form.Item 
+          name="lead_id" 
+          label="Select Lead"
+          rules={[{ required: true, message: 'Please select a lead!' }]}
+        >
           <Select
             placeholder="Choose a lead"
             loading={dataLoading}
@@ -142,25 +173,27 @@ const SellerDealForm = ({
             }
             allowClear
           >
-            {leads.map((lead, index) => (
-              <Option
-                key={lead.id ?? `lead-${index}`}
-                value={lead.id}
-                disabled={!lead.id}
-              >
+            {leads.map((lead) => (
+              <Option key={lead.id} value={lead.id}>
                 <Space>
-                  <UserOutlined />
-                  {lead.name || 'Unnamed'} - {lead.email || 'No email'}
+                  <Avatar size={24} style={{ backgroundColor: '#1890ff' }}>
+                    {(lead.name || 'U')[0].toUpperCase()}
+                  </Avatar>
+                  <div>
+                    <div>{lead.name || 'Unnamed'}</div>
+                    {lead.email && (
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        <MailOutlined /> {lead.email}
+                      </Text>
+                    )}
+                  </div>
                   {lead.InterestLevel && (
-                    <span
-                      style={{
-                        color:
-                          lead.InterestLevel === 'High' ? '#ff4d4f' :
-                          lead.InterestLevel === 'Medium' ? '#faad14' : '#1890ff',
-                      }}
-                    >
-                      ({lead.InterestLevel})
-                    </span>
+                    <Tag color={
+                      lead.InterestLevel === 'High' ? 'red' :
+                      lead.InterestLevel === 'Medium' ? 'orange' : 'blue'
+                    }>
+                      {lead.InterestLevel}
+                    </Tag>
                   )}
                 </Space>
               </Option>
@@ -170,9 +203,13 @@ const SellerDealForm = ({
       );
     }
 
-    if (source === DealSource[1].value) { // Contacts
+    if (source === DealSourceEnum.CONTACTS) {
       return (
-        <Form.Item name="contact_id" label="Select Contact" rules={getContactRules()}>
+        <Form.Item 
+          name="contact_id" 
+          label="Select Contact"
+          rules={[{ required: true, message: 'Please select a contact!' }]}
+        >
           <Select
             placeholder="Choose a contact"
             loading={dataLoading}
@@ -182,26 +219,32 @@ const SellerDealForm = ({
             }
             allowClear
           >
-            {contacts.map((contact, index) => (
-              <Option
-                key={contact.id ?? `contact-${index}`}
-                value={contact.id}
-                disabled={!contact.id}
-              >
+            {contacts.map((contact) => (
+              <Option key={contact.id} value={contact.id}>
                 <Space>
-                  <ContactsOutlined />
-                  {contact.name || 'Unnamed'} - {contact.email || 'No email'}
-                  {contact.status && (
-                    <span
-                      style={{
-                        color:
-                          contact.status === 'Deal' ? '#52c41a' :
-                          contact.status === 'Contacted' ? '#1890ff' : '#d9d9d9',
-                      }}
-                    >
-                      ({contact.status})
-                    </span>
-                  )}
+                  <Avatar size={24} style={{ backgroundColor: '#52c41a' }}>
+                    {(contact.name || 'U')[0].toUpperCase()}
+                  </Avatar>
+                  <div>
+                    <div>{contact.name || 'Unnamed'}</div>
+                    {contact.email && (
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        <MailOutlined /> {contact.email}
+                      </Text>
+                    )}
+                    {contact.phoneNumber && (
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        <PhoneOutlined /> {contact.phoneNumber}
+                      </Text>
+                    )}
+                  </div>
+                  <Tag color={
+                    contact.status === 'active' ? 'green' :
+                    contact.status === 'hot' ? 'red' :
+                    contact.status === 'cold' ? 'blue' : 'default'
+                  }>
+                    {contact.status || 'Active'}
+                  </Tag>
                 </Space>
               </Option>
             ))}
@@ -215,10 +258,20 @@ const SellerDealForm = ({
 
   return (
     <Modal
-      title={deal ? 'Edit Deal' : 'Create New Deal'}
+      title={
+        <Space>
+          <DollarOutlined style={{ color: '#1890ff' }} />
+          <span>{deal ? 'Edit Deal' : 'Create New Deal'}</span>
+          {deal && (
+            <Tag color={DealStatusColors[deal.Status] || 'default'}>
+              {DealStatusLabels[deal.Status] || deal.Status || 'Unknown'}
+            </Tag>
+          )}
+        </Space>
+      }
       open={visible}
       onCancel={onCancel}
-      width={800}
+      width={700}
       footer={[
         <Button key="cancel" onClick={onCancel}>
           Cancel
@@ -233,14 +286,15 @@ const SellerDealForm = ({
           {deal ? 'Update Deal' : 'Create Deal'}
         </Button>,
       ]}
+      destroyOnClose
     >
       <Spin spinning={dataLoading}>
         <Form
           form={form}
           layout="vertical"
-          size="large"
+          size="middle"
           initialValues={{
-            Source: DealSource[0].value,   // Always start with Leads
+            Source: DealSourceEnum.LEADS,
             Status: DealStatus.OPENED,
             Amount: 0,
           }}
@@ -252,12 +306,15 @@ const SellerDealForm = ({
                 label="Deal Source"
                 rules={[{ required: true, message: 'Please select deal source!' }]}
               >
-                <Select placeholder="Select deal source">
-                  {DealSource.map((src) => (
+                <Select 
+                  placeholder="Select deal source"
+                  onChange={(value) => setSelectedSource(value)}
+                >
+                  {sourceOptions.map((src) => (
                     <Option key={src.value} value={src.value}>
                       <Space>
                         <span style={{ color: src.color }}>{src.icon}</span>
-                        {src.value}
+                        {src.label}
                       </Space>
                     </Option>
                   ))}
@@ -285,9 +342,9 @@ const SellerDealForm = ({
                   placeholder="Enter amount in AED"
                   formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                   parser={(value) => value.replace(/AED\s?|(,*)/g, '')}
-                  prefix="AED"
+                  prefix={<DollarOutlined />}
                   min={0}
-                  precision={2}
+                  step={1000}
                 />
               </Form.Item>
             </Col>
@@ -299,15 +356,11 @@ const SellerDealForm = ({
                 rules={[{ required: true, message: 'Please select deal status!' }]}
               >
                 <Select placeholder="Select status">
-                  <Option value={DealStatus.OPENED}>
-                    <Space><span style={{ color: '#1890ff' }}>●</span> Opened</Space>
-                  </Option>
-                  <Option value={DealStatus.GAIN}>
-                    <Space><span style={{ color: '#52c41a' }}>●</span> Gain</Space>
-                  </Option>
-                  <Option value={DealStatus.LOSS}>
-                    <Space><span style={{ color: '#ff4d4f' }}>●</span> Loss</Space>
-                  </Option>
+                  {statusOptions.map(opt => (
+                    <Option key={opt.value} value={opt.value}>
+                      <Tag color={opt.color}>{opt.label}</Tag>
+                    </Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -323,15 +376,16 @@ const SellerDealForm = ({
                 option?.children?.props?.children?.toString()?.toLowerCase()?.includes(input.toLowerCase())
               }
             >
-              {properties.map((prop, index) => (
-                <Option
-                  key={prop.id ?? `prop-${index}`}
-                  value={prop.id}
-                  disabled={!prop.id}
-                >
+              {properties.map((prop) => (
+                <Option key={prop.id} value={prop.id}>
                   <Space>
                     <HomeOutlined />
-                    {prop.title || prop.name || 'Unnamed Property'} - {prop.location || prop.city || ''}
+                    {prop.title || prop.name || 'Unnamed Property'}
+                    {prop.city && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        <GlobalOutlined /> {prop.city}
+                      </Text>
+                    )}
                   </Space>
                 </Option>
               ))}
@@ -353,10 +407,25 @@ const SellerDealForm = ({
               showCount
             />
           </Form.Item>
+
+          <Divider style={{ margin: '8px 0' }} />
+
+          <div style={{ 
+            padding: '12px', 
+            background: '#fafafa', 
+            borderRadius: 8,
+            marginBottom: 8
+          }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              <FileTextOutlined /> Deal will be assigned to you as the seller.
+            </Text>
+          </div>
         </Form>
       </Spin>
     </Modal>
   );
 };
+
+// Add missing import
 
 export default SellerDealForm;

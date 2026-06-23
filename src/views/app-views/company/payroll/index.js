@@ -3,20 +3,23 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { 
   Card, Typography, Table, Input, Button, Row, Col, Space, 
   Statistic, Tooltip, Spin, Divider, message, Popconfirm,
-  Avatar, Tag, Select, DatePicker, Alert, Badge, Progress
+  Avatar, Tag, Select, DatePicker, Alert, Badge, Progress,
+  Empty, Skeleton, theme
 } from 'antd';
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, 
   UserOutlined, SortAscendingOutlined, SortDescendingOutlined,
   ReloadOutlined, CalculatorOutlined, CheckCircleOutlined,
   CloseCircleOutlined, WarningOutlined, ClockCircleOutlined,
-  SyncOutlined, CalendarOutlined, TeamOutlined
+  SyncOutlined, CalendarOutlined, TeamOutlined, DollarOutlined,
+  FileExcelOutlined, PrinterOutlined, FilterOutlined
 } from '@ant-design/icons';
 import { db, collection, getDocs, doc, addDoc, deleteDoc, updateDoc, serverTimestamp, query, where, orderBy, limit } from 'configs/FirebaseConfig';
 import { useSelector } from 'react-redux';
 import dayjs from 'dayjs';
 import PayrollForm from './PayrollForm';
 import './employees.css';
+import { LRUCache } from 'lru-cache';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -32,8 +35,77 @@ const ATTENDANCE_STATUSES = {
   'holiday_nonwork': { label: 'Holiday', color: '#722ed1', icon: <CalendarOutlined /> },
 };
 
-// Saturday is the only weekend day (Sunday=0, Monday=1, ... Saturday=6)
-const WEEKEND_DAYS = [6];
+const WEEKEND_DAYS = [0];
+
+// ─── Cache Configuration ──────────────────────────────────────────────────
+const CACHE_CONFIG = {
+  employees: { max: 100, ttl: 1000 * 60 * 15 },
+  mappings: { max: 50, ttl: 1000 * 60 * 30 },
+  payrolls: { max: 200, ttl: 1000 * 60 * 5 },
+  attendance: { max: 150, ttl: 1000 * 60 * 2 },
+  notes: { max: 200, ttl: 1000 * 60 * 5 },
+};
+
+const cacheInstances = {
+  employees: new LRUCache(CACHE_CONFIG.employees),
+  mappings: new LRUCache(CACHE_CONFIG.mappings),
+  payrolls: new LRUCache(CACHE_CONFIG.payrolls),
+  attendance: new LRUCache(CACHE_CONFIG.attendance),
+  notes: new LRUCache(CACHE_CONFIG.notes),
+};
+
+// ─── Firestore Query Optimizer ──────────────────────────────────────────────
+class FirestoreQueryOptimizer {
+  constructor() {
+    this.pendingRequests = new Map();
+    this.requestCount = 0;
+    this.requestLimit = 80000;
+    this.lastResetDate = dayjs().format('YYYY-MM-DD');
+  }
+
+  isQuotaExceeded() {
+    const today = dayjs().format('YYYY-MM-DD');
+    if (today !== this.lastResetDate) {
+      this.requestCount = 0;
+      this.lastResetDate = today;
+    }
+    return this.requestCount >= this.requestLimit * 0.9;
+  }
+
+  trackRequest() {
+    this.requestCount++;
+    if (this.requestCount % 100 === 0) {
+      console.log(`Firestore requests today: ${this.requestCount}/${this.requestLimit}`);
+    }
+  }
+
+  getRequest(key, requestFn) {
+    if (this.isQuotaExceeded()) {
+      console.warn('Firestore quota nearing limit, using cached data');
+      return Promise.reject(new Error('QUOTA_EXCEEDED'));
+    }
+
+    if (this.pendingRequests.has(key)) {
+      return this.pendingRequests.get(key);
+    }
+
+    const promise = requestFn()
+      .then(result => {
+        this.pendingRequests.delete(key);
+        this.trackRequest();
+        return result;
+      })
+      .catch(error => {
+        this.pendingRequests.delete(key);
+        throw error;
+      });
+
+    this.pendingRequests.set(key, promise);
+    return promise;
+  }
+}
+
+const queryOptimizer = new FirestoreQueryOptimizer();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 const toDate = t => t?.toDate ? t.toDate() : (t ? new Date(t) : null);
@@ -44,24 +116,31 @@ const isWeekend = (dateStr) => {
   return WEEKEND_DAYS.includes(dayOfWeek);
 };
 
-// ─── Calculate Payroll from Attendance ──────────────────────────────────
-const calculatePayrollFromAttendance = (attendanceRecords, employee, monthStart, monthEnd) => {
-  // Default salary if not set
-  const monthlySalary = employee.monthly_salary || employee.salary || 5000;
-  
-  // Get working days in month (excluding Saturdays)
-  let totalWorkingDays = 0;
+// ─── Calculate Payroll from Attendance (Monthly Salary Model) ────────────
+const calculatePayrollFromAttendance = (
+  attendanceRecords,
+  employee,
+  monthStart,
+  monthEnd
+) => {
+  const monthlySalary =
+    Number(employee.monthly_salary || employee.salary || 5000);
+
   const start = dayjs(monthStart);
   const end = dayjs(monthEnd);
+
+  const daysInMonth = end.diff(start, "day") + 1;
+
+  // Build all days in selected period
+  const daysArray = [];
   let current = start.clone();
-  while (current.isBefore(end.add(1, 'day'), 'day')) {
-    if (!isWeekend(current.format('YYYY-MM-DD'))) {
-      totalWorkingDays++;
-    }
-    current = current.add(1, 'day');
+
+  while (current.isBefore(end.add(1, "day"), "day")) {
+    daysArray.push(current.format("YYYY-MM-DD"));
+    current = current.add(1, "day");
   }
-  
-  // Initialize status counts
+
+  // Attendance summary
   const statusCounts = {
     present: 0,
     absent: 0,
@@ -70,116 +149,206 @@ const calculatePayrollFromAttendance = (attendanceRecords, employee, monthStart,
     unpaid_leave: 0,
     holiday_nonwork: 0,
   };
-  
-  let totalLateMinutes = 0;
+
+  let workingDays = 0;
   let totalAbsentDays = 0;
-  let totalWeekendDays = 0;
-  
-  // Get all days in the month
-  const daysInMonthArray = [];
-  current = start.clone();
-  while (current.isBefore(end.add(1, 'day'), 'day')) {
-    daysInMonthArray.push(current.format('YYYY-MM-DD'));
-    current = current.add(1, 'day');
-  }
-  
-  // Process each day
-  daysInMonthArray.forEach(dateStr => {
-    const isWeekendDay = isWeekend(dateStr);
-    const dayRecords = attendanceRecords.filter(r => r.date === dateStr);
-    
-    // Count weekend days (Saturday only)
-    if (isWeekendDay) {
-      totalWeekendDays++;
-      statusCounts.holiday_nonwork = (statusCounts.holiday_nonwork || 0) + 1;
+  let totalLateMinutes = 0;
+
+  // Process attendance
+  daysArray.forEach((dateStr) => {
+    const weekend = isWeekend(dateStr);
+
+    // Skip weekends
+    if (weekend) {
+      statusCounts.holiday_nonwork++;
       return;
     }
-    
+
+    const dayRecords = attendanceRecords.filter(
+      (r) => r.date === dateStr
+    );
+
+    // No record = absent
     if (dayRecords.length === 0) {
-      statusCounts.absent = (statusCounts.absent || 0) + 1;
-      totalAbsentDays += 1;
+      statusCounts.absent++;
+      totalAbsentDays++;
       return;
     }
-    
-    // Get the last status
-    const latestRecord = dayRecords[dayRecords.length - 1];
-    let status = latestRecord.status || 'absent';
-    
-    // Treat 'late' as 'present' (no deduction for late)
-    if (status === 'late') {
-      status = 'present';
+
+    const latestRecord =
+      dayRecords[dayRecords.length - 1];
+
+    let status = latestRecord.status || "absent";
+
+    // Treat late as present
+    if (status === "late") {
+      statusCounts.late++;
+
+      if (latestRecord.delayMins) {
+        totalLateMinutes += Number(
+          latestRecord.delayMins
+        );
+      }
+
+      status = "present";
     }
-    
-    if (statusCounts.hasOwnProperty(status)) {
-      statusCounts[status] = (statusCounts[status] || 0) + 1;
-    }
-    
-    if (latestRecord.delayMins) {
-      totalLateMinutes += latestRecord.delayMins;
-    }
-    
-    if (status === 'absent' || status === 'unpaid_leave') {
-      totalAbsentDays += 1;
+
+    switch (status) {
+      case "present":
+        statusCounts.present++;
+        workingDays++;
+        break;
+
+      case "absent":
+        statusCounts.absent++;
+        totalAbsentDays++;
+        break;
+
+      case "unpaid_leave":
+        statusCounts.unpaid_leave++;
+        totalAbsentDays++;
+        break;
+
+      case "sick_pto":
+        statusCounts.sick_pto++;
+        workingDays++;
+        break;
+
+      default:
+        if (statusCounts[status] !== undefined) {
+          statusCounts[status]++;
+        }
+        break;
     }
   });
-  
-  // Calculate working days (only present, late counted as present)
-  const workingDays = statusCounts.present;
-  const absentDays = totalAbsentDays;
-  const lateDays = statusCounts.late || 0;
-  
-  // ===== CORRECT CALCULATIONS =====
-  // Basic Pay = Monthly Salary (when working days = total working days)
-  // If working days is less, it's prorated
-  const basicPay = monthlySalary * (workingDays / totalWorkingDays);
-  
-  // Absence Deduction = (Monthly Salary / Working Days In Month) × Absent Days
-  const absenceDeduction = totalWorkingDays > 0 
-    ? (monthlySalary / totalWorkingDays) * absentDays 
-    : 0;
-  
-  // Gross Pay = Basic Pay + Overtime + Bonus (no overtime/bonus for now)
-  const grossPay = basicPay;
-  
-  // Net Pay = Gross Pay - Absence Deduction - Other Deduction
+
+  // ─── Payroll Calculations ─────────────────────────────────────────────
+
+  const dailyRate =
+    daysInMonth > 0
+      ? monthlySalary / daysInMonth
+      : 0;
+
+  // Full monthly salary
+  const basicPay = monthlySalary;
+
+  // Deduct absences
+  const absenceDeduction =
+    totalAbsentDays * dailyRate;
+
+  // Overtime placeholder
+  const overtimePay = 0;
+
+  // Additional deductions
   const otherDeduction = 0;
-  const totalDeduction = absenceDeduction + otherDeduction;
-  const netPay = grossPay - totalDeduction;
-  
-  // Attendance rate
-  const attendanceRate = totalWorkingDays > 0 
-    ? Math.round((workingDays / totalWorkingDays) * 100) 
-    : 0;
-  
+
+  // Gross Pay
+  const grossPay =
+    basicPay + overtimePay;
+
+  // Total Deduction
+  const totalDeduction =
+    absenceDeduction + otherDeduction;
+
+  // Net Pay
+  const netPay = Math.max(
+    0,
+    grossPay - totalDeduction
+  );
+
+  // Attendance %
+  const totalAttendanceDays =
+    workingDays + totalAbsentDays;
+
+  const attendanceRate =
+    totalAttendanceDays > 0
+      ? Math.round(
+          (workingDays /
+            totalAttendanceDays) *
+            100
+        )
+      : 0;
+
   return {
     employee_id: employee.id,
-    employee_name: `${employee.firstname || ''} ${employee.lastname || ''}`.trim() || 'Unknown',
-    position: employee.Role || employee.department || '',
+
+    employee_name:
+      `${employee.firstname || ""} ${
+        employee.lastname || ""
+      }`.trim() || "Unknown",
+
+    position:
+      employee.Role ||
+      employee.department ||
+      "",
+
     monthly_salary: monthlySalary,
-    total_working_days: totalWorkingDays,
+
+    days_in_month: daysInMonth,
+
     working_days: workingDays,
-    absent_days: absentDays,
-    late_days: lateDays,
-    late_minutes: Math.round(totalLateMinutes),
+
+    absent_days: totalAbsentDays,
+
+    late_minutes: Math.round(
+      totalLateMinutes
+    ),
+
     attendance_rate: attendanceRate,
-    basic_pay: Math.round(basicPay * 100) / 100,
-    absence_deduction: Math.round(absenceDeduction * 100) / 100,
-    other_deduction: otherDeduction,
-    total_deduction: Math.round(totalDeduction * 100) / 100,
-    gross_pay: Math.round(grossPay * 100) / 100,
-    net_pay: Math.round(netPay * 100) / 100,
-    overtime_pay: 0,
+
+    daily_rate: Number(
+      dailyRate.toFixed(2)
+    ),
+
+    basic_pay: Number(
+      basicPay.toFixed(2)
+    ),
+
+    overtime_pay: Number(
+      overtimePay.toFixed(2)
+    ),
+
+    absence_deduction: Number(
+      absenceDeduction.toFixed(2)
+    ),
+
+    other_deduction: Number(
+      otherDeduction.toFixed(2)
+    ),
+
+    total_deduction: Number(
+      totalDeduction.toFixed(2)
+    ),
+
+    gross_pay: Number(
+      grossPay.toFixed(2)
+    ),
+
+    net_pay: Number(
+      netPay.toFixed(2)
+    ),
+
     sick_pay: 0,
+
     late_deduction: 0,
+
     attendance_summary: statusCounts,
+
     calculated_from_attendance: true,
-    period_start: dayjs(monthStart).format('YYYY-MM-DD'),
-    period_end: dayjs(monthEnd).format('YYYY-MM-DD'),
+
+    period_start: start.format(
+      "YYYY-MM-DD"
+    ),
+
+    period_end: end.format(
+      "YYYY-MM-DD"
+    ),
   };
 };
 
 // ─── Main Component ──────────────────────────────────────────────────────
 const PayrollPage = () => {
+  const { token } = theme.useToken();
   const user = useSelector(state => state.auth.user);
   const companyId = user?.company_id || '';
   
@@ -200,10 +369,17 @@ const PayrollPage = () => {
   ]);
   const [saving, setSaving] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   
-  // Refs to prevent infinite loops
   const fetchCounter = useRef(0);
   const lastFetchTime = useRef(0);
+  const dataLoadedRef = useRef({
+    employees: false,
+    mappings: false,
+    payrolls: false,
+    attendance: false,
+    notes: false,
+  });
   
   const [stats, setStats] = useState({
     total: 0,
@@ -213,43 +389,129 @@ const PayrollPage = () => {
     avg_attendance: 0,
   });
 
-  // ── Optimized: Fetch Employees ──────────────────────────────────────────
-  const fetchEmployees = useCallback(async () => {
-    if (!companyId) return;
+  // ── Optimized: Fetch Employees with Cache ──────────────────────────────
+  const fetchEmployees = useCallback(async (forceRefresh = false) => {
+    if (!companyId) return [];
+    
+    const cacheKey = `employees_${companyId}`;
+    const cached = cacheInstances.employees.get(cacheKey);
+    
+    if (!forceRefresh && cached && dataLoadedRef.current.employees) {
+      setEmployees(cached);
+      return cached;
+    }
+    
     try {
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('company_id', '==', companyId));
-      const snapshot = await getDocs(q);
+      const snapshot = await queryOptimizer.getRequest(cacheKey, () => getDocs(q));
       const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      cacheInstances.employees.set(cacheKey, users);
       setEmployees(users);
+      dataLoadedRef.current.employees = true;
       return users;
     } catch (error) {
-      console.error('Error fetching employees:', error);
+      if (error.message !== 'QUOTA_EXCEEDED') console.error('Error fetching employees:', error);
       return [];
     }
   }, [companyId]);
 
-  // ── Optimized: Fetch Mappings ──────────────────────────────────────────
-  const fetchMappings = useCallback(async () => {
-    if (!companyId) return;
+  // ── Optimized: Fetch Mappings with Cache ──────────────────────────────
+  const fetchMappings = useCallback(async (forceRefresh = false) => {
+    if (!companyId) return [];
+    
+    const cacheKey = `mappings_${companyId}`;
+    const cached = cacheInstances.mappings.get(cacheKey);
+    
+    if (!forceRefresh && cached && dataLoadedRef.current.mappings) {
+      setMappings(cached);
+      return cached;
+    }
+    
     try {
-      const snap = await getDocs(
-        query(collection(db, 'attendance_device_mapping'), where('company_id', '==', companyId))
+      const snap = await queryOptimizer.getRequest(
+        cacheKey,
+        () => getDocs(query(collection(db, 'attendance_device_mapping'), where('company_id', '==', companyId)))
       );
       const mappingsData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      cacheInstances.mappings.set(cacheKey, mappingsData);
       setMappings(mappingsData);
+      dataLoadedRef.current.mappings = true;
       return mappingsData;
     } catch (error) {
-      console.error('Error fetching mappings:', error);
+      if (error.message !== 'QUOTA_EXCEEDED') console.error('Error fetching mappings:', error);
       return [];
     }
   }, [companyId]);
 
-  // ─── Optimized: Fetch Attendance Data with Date Filter ────────────────
-  const fetchAttendanceData = useCallback(async (startDate, endDate, empList, mapList) => {
+  // ── Optimized: Fetch Payrolls with Cache ──────────────────────────────
+  const fetchPayrolls = useCallback(async (forceRefresh = false) => {
+    if (!companyId) return [];
+    
+    const cacheKey = `payrolls_${companyId}`;
+    const cached = cacheInstances.payrolls.get(cacheKey);
+    
+    if (!forceRefresh && cached && dataLoadedRef.current.payrolls) {
+      setPayrolls(cached);
+      return cached;
+    }
+    
+    try {
+      const payrollRef = collection(db, 'payroll');
+      const q = query(payrollRef, where('company_id', '==', companyId));
+      const payrollSnapshot = await queryOptimizer.getRequest(cacheKey, () => getDocs(q));
+      const payrollsList = payrollSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      cacheInstances.payrolls.set(cacheKey, payrollsList);
+      setPayrolls(payrollsList);
+      dataLoadedRef.current.payrolls = true;
+      return payrollsList;
+    } catch (error) {
+      if (error.message !== 'QUOTA_EXCEEDED') console.error('Error fetching payrolls:', error);
+      return [];
+    }
+  }, [companyId]);
+
+  // ── Optimized: Fetch Attendance Notes with Cache ──────────────────────
+  const fetchAttendanceNotes = useCallback(async (forceRefresh = false) => {
+    if (!companyId) return {};
+    
+    const cacheKey = `notes_${companyId}`;
+    const cached = cacheInstances.notes.get(cacheKey);
+    if (!forceRefresh && cached) return cached;
+    
+    try {
+      const notesRef = collection(db, 'attendance_notes');
+      const notesQuery = query(notesRef, where('company_id', '==', companyId));
+      const notesSnapshot = await queryOptimizer.getRequest(cacheKey, () => getDocs(notesQuery));
+      const notesMap = {};
+      notesSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const key = `${data.employeeId}_${data.date}`;
+        notesMap[key] = data;
+      });
+      cacheInstances.notes.set(cacheKey, notesMap);
+      return notesMap;
+    } catch (error) {
+      if (error.message !== 'QUOTA_EXCEEDED') console.error('Error fetching notes:', error);
+      return {};
+    }
+  }, [companyId]);
+
+  // ─── Optimized: Fetch Attendance Data with Cache ──────────────────────
+  const fetchAttendanceData = useCallback(async (startDate, endDate, forceRefresh = false) => {
     if (!companyId || !startDate || !endDate) {
       setAttendanceRecords([]);
       return [];
+    }
+    
+    const startStr = dayjs(startDate).format('YYYY-MM-DD');
+    const endStr = dayjs(endDate).format('YYYY-MM-DD');
+    const cacheKey = `attendance_${companyId}_${startStr}_${endStr}`;
+    const cached = cacheInstances.attendance.get(cacheKey);
+    
+    if (!forceRefresh && cached && dataLoadedRef.current.attendance) {
+      setAttendanceRecords(cached);
+      return cached;
     }
     
     setLoading(true);
@@ -257,7 +519,6 @@ const PayrollPage = () => {
       const start = dayjs(startDate).startOf('day').toDate();
       const end = dayjs(endDate).endOf('day').toDate();
       
-      // OPTIMIZED: Query with date range directly in Firestore
       const attendanceRef = collection(db, 'attendance');
       const q = query(
         attendanceRef,
@@ -265,35 +526,20 @@ const PayrollPage = () => {
         where('timestamp', '>=', start),
         where('timestamp', '<=', end)
       );
-      const snapshot = await getDocs(q);
+      const snapshot = await queryOptimizer.getRequest(`${cacheKey}_records`, () => getDocs(q));
       
       const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const notesMap = await fetchAttendanceNotes(forceRefresh);
+      const currentMappings = mappings.length ? mappings : await fetchMappings();
       
-      // OPTIMIZED: Fetch notes only if needed
-      const notesRef = collection(db, 'attendance_notes');
-      const notesQuery = query(
-        notesRef,
-        where('company_id', '==', companyId)
-      );
-      const notesSnapshot = await getDocs(notesQuery);
-      const notesMap = {};
-      notesSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const key = `${data.employeeId}_${data.date}`;
-        notesMap[key] = data;
-      });
-      
-      // Create device to employee map
       const deviceToEmployeeMap = {};
-      (mapList || mappings).forEach(m => {
+      currentMappings.forEach(m => {
         deviceToEmployeeMap[String(m.deviceUserId)] = String(m.crmUserId);
       });
       
-      // Group records by employee
       const groupedByEmployee = {};
       const allRecords = [];
       
-      // Get all days in range
       const allDays = [];
       let cursor = dayjs(startDate);
       while (cursor.isBefore(dayjs(endDate).add(1, 'day'), 'day')) {
@@ -301,7 +547,6 @@ const PayrollPage = () => {
         cursor = cursor.add(1, 'day');
       }
       
-      // Group records
       records.forEach(record => {
         const deviceUserId = String(record.userId);
         const employeeId = deviceToEmployeeMap[deviceUserId];
@@ -310,21 +555,16 @@ const PayrollPage = () => {
         const ts = toDate(record.timestamp);
         const dateStr = dayjs(ts).format('YYYY-MM-DD');
         
-        if (!groupedByEmployee[employeeId]) {
-          groupedByEmployee[employeeId] = {};
-        }
-        if (!groupedByEmployee[employeeId][dateStr]) {
-          groupedByEmployee[employeeId][dateStr] = [];
-        }
+        if (!groupedByEmployee[employeeId]) groupedByEmployee[employeeId] = {};
+        if (!groupedByEmployee[employeeId][dateStr]) groupedByEmployee[employeeId][dateStr] = [];
         groupedByEmployee[employeeId][dateStr].push(record);
       });
       
-      // Process each employee
-      const empListToUse = empList || employees;
-      empListToUse.forEach(emp => {
+      const currentEmployees = employees.length ? employees : await fetchEmployees();
+      currentEmployees.forEach(emp => {
         const empId = String(emp.id);
         const empRecords = groupedByEmployee[empId] || {};
-        const empMappings = (mapList || mappings).filter(m => String(m.crmUserId) === empId);
+        const empMappings = currentMappings.filter(m => String(m.crmUserId) === empId);
         const shift = empMappings[0]?.shift || { start: '10:00', end: '16:00' };
         const shiftStartMins = timeToMins(shift.start);
         
@@ -345,51 +585,34 @@ const PayrollPage = () => {
           }
           
           const key = `${empId}_${dateStr}`;
-          if (notesMap[key]) {
-            status = notesMap[key].status;
-          }
+          if (notesMap[key]) status = notesMap[key].status || status;
           
           allRecords.push({
             employeeId: empId,
             employeeName: `${emp.firstname || ''} ${emp.lastname || ''}`.trim() || 'Unknown',
             date: dateStr,
-            status: status,
-            delayMins: delayMins,
+            status,
+            delayMins,
             employee: emp,
             isOverridden: !!notesMap[key],
           });
         });
       });
       
+      cacheInstances.attendance.set(cacheKey, allRecords);
       setAttendanceRecords(allRecords);
+      dataLoadedRef.current.attendance = true;
       return allRecords;
     } catch (error) {
-      console.error('Error fetching attendance:', error);
-      message.error('Failed to fetch attendance data');
+      if (error.message !== 'QUOTA_EXCEEDED') {
+        console.error('Error fetching attendance:', error);
+        message.error('Failed to fetch attendance data');
+      }
       return [];
     } finally {
       setLoading(false);
     }
-  }, [companyId, employees, mappings]);
-
-  // ─── Optimized: Fetch Payrolls ──────────────────────────────────────────
-  const fetchPayrolls = useCallback(async () => {
-    if (!companyId) return [];
-    try {
-      const payrollRef = collection(db, 'payroll');
-      const q = query(payrollRef, where('company_id', '==', companyId));
-      const payrollSnapshot = await getDocs(q);
-      const payrollsList = payrollSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setPayrolls(payrollsList);
-      return payrollsList;
-    } catch (error) {
-      console.error('Error fetching payrolls:', error);
-      return [];
-    }
-  }, [companyId]);
+  }, [companyId, employees, mappings, fetchEmployees, fetchMappings, fetchAttendanceNotes]);
 
   // ─── Get Only Employees with Mappings ──────────────────────────────────
   const mappedEmployees = useMemo(() => {
@@ -397,7 +620,7 @@ const PayrollPage = () => {
     return employees.filter(emp => mappedIds.has(String(emp.id)));
   }, [employees, mappings]);
 
-  // ─── Auto-Calculate Payroll ──────────────────────────────────────────────
+  // ─── ✅ FIX: Auto-Calculate Payroll — saved records keep their DB values ──
   const calculatedPayrolls = useMemo(() => {
     if (!mappedEmployees.length) return [];
     
@@ -407,27 +630,31 @@ const PayrollPage = () => {
     
     mappedEmployees.forEach(emp => {
       const empRecords = attendanceRecords.filter(r => r.employeeId === String(emp.id));
-      const payroll = calculatePayrollFromAttendance(empRecords, emp, monthStart, monthEnd);
+      const autoCalc = calculatePayrollFromAttendance(empRecords, emp, monthStart, monthEnd);
       
-      const saved = payrolls.find(p => 
-        String(p.employee_id) === String(emp.id) && 
+      const saved = payrolls.find(p =>
+        String(p.employee_id) === String(emp.id) &&
         p.period_start === dayjs(monthStart).format('YYYY-MM-DD') &&
         p.period_end === dayjs(monthEnd).format('YYYY-MM-DD')
       );
       
       if (saved) {
-        results.push({ 
-          ...saved, 
-          id: saved.id, 
+        // ✅ FIXED: Use saved DB values as the source of truth.
+        // Only pull attendance_rate + attendance_summary from auto-calc (display-only stats).
+        results.push({
+          ...autoCalc,                        // base shape (attendance stats)
+          ...saved,                           // DB values WIN — preserves manual edits
+          id: saved.id,
           isSaved: true,
-          ...payroll,
+          attendance_rate: autoCalc.attendance_rate,
+          attendance_summary: autoCalc.attendance_summary,
           calculated_from_attendance: true,
         });
       } else {
-        results.push({ 
-          ...payroll, 
-          id: `calc_${emp.id}`, 
-          isSaved: false 
+        results.push({
+          ...autoCalc,
+          id: `calc_${emp.id}`,
+          isSaved: false,
         });
       }
     });
@@ -438,8 +665,8 @@ const PayrollPage = () => {
   // ─── Save Payroll to Database ──────────────────────────────────────────
   const savePayrollToDb = useCallback(async (payrollData) => {
     try {
-      const existing = payrolls.find(p => 
-        String(p.employee_id) === String(payrollData.employee_id) && 
+      const existing = payrolls.find(p =>
+        String(p.employee_id) === String(payrollData.employee_id) &&
         p.period_start === payrollData.period_start &&
         p.period_end === payrollData.period_end
       );
@@ -465,21 +692,16 @@ const PayrollPage = () => {
     }
   }, [companyId, payrolls]);
 
-  // ─── Optimized: Auto-Save Payrolls (with debounce) ──────────────────────
+  // ─── Optimized: Auto-Save Payrolls ──────────────────────────────────────
   const autoSavePayrolls = useCallback(async () => {
-    if (!calculatedPayrolls.length) return;
+    if (!calculatedPayrolls.length || saving) return;
     
-    // Prevent multiple concurrent saves
-    if (saving) return;
-    
-    // Check if we have unsaved records
     const unsaved = calculatedPayrolls.filter(p => !p.isSaved && p.employee_id);
     if (!unsaved.length) return;
     
     setSaving(true);
     try {
       let savedCount = 0;
-      
       for (const payroll of unsaved) {
         const { id, isSaved, ...payrollData } = payroll;
         await savePayrollToDb(payrollData);
@@ -488,8 +710,9 @@ const PayrollPage = () => {
       
       if (savedCount > 0) {
         message.success(`Auto-saved ${savedCount} payroll records for ${dateRange[0].format('MMMM YYYY')}`);
-        // Fetch updated payrolls but don't trigger another save cycle
-        const updatedPayrolls = await fetchPayrolls();
+        const cacheKey = `payrolls_${companyId}`;
+        cacheInstances.payrolls.delete(cacheKey);
+        const updatedPayrolls = await fetchPayrolls(true);
         setPayrolls(updatedPayrolls);
       }
     } catch (error) {
@@ -497,26 +720,23 @@ const PayrollPage = () => {
     } finally {
       setSaving(false);
     }
-  }, [calculatedPayrolls, savePayrollToDb, fetchPayrolls, dateRange, saving]);
+  }, [calculatedPayrolls, savePayrollToDb, fetchPayrolls, dateRange, saving, companyId]);
 
   // ─── Optimized: Initial Data Load ──────────────────────────────────────
   useEffect(() => {
     const loadInitialData = async () => {
-      if (!companyId) return;
-      if (initialLoadDone) return;
+      if (!companyId || initialLoadDone) return;
       
       setLoading(true);
       try {
-        // Fetch all data in parallel
         const [empList, mapList, payrollList] = await Promise.all([
-          fetchEmployees(),
-          fetchMappings(),
-          fetchPayrolls()
+          fetchEmployees(false),
+          fetchMappings(false),
+          fetchPayrolls(false),
         ]);
         
-        // After employees and mappings are loaded, fetch attendance
         if (empList.length > 0 && mapList.length > 0) {
-          await fetchAttendanceData(dateRange[0], dateRange[1], empList, mapList);
+          await fetchAttendanceData(dateRange[0], dateRange[1], false);
         }
         
         setInitialLoadDone(true);
@@ -534,25 +754,19 @@ const PayrollPage = () => {
   useEffect(() => {
     if (!initialLoadDone) return;
     
-    // Debounce date range changes
     const timer = setTimeout(() => {
-      fetchAttendanceData(dateRange[0], dateRange[1]);
+      dataLoadedRef.current.attendance = false;
+      fetchAttendanceData(dateRange[0], dateRange[1], false);
     }, 500);
     
     return () => clearTimeout(timer);
   }, [dateRange, fetchAttendanceData, initialLoadDone]);
 
-  // ─── Auto-save when calculated payrolls change (with debounce) ──────────
+  // ─── Auto-save when calculated payrolls change ──────────────────────────
   useEffect(() => {
-    if (!initialLoadDone) return;
-    if (loading) return;
-    if (calculatedPayrolls.length === 0) return;
+    if (!initialLoadDone || loading || calculatedPayrolls.length === 0) return;
     
-    // Debounce auto-save
-    const timer = setTimeout(() => {
-      autoSavePayrolls();
-    }, 2000);
-    
+    const timer = setTimeout(() => { autoSavePayrolls(); }, 2000);
     return () => clearTimeout(timer);
   }, [calculatedPayrolls, autoSavePayrolls, loading, initialLoadDone]);
 
@@ -582,9 +796,7 @@ const PayrollPage = () => {
   }, [calculatedPayrolls, searchText]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────
-  const handleSearchChange = (e) => {
-    setSearchText(e.target.value);
-  };
+  const handleSearchChange = (e) => setSearchText(e.target.value);
 
   const handleAddEditPayroll = (isAdd = true, record = null) => {
     setIsEditing(!isAdd);
@@ -592,95 +804,72 @@ const PayrollPage = () => {
     setPayrollFormVisible(true);
   };
 
+  // ─── ✅ FIX: Handle Payroll Form Submit — trust pre-calculated values from form ──
   const handlePayrollFormSubmit = async (formData) => {
     try {
-      const cleanData = { ...formData };
-      const { update_employee_salary, ...restData } = cleanData;
-      
-      const monthlySalary = Number(cleanData.monthly_salary || 0);
-      const totalWorkingDays = Number(cleanData.total_working_days || 22);
-      const absentDays = Number(cleanData.absent_days || 0);
-      const otherDeduction = Number(cleanData.other_deduction || 0);
-      const overtimeHours = Number(cleanData.overtime_hours || 0);
-      
-      // ===== CORRECT CALCULATIONS =====
-      // Basic Pay = Monthly Salary (when working days = total working days)
-      const workingDays = Number(cleanData.working_days || 0);
-      const basicPay = monthlySalary * (workingDays / totalWorkingDays);
-      
-      // Absence Deduction = (Monthly Salary / Working Days In Month) × Absent Days
-      const absenceDeduction = totalWorkingDays > 0 
-        ? (monthlySalary / totalWorkingDays) * absentDays 
-        : 0;
-      
-      // Overtime Pay = Overtime Hours × Hourly Rate × 1.5
-      const hoursPerDay = Number(cleanData.hours_per_day || 8);
-      const hourlyRate = monthlySalary / (totalWorkingDays * hoursPerDay);
-      const overtimePay = overtimeHours * hourlyRate * 1.5;
-      
-      // Gross Pay = Basic Pay + Overtime + Bonus
-      const grossPay = basicPay + overtimePay;
-      
-      // Net Pay = Gross Pay - Absence Deduction - Other Deduction
-      const totalDeduction = absenceDeduction + otherDeduction;
-      const netPay = grossPay - totalDeduction;
+      const { update_employee_salary, ...restData } = formData;
 
-      // Update employee salary if requested
-      if (update_employee_salary && cleanData.employee_id && monthlySalary > 0) {
+      // Update employee salary in users collection if requested
+      if (update_employee_salary && restData.employee_id && restData.monthly_salary > 0) {
         try {
-          const userRef = doc(db, 'users', cleanData.employee_id);
+          const userRef = doc(db, 'users', restData.employee_id);
           await updateDoc(userRef, {
-            monthly_salary: monthlySalary,
-            salary: monthlySalary,
+            monthly_salary: restData.monthly_salary,
+            salary: restData.monthly_salary,
             LastUpdate: serverTimestamp(),
           });
-          message.success(`Updated salary for ${cleanData.employee_name}`);
-          await fetchEmployees();
+          message.success(`Updated salary for ${restData.employee_name}`);
+          
+          const cacheKey = `employees_${companyId}`;
+          cacheInstances.employees.delete(cacheKey);
+          await fetchEmployees(true);
         } catch (error) {
           console.error('Error updating employee salary:', error);
           message.warning('Payroll saved but failed to update employee salary');
         }
       }
 
+      // ✅ FIXED: Use the pre-calculated values sent by the form (basic_pay, net_pay, etc.)
+      // instead of recalculating from scratch here. The form already computed these correctly.
       const payrollData = {
         ...restData,
-        monthly_salary: monthlySalary,
-        total_working_days: totalWorkingDays,
-        basic_pay: Math.round(basicPay * 100) / 100,
-        overtime_pay: Math.round(overtimePay * 100) / 100,
-        absence_deduction: Math.round(absenceDeduction * 100) / 100,
-        total_deduction: Math.round(totalDeduction * 100) / 100,
-        gross_pay: Math.round(grossPay * 100) / 100,
-        net_pay: Math.round(netPay * 100) / 100,
         company_id: companyId,
         calculated_from_attendance: false,
-        period_start: cleanData.period_start || dayjs(dateRange[0]).format('YYYY-MM-DD'),
-        period_end: cleanData.period_end || dayjs(dateRange[1]).format('YYYY-MM-DD'),
-        sick_pay: 0,
-        late_deduction: 0,
+        period_start: restData.period_start || dayjs(dateRange[0]).format('YYYY-MM-DD'),
+        period_end: restData.period_end || dayjs(dateRange[1]).format('YYYY-MM-DD'),
+        sick_pay: restData.sick_pay ?? 0,
+        late_deduction: restData.late_deduction ?? 0,
       };
 
-      if (isEditing && selectedPayroll) {
-        await updateDoc(doc(db, 'payroll', selectedPayroll.id), {
+      if (isEditing && selectedPayroll && selectedPayroll.id && !selectedPayroll.id.startsWith('calc_')) {
+        // Update existing saved payroll
+        const payrollRef = doc(db, 'payroll', selectedPayroll.id);
+        await updateDoc(payrollRef, {
           ...payrollData,
           LastUpdate: serverTimestamp(),
         });
         message.success('Payroll updated successfully');
       } else {
+        // Add new payroll (or convert auto-calc to saved)
         await addDoc(collection(db, 'payroll'), {
           ...payrollData,
           CreationDate: serverTimestamp(),
           LastUpdate: serverTimestamp(),
         });
-        message.success('Payroll added successfully');
+        message.success('Payroll saved successfully');
       }
 
       setPayrollFormVisible(false);
-      const updatedPayrolls = await fetchPayrolls();
-      setPayrolls(updatedPayrolls);
+      setIsEditing(false);
+      setSelectedPayroll(null);
+
+      // Invalidate cache and refresh
+      const cacheKey = `payrolls_${companyId}`;
+      cacheInstances.payrolls.delete(cacheKey);
+      await fetchPayrolls(true);
     } catch (error) {
       console.error('Error saving payroll:', error);
-      message.error('Failed to save payroll');
+      message.error('Failed to save payroll: ' + error.message);
     }
   };
 
@@ -688,7 +877,10 @@ const PayrollPage = () => {
     try {
       await deleteDoc(doc(db, 'payroll', payrollId));
       message.success('Payroll deleted successfully');
-      const updatedPayrolls = await fetchPayrolls();
+      
+      const cacheKey = `payrolls_${companyId}`;
+      cacheInstances.payrolls.delete(cacheKey);
+      const updatedPayrolls = await fetchPayrolls(true);
       setPayrolls(updatedPayrolls);
     } catch (error) {
       console.error('Error deleting payroll:', error);
@@ -699,14 +891,26 @@ const PayrollPage = () => {
   const handleRefresh = async () => {
     setLoading(true);
     try {
-      const [empList, mapList, payrollList] = await Promise.all([
-        fetchEmployees(),
-        fetchMappings(),
-        fetchPayrolls()
+      Object.values(cacheInstances).forEach(cache => cache.clear());
+      
+      dataLoadedRef.current = {
+        employees: false,
+        mappings: false,
+        payrolls: false,
+        attendance: false,
+        notes: false,
+      };
+      
+      const [empList, mapList] = await Promise.all([
+        fetchEmployees(true),
+        fetchMappings(true),
+        fetchPayrolls(true),
       ]);
+      
       if (empList.length > 0 && mapList.length > 0) {
-        await fetchAttendanceData(dateRange[0], dateRange[1], empList, mapList);
+        await fetchAttendanceData(dateRange[0], dateRange[1], true);
       }
+      
       message.success('Data refreshed successfully');
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -722,7 +926,7 @@ const PayrollPage = () => {
     
     if (searchText) {
       const searchLower = searchText.toLowerCase();
-      data = data.filter(p => 
+      data = data.filter(p =>
         p.employee_name?.toLowerCase().includes(searchLower) ||
         p.position?.toLowerCase().includes(searchLower) ||
         p.employee_id?.includes(searchText)
@@ -747,26 +951,37 @@ const PayrollPage = () => {
     return data;
   }, [calculatedPayrolls, searchText, sortField, sortOrder]);
 
-  // ─── Columns ──────────────────────────────────────────────────────────
+  // ─── Enhanced Columns ──────────────────────────────────────────────────
   const columns = [
     {
       title: 'Employee',
       dataIndex: 'employee_name',
       key: 'employee_name',
-      width: 180,
+      width: 200,
       fixed: 'left',
       sorter: true,
       sortOrder: sortField === 'employee_name' && sortOrder,
       render: (text, record) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Avatar
+            icon={<UserOutlined />}
+            style={{ backgroundColor: record.isSaved ? '#1890ff' : '#52c41a', flexShrink: 0 }}
+            size={40}
+          >
             {text?.charAt(0).toUpperCase()}
           </Avatar>
-          <div>
-            <Text strong style={{ fontSize: 13 }}>{text || 'N/A'}</Text>
-            <div>
-              <Tag color="blue" style={{ fontSize: 9 }}>From Attendance</Tag>
-            </div>
+          <div style={{ minWidth: 0 }}>
+            <Text strong ellipsis style={{ fontSize: 14, display: 'block' }}>{text || 'N/A'}</Text>
+            <Space size={4}>
+              {record.isSaved ? (
+                <Tag color="blue" style={{ fontSize: 10, margin: 0 }}>Saved</Tag>
+              ) : (
+                <Tag color="green" style={{ fontSize: 10, margin: 0 }}>Auto</Tag>
+              )}
+              {record.calculated_from_attendance && (
+                <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>From Attendance</Tag>
+              )}
+            </Space>
           </div>
         </div>
       ),
@@ -775,148 +990,134 @@ const PayrollPage = () => {
       title: 'Position',
       dataIndex: 'position',
       key: 'position',
-      width: 120,
+      width: 130,
       sorter: true,
       sortOrder: sortField === 'position' && sortOrder,
-      render: (text) => <Text style={{ fontSize: 12 }}>{text || '-'}</Text>,
+      render: (text) => <Text style={{ fontSize: 12 }} ellipsis>{text || '-'}</Text>,
     },
     {
-      title: 'Attendance Rate',
+      title: 'Attendance',
       dataIndex: 'attendance_rate',
       key: 'attendance_rate',
-      width: 130,
+      width: 140,
       align: 'center',
       sorter: true,
       sortOrder: sortField === 'attendance_rate' && sortOrder,
       render: (value) => (
-        <Progress 
-          percent={value || 0} 
-          size="small" 
-          status={value >= 80 ? 'success' : value >= 60 ? 'active' : 'exception'}
-          format={percent => `${percent}%`}
-          style={{ width: 100 }}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+          <Progress
+            percent={value || 0}
+            size="small"
+            status={value >= 80 ? 'success' : value >= 60 ? 'active' : 'exception'}
+            format={percent => `${percent}%`}
+            style={{ width: '100%', marginBottom: 0 }}
+          />
+          <Text type="secondary" style={{ fontSize: 10 }}>
+            {value >= 80 ? 'Good' : value >= 60 ? 'Fair' : 'Poor'}
+          </Text>
+        </div>
       ),
     },
     {
-      title: 'Present',
-      dataIndex: 'working_days',
-      key: 'working_days',
-      width: 80,
-      align: 'center',
-      sorter: true,
-      sortOrder: sortField === 'working_days' && sortOrder,
-      render: (value) => (
-        <Tag color="green" style={{ fontWeight: 600 }}>{value || 0}</Tag>
-      ),
+      title: 'Days',
+      key: 'days',
+      width: 150,
+      children: [
+        {
+          title: 'Present',
+          dataIndex: 'working_days',
+          key: 'working_days',
+          width: 80,
+          align: 'center',
+          sorter: true,
+          sortOrder: sortField === 'working_days' && sortOrder,
+          render: (value) => (
+            <Tag color="green" style={{ fontWeight: 600, fontSize: 13 }}>{value || 0}</Tag>
+          ),
+        },
+        {
+          title: 'Absent',
+          dataIndex: 'absent_days',
+          key: 'absent_days',
+          width: 80,
+          align: 'center',
+          sorter: true,
+          sortOrder: sortField === 'absent_days' && sortOrder,
+          render: (value) => (
+            <Text style={{ color: value > 0 ? '#ff4d4f' : '#52c41a', fontWeight: value > 0 ? 700 : 400, fontSize: 13 }}>
+              {value || 0}
+            </Text>
+          ),
+        },
+      ],
     },
     {
-      title: 'Absent',
-      dataIndex: 'absent_days',
-      key: 'absent_days',
-      width: 80,
-      align: 'center',
-      sorter: true,
-      sortOrder: sortField === 'absent_days' && sortOrder,
-      render: (value) => (
-        <Text style={{ color: value > 0 ? '#ff4d4f' : '#52c41a', fontWeight: value > 0 ? 700 : 400 }}>
-          {value || 0}
-        </Text>
-      ),
-    },
-    {
-      title: 'Total Days',
-      dataIndex: 'total_working_days',
-      key: 'total_working_days',
-      width: 90,
-      align: 'center',
-      sorter: true,
-      sortOrder: sortField === 'total_working_days' && sortOrder,
-      render: (value) => (
-        <Text>{value || 0}</Text>
-      ),
-    },
-    {
-      title: 'Late (min)',
-      dataIndex: 'late_minutes',
-      key: 'late_minutes',
-      width: 100,
-      align: 'center',
-      sorter: true,
-      sortOrder: sortField === 'late_minutes' && sortOrder,
-      render: (value, record) => (
-        <Tooltip title={`${record.late_days || 0} late days (No deduction)`}>
-          <Tag color="orange" style={{ fontWeight: 600 }}>
-            {value || 0} min
-          </Tag>
-        </Tooltip>
-      ),
-    },
-    {
-      title: 'Basic Pay',
-      dataIndex: 'basic_pay',
-      key: 'basic_pay',
-      width: 120,
-      align: 'right',
-      sorter: true,
-      sortOrder: sortField === 'basic_pay' && sortOrder,
-      render: (value) => (
-        <Text strong style={{ color: '#52c41a' }}>
-          AED {value?.toLocaleString() || '0'}
-        </Text>
-      ),
-    },
-    {
-      title: 'Deductions',
-      dataIndex: 'total_deduction',
-      key: 'total_deduction',
-      width: 120,
-      align: 'right',
-      sorter: true,
-      sortOrder: sortField === 'total_deduction' && sortOrder,
-      render: (value) => (
-        <Text style={{ color: '#ff4d4f' }}>
-          AED {value?.toLocaleString() || '0'}
-        </Text>
-      ),
-    },
-    {
-      title: 'Net Pay',
-      dataIndex: 'net_pay',
-      key: 'net_pay',
-      width: 130,
-      align: 'right',
-      fixed: 'right',
-      sorter: true,
-      sortOrder: sortField === 'net_pay' && sortOrder,
-      render: (value) => (
-        <Text strong style={{ color: value > 0 ? '#1890ff' : '#ff4d4f', fontSize: 15 }}>
-          AED {value?.toLocaleString() || '0'}
-        </Text>
-      ),
+      title: 'Salary',
+      key: 'salary',
+      width: 180,
+      children: [
+        {
+          title: 'Basic',
+          dataIndex: 'basic_pay',
+          key: 'basic_pay',
+          width: 100,
+          align: 'right',
+          sorter: true,
+          sortOrder: sortField === 'basic_pay' && sortOrder,
+          render: (value) => (
+            <Text strong style={{ color: '#52c41a', fontSize: 13 }}>
+              AED {value?.toLocaleString() || '0'}
+            </Text>
+          ),
+        },
+        {
+          title: 'Net',
+          dataIndex: 'net_pay',
+          key: 'net_pay',
+          width: 120,
+          align: 'right',
+          sorter: true,
+          sortOrder: sortField === 'net_pay' && sortOrder,
+          render: (value, record) => (
+            <div>
+              <Text strong style={{ color: value > 0 ? '#1890ff' : '#ff4d4f', fontSize: 15, display: 'block' }}>
+                AED {value?.toLocaleString() || '0'}
+              </Text>
+              {record.total_deduction > 0 && (
+                <Text type="danger" style={{ fontSize: 10 }}>
+                  -AED {record.total_deduction?.toLocaleString() || '0'}
+                </Text>
+              )}
+            </div>
+          ),
+        },
+      ],
     },
     {
       title: 'Actions',
       key: 'actions',
       fixed: 'right',
-      width: 100,
+      width: 120,
       render: (_, record) => (
         <Space size={4}>
           <Tooltip title="Edit">
-            <Button 
-              icon={<EditOutlined />} 
-              size="small" 
+            <Button
+              icon={<EditOutlined />}
+              size="small"
               type="primary"
               ghost
               onClick={() => handleAddEditPayroll(false, record)}
+              style={{ padding: '0 8px' }}
             />
           </Tooltip>
           {record.isSaved && (
             <Popconfirm
               title="Delete this payroll record?"
               onConfirm={() => handleDeletePayroll(record.id)}
+              okText="Yes"
+              cancelText="No"
             >
-              <Button icon={<DeleteOutlined />} size="small" danger />
+              <Button icon={<DeleteOutlined />} size="small" danger style={{ padding: '0 8px' }} />
             </Popconfirm>
           )}
         </Space>
@@ -930,41 +1131,46 @@ const PayrollPage = () => {
     { label: 'Last Month', value: [dayjs().subtract(1, 'month').startOf('month'), dayjs().subtract(1, 'month').endOf('month')] },
     { label: 'Last 2 Months', value: [dayjs().subtract(2, 'month').startOf('month'), dayjs().subtract(1, 'month').endOf('month')] },
     { label: 'This Quarter', value: [dayjs().startOf('quarter'), dayjs().endOf('quarter')] },
+    { label: 'Last Quarter', value: [dayjs().subtract(1, 'quarter').startOf('quarter'), dayjs().subtract(1, 'quarter').endOf('quarter')] },
   ];
 
   // ─── Render ──────────────────────────────────────────────────────────
   return (
-    <div className="employees-container" style={{ padding: '12px 16px' }}>
+    <div style={{ padding: '16px 20px', background: '#f0f2f5', minHeight: '100vh' }}>
       {/* Header */}
-      <Card style={{ marginBottom: 16 }} bodyStyle={{ padding: '16px 20px' }}>
+      <Card
+        style={{ marginBottom: 16, borderRadius: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+        bodyStyle={{ padding: '16px 24px' }}
+      >
         <Row gutter={[12, 12]} align="middle">
           <Col xs={24} sm={16} md={18}>
-            <Title level={3} style={{ margin: 0, fontSize: 'clamp(18px, 2.5vw, 28px)' }}>
-              <CalculatorOutlined style={{ marginRight: 10, color: '#1890ff' }} />
-              Payroll Management
-            </Title>
-            <Text type="secondary" style={{ fontSize: 'clamp(11px, 1.2vw, 14px)' }}>
-              {dateRange[0].format('MMMM YYYY')} • {mappedEmployees.length} employees linked • 
-              {saving && <SyncOutlined spin style={{ marginLeft: 6 }} />} 
-              {saving ? ' Saving...' : ' Auto-saving'}
-            </Text>
+            <Space align="center">
+              <div style={{
+                background: '#1890ff', borderRadius: '50%', width: 44, height: 44,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <CalculatorOutlined style={{ fontSize: 22, color: 'white' }} />
+              </div>
+              <div>
+                <Title level={3} style={{ margin: 0, fontSize: 'clamp(18px, 2.5vw, 24px)' }}>
+                  Payroll Management
+                </Title>
+                <Text type="secondary" style={{ fontSize: 'clamp(11px, 1.2vw, 13px)' }}>
+                  {dateRange[0].format('MMMM YYYY')} • {mappedEmployees.length} employees linked
+                  {saving && <SyncOutlined spin style={{ marginLeft: 8 }} />}
+                  {saving && ' Saving...'}
+                </Text>
+              </div>
+            </Space>
           </Col>
           <Col xs={24} sm={8} md={6}>
             <Space wrap style={{ width: '100%', justifyContent: 'flex-end' }}>
-              <Button 
-                icon={<ReloadOutlined />} 
-                size="small"
-                onClick={handleRefresh}
-                loading={loading}
-              >
-                Refresh
-              </Button>
-              <Button 
-                type="primary" 
-                icon={<PlusOutlined />}
-                size="small"
-                onClick={() => handleAddEditPayroll(true)}
-              >
+              <Tooltip title="Refresh data">
+                <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading}>
+                  Refresh
+                </Button>
+              </Tooltip>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddEditPayroll(true)}>
                 Add Manual
               </Button>
             </Space>
@@ -972,47 +1178,56 @@ const PayrollPage = () => {
         </Row>
       </Card>
 
-      {/* Stats - Responsive */}
+      {/* Stats */}
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-        <Col xs={12} sm={6} md={6}>
-          <Card size="small" bodyStyle={{ padding: '10px 12px' }}>
-            <Statistic 
-              title="Linked Employees" 
-              value={stats.total_employees || 0} 
-              prefix={<TeamOutlined />}
-              valueStyle={{ fontSize: 'clamp(18px, 2vw, 24px)' }}
+        <Col xs={12} sm={6} lg={6}>
+          <Card size="small" bodyStyle={{ padding: '14px 16px' }}
+            style={{ borderRadius: 10, borderLeft: `3px solid ${token.colorPrimary}`, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+          >
+            <Statistic
+              title={<Text type="secondary" style={{ fontSize: 12 }}>Linked Employees</Text>}
+              value={stats.total_employees || 0}
+              prefix={<TeamOutlined style={{ fontSize: 16 }} />}
+              valueStyle={{ fontSize: 'clamp(18px, 2vw, 24px)', fontWeight: 600 }}
             />
           </Card>
         </Col>
-        <Col xs={12} sm={6} md={6}>
-          <Card size="small" bodyStyle={{ padding: '10px 12px' }}>
-            <Statistic 
-              title="Payroll Records" 
-              value={stats.total} 
-              prefix={<CalculatorOutlined />}
-              valueStyle={{ fontSize: 'clamp(18px, 2vw, 24px)' }}
+        <Col xs={12} sm={6} lg={6}>
+          <Card size="small" bodyStyle={{ padding: '14px 16px' }}
+            style={{ borderRadius: 10, borderLeft: `3px solid ${token.colorPrimary}`, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+          >
+            <Statistic
+              title={<Text type="secondary" style={{ fontSize: 12 }}>Payroll Records</Text>}
+              value={stats.total}
+              prefix={<CalculatorOutlined style={{ fontSize: 16 }} />}
+              valueStyle={{ fontSize: 'clamp(18px, 2vw, 24px)', fontWeight: 600 }}
             />
           </Card>
         </Col>
-        <Col xs={12} sm={6} md={6}>
-          <Card size="small" bodyStyle={{ padding: '10px 12px' }}>
-            <Statistic 
-              title="Total Gross Pay" 
-              value={stats.total_gross_pay} 
-              valueStyle={{ color: '#52c41a', fontSize: 'clamp(14px, 1.6vw, 20px)' }}
-              formatter={value => `AED ${value.toLocaleString()}`}
+        <Col xs={12} sm={6} lg={6}>
+          <Card size="small" bodyStyle={{ padding: '14px 16px' }}
+            style={{ borderRadius: 10, borderLeft: '3px solid #52c41a', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+          >
+            <Statistic
+              title={<Text type="secondary" style={{ fontSize: 12 }}>Total Gross Pay</Text>}
+              value={stats.total_gross_pay}
+              valueStyle={{ color: '#52c41a', fontSize: 'clamp(16px, 1.8vw, 22px)', fontWeight: 600 }}
+              prefix={<DollarOutlined style={{ fontSize: 16 }} />}
+              formatter={value => `${value.toLocaleString()}`}
             />
           </Card>
         </Col>
-        <Col xs={12} sm={6} md={6}>
-          <Card size="small" bodyStyle={{ padding: '10px 12px' }}>
-            <Statistic 
-              title="Avg Attendance" 
-              value={stats.avg_attendance} 
+        <Col xs={12} sm={6} lg={6}>
+          <Card size="small" bodyStyle={{ padding: '14px 16px' }}
+            style={{ borderRadius: 10, borderLeft: `3px solid ${stats.avg_attendance >= 80 ? '#52c41a' : '#faad14'}`, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+          >
+            <Statistic
+              title={<Text type="secondary" style={{ fontSize: 12 }}>Avg Attendance</Text>}
+              value={stats.avg_attendance}
               suffix="%"
-              valueStyle={{ 
-                color: stats.avg_attendance >= 80 ? '#52c41a' : '#faad14',
-                fontSize: 'clamp(18px, 2vw, 24px)'
+              valueStyle={{
+                color: stats.avg_attendance >= 80 ? '#52c41a' : stats.avg_attendance >= 60 ? '#faad14' : '#ff4d4f',
+                fontSize: 'clamp(18px, 2vw, 24px)', fontWeight: 600
               }}
             />
           </Card>
@@ -1020,16 +1235,20 @@ const PayrollPage = () => {
       </Row>
 
       {/* Main Table Card */}
-      <Card style={{ overflow: 'hidden' }}>
+      <Card
+        style={{ borderRadius: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.05)', overflow: 'hidden' }}
+        bodyStyle={{ padding: '16px 20px' }}
+      >
         <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-          <Col xs={24} md={8}>
+          <Col xs={24} md={7}>
             <Input
-              prefix={<SearchOutlined />}
+              prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
               placeholder="Search by name, position..."
               value={searchText}
               onChange={handleSearchChange}
               allowClear
               size="middle"
+              style={{ borderRadius: 6 }}
             />
           </Col>
           <Col xs={24} md={12}>
@@ -1038,18 +1257,20 @@ const PayrollPage = () => {
               onChange={setDateRange}
               format="DD MMM YYYY"
               presets={datePresets}
-              style={{ width: '100%' }}
+              style={{ width: '100%', borderRadius: 6 }}
               picker="month"
               size="middle"
+              suffixIcon={<CalendarOutlined />}
             />
           </Col>
-          <Col xs={24} md={4}>
-            <Button 
-              onClick={() => { setSearchText(''); }}
-              style={{ width: '100%' }}
-              size="middle"
-            >
-              Reset Filters
+          <Col xs={12} md={3}>
+            <Button onClick={() => setSearchText('')} style={{ width: '100%', borderRadius: 6 }} size="middle" icon={<FilterOutlined />}>
+              Reset
+            </Button>
+          </Col>
+          <Col xs={12} md={2}>
+            <Button style={{ width: '100%', borderRadius: 6 }} size="middle" icon={<FileExcelOutlined />}>
+              Export
             </Button>
           </Col>
         </Row>
@@ -1058,49 +1279,74 @@ const PayrollPage = () => {
           message="Payroll Calculation Rules"
           description={
             <div style={{ fontSize: 'clamp(11px, 1vw, 13px)' }}>
-              <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
-                <li><strong>Basic Pay</strong> = Monthly Salary × (Working Days / Total Working Days)</li>
-                <li><strong>Absence Deduction</strong> = (Monthly Salary / Total Working Days) × Absent Days</li>
-                <li><strong>Gross Pay</strong> = Basic Pay + Overtime + Bonus</li>
-                <li><strong>Net Pay</strong> = Gross Pay - Absence Deduction - Other Deduction</li>
-                <li><strong>Weekend:</strong> Saturday only (no deduction, no pay)</li>
-                <li><strong>Late:</strong> <span style={{ color: '#faad14' }}>Information only</span> - No deduction</li>
-              </ul>
+              <Row gutter={[16, 8]}>
+                <Col xs={24} sm={12} md={8}><div><strong>Basic Pay</strong> = Monthly Salary × (Working Days / Days in Month)</div></Col>
+                <Col xs={24} sm={12} md={8}><div><strong>Absence Deduction</strong> = (Monthly Salary / Days in Month) × Absent Days</div></Col>
+                <Col xs={24} sm={12} md={8}><div><strong>Gross Pay</strong> = Basic Pay + Overtime + Bonus</div></Col>
+                <Col xs={24} sm={12} md={8}><div><strong>Net Pay</strong> = Gross Pay − Absence Deduction − Other Deduction</div></Col>
+                <Col xs={24} sm={12} md={8}><div><strong>Weekend:</strong> Sunday only (no deduction, no pay)</div></Col>
+                <Col xs={24} sm={12} md={8}><div><strong>Late:</strong> <span style={{ color: '#faad14' }}>Information only</span> — No deduction</div></Col>
+              </Row>
             </div>
           }
           type="info"
           showIcon
-          style={{ marginBottom: 16 }}
+          style={{ marginBottom: 16, borderRadius: 8 }}
         />
 
-        <Table 
-          columns={columns} 
-          dataSource={tableData} 
-          rowKey="id" 
+        <Table
+          columns={columns}
+          dataSource={tableData}
+          rowKey="id"
           loading={loading || saving}
-          pagination={{ 
+          pagination={{
             defaultPageSize: 10,
             showSizeChanger: true,
             pageSizeOptions: ['10', '20', '50', '100'],
             showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} records`,
             size: 'small',
+            showQuickJumper: true,
           }}
           scroll={{ x: 1200 }}
-          size="small"
-          bordered
-          className="attendance-table"
+          size="middle"
+          bordered={false}
+          className="payroll-table"
+          rowClassName={(record) => !record.isSaved ? 'unsaved-row' : ''}
+          style={{ borderRadius: 8, overflow: 'hidden' }}
+          components={{
+            header: {
+              cell: (props) => (
+                <th {...props} style={{ ...props.style, background: '#fafafa', fontWeight: 600, fontSize: 13 }} />
+              ),
+            },
+          }}
         />
       </Card>
 
       <PayrollForm
         visible={payrollFormVisible}
-        onCancel={() => setPayrollFormVisible(false)}
+        onCancel={() => {
+          setPayrollFormVisible(false);
+          setIsEditing(false);
+          setSelectedPayroll(null);
+        }}
         onSubmit={handlePayrollFormSubmit}
         isEditing={isEditing}
         initialValues={selectedPayroll}
         employees={mappedEmployees}
         dateRange={dateRange}
       />
+
+      <style jsx="true">{`
+        .payroll-table .ant-table-row:hover { background: #f5f9ff; }
+        .payroll-table .unsaved-row { background: #f6ffed; }
+        .payroll-table .unsaved-row:hover { background: #d9f7be !important; }
+        .payroll-table .ant-table-cell { padding: 12px 12px !important; }
+        @media (max-width: 768px) {
+          .payroll-table .ant-table-cell { padding: 8px 8px !important; }
+        }
+        .ant-statistic-title { font-size: 12px !important; color: #8c8c8c !important; }
+      `}</style>
     </div>
   );
 };
