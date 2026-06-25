@@ -19,7 +19,8 @@ import {
   FacebookOutlined,
   GlobalOutlined,
   InstagramOutlined,
-  FieldTimeOutlined
+  FieldTimeOutlined,
+  BarChartOutlined
   
 } from '@ant-design/icons';
 import { APP_PREFIX_PATH } from 'configs/AppConfig';
@@ -216,31 +217,38 @@ const ceoNavigation = [
     icon: DashboardOutlined,
     breadcrumb: false,
     submenu: [
-              {
-        key: 'dashboards',
-        path: `${APP_PREFIX_PATH}/dashboards`,
-        title: 'Dashboard',
-        icon: DashboardOutlined ,
-        breadcrumb: true,
-        submenu: []
-      },
-           {
-        key: 'seller-performance',
-        path: `${APP_PREFIX_PATH}/sales-dashboard`,
-        title: 'Team Activity Log',
-        icon: DashboardOutlined ,
-        breadcrumb: true,
-        submenu: []
-      },
-
-       {
-        key: 'leads-performance',
-        path: `${APP_PREFIX_PATH}/analytics`,
-        title: 'Leads Dashboard',
-        icon: DashboardOutlined ,
-        breadcrumb: true,
-        submenu: []
-      },
+{
+  key: 'dashboards',
+  path: `${APP_PREFIX_PATH}/dashboards`,
+  title: 'Dashboard',
+  icon: DashboardOutlined,
+  breadcrumb: true,
+  submenu: []
+},
+{
+  key: 'UnifiedPipelineDashboard',
+  path: `${APP_PREFIX_PATH}/Pipeline-Dashboard`,
+  title: 'Pipeline Dashboard',
+  icon: AppstoreOutlined,
+  breadcrumb: true,
+  submenu: []
+},
+{
+  key: 'seller-performance',
+  path: `${APP_PREFIX_PATH}/sales-dashboard`,
+  title: 'Team Activity Log',
+  icon: TeamOutlined,
+  breadcrumb: true,
+  submenu: []
+},
+{
+  key: 'leads-performance',
+  path: `${APP_PREFIX_PATH}/analytics`,
+  title: 'Leads Dashboard',
+  icon: BarChartOutlined,
+  breadcrumb: true,
+  submenu: []
+}
 
     ]
   },

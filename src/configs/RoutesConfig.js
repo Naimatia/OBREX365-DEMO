@@ -60,6 +60,12 @@ export const protectedRoutes = [
         component: React.lazy(() => import('views/app-views/company/dashboard/index')),
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
     },
+     {
+        key: 'UnifiedPipelineDashboard',
+        path: `${APP_PREFIX_PATH}/Pipeline-Dashboard`,
+        component: React.lazy(() => import('views/app-views/company/UnifiedPipelineDashboard/index')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
+    },
       {
         key: 'leads-performance',
         path: `${APP_PREFIX_PATH}/analytics`,
