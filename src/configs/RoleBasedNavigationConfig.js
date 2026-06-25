@@ -212,12 +212,18 @@ const ceoNavigation = [
   // Management Dashboard
   {
     key: 'dashboards',
-    path: `${APP_PREFIX_PATH}/dashboards`,
     title: 'Dashboard',
     icon: DashboardOutlined,
     breadcrumb: false,
     submenu: [
-      
+              {
+        key: 'dashboards',
+        path: `${APP_PREFIX_PATH}/dashboards`,
+        title: 'Dashboard',
+        icon: DashboardOutlined ,
+        breadcrumb: true,
+        submenu: []
+      },
            {
         key: 'seller-performance',
         path: `${APP_PREFIX_PATH}/sales-dashboard`,

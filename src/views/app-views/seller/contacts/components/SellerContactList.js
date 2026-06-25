@@ -63,27 +63,16 @@ const SellerContactList = ({
   const [filteredSource, setFilteredSource] = useState(null);
 
   // Status config - ADD NEW STATUSES
-  const getStatusConfig = (status) => {
-    const configs = {
-      'new': { color: 'blue', label: 'New' },
-      'contacted': { color: 'orange', label: 'Contacted' },
-      'qualified': { color: 'green', label: 'Qualified' },
-      'proposal': { color: 'purple', label: 'Proposal' },
-      'won': { color: 'gold', label: 'Won' },
-      'lost': { color: 'red', label: 'Lost' },
-      'active': { color: 'green', label: 'Active' },
-      'hot': { color: 'red', label: 'Hot' },
-      'cold': { color: 'blue', label: 'Cold' },
-      [ContactStatus.PENDING]: { color: 'orange', label: 'Pending' },
-      [ContactStatus.CONTACTED]: { color: 'blue', label: 'Contacted' },
-      [ContactStatus.DEAL]: { color: 'green', label: 'Deal' },
-      [ContactStatus.LOSS]: { color: 'red', label: 'Loss' },
-      [ContactStatus.NO_RESPONSE]: { color: 'default', label: 'No Response' },
-      [ContactStatus.NOT_INTERESTED]: { color: 'volcano', label: 'Not Interested' },
-      [ContactStatus.JUNK_LEAD]: { color: 'purple', label: 'Junk Lead' },
-    };
-    return configs[status] || { color: 'default', label: status || 'Unknown' };
-  };
+const getStatusConfig = (status) => ({
+  [ContactStatus.PROPOSAL]: { color: 'purple', label: 'Proposal' },
+  [ContactStatus.DEAL]: { color: 'gold', label: 'Deal' },
+  [ContactStatus.CONVERTED]: { color: 'green', label: 'Converted' },
+  [ContactStatus.LOSS]: { color: 'red', label: 'Loss' },
+  [ContactStatus.ACTIVE]: { color: 'green', label: 'Active' },
+  [ContactStatus.HOT]: { color: 'red', label: 'Hot' },
+  [ContactStatus.COLD]: { color: 'blue', label: 'Cold' },
+}[status] || { color: 'default', label: status || 'Unknown' });
+
 
   // Get interest level color
   const getInterestColor = (level) => {
