@@ -70,6 +70,7 @@
     "react-quill": "^2.0.0",
     "react-redux": "^7.2.8",
     "react-resize-detector": "^7.1.2",
+    "react-responsive": "^10.0.1",
     "react-router-dom": "^6.2.1",
     "react-scripts": "5.0.1",
     "react-select-country-list": "^2.2.3",

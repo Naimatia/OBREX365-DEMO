@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Button, Tooltip, Space, Typography, Avatar, Dropdown, message, Select, Modal } from 'antd';
+import { Table, Tag, Button, Tooltip, Space, Typography, Avatar, Dropdown, message, Select, Modal, Badge } from 'antd';
 import {
   EditOutlined,
   DeleteOutlined,
@@ -13,8 +13,14 @@ import {
   MoreOutlined,
   SwapOutlined,
   ExclamationCircleOutlined,
+  CrownOutlined,
+  ClockCircleOutlined,
+  DollarOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel, LeadStatusLabels, LeadStatusColors } from 'models/LeadModel';
+import { db, collection, getDocs, query, where } from 'configs/FirebaseConfig';
+import { UserRoles } from 'models/UserModel';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -22,14 +28,12 @@ const { confirm } = Modal;
 
 // Status configuration with colors and labels
 const statusConfig = {
-  [LeadStatus.NEW]: { color: 'blue', label: 'New' },
-  [LeadStatus.CONTACTED]: { color: 'orange', label: 'Contacted' },
-  [LeadStatus.INTERESTED]: { color: 'green', label: 'Interested' },
-  [LeadStatus.NOT_INTERESTED]: { color: 'red', label: 'Not Interested' },
-  [LeadStatus.CONVERTED]: { color: 'purple', label: 'Converted' },
-  [LeadStatus.JUNK_LEAD]: { color: 'purple', label: 'Junk' },
-
-  
+  [LeadStatus.NEW]: { color: 'blue', label: 'New', icon: <ClockCircleOutlined /> },
+  [LeadStatus.CONTACTED]: { color: 'orange', label: 'Contacted', icon: <PhoneOutlined /> },
+  [LeadStatus.INTERESTED]: { color: 'green', label: 'Interested', icon: <CheckCircleOutlined /> },
+  [LeadStatus.NOT_INTERESTED]: { color: 'red', label: 'Not Interested', icon: <CloseCircleOutlined /> },
+  [LeadStatus.CONVERTED]: { color: 'purple', label: 'Converted', icon: <TeamOutlined /> },
+  [LeadStatus.JUNK_LEAD]: { color: 'gray', label: 'Junk', icon: <DeleteOutlined /> },
 };
 
 // Status options for dropdown
@@ -45,6 +49,9 @@ const interestLevelColors = {
   [LeadInterestLevel.HIGH]: 'green',
 };
 
+// Admin roles that should be highlighted
+const ADMIN_ROLES = [UserRoles.CEO, UserRoles.ADMIN, UserRoles.MANAGER, UserRoles.SUPER_ADMIN];
+
 const LeadTable = ({
   leads,
   loading,
@@ -57,17 +64,80 @@ const LeadTable = ({
   onStatusChange,
   sellers = [],
   onReassignSeller,
+  companyId,
 }) => {
   const [data, setData] = useState([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [changingStatus, setChangingStatus] = useState({});
+  const [allUsers, setAllUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [adminUserIds, setAdminUserIds] = useState(new Set());
+
+  // Fetch all users from the company
+  useEffect(() => {
+    const fetchAllUsers = async () => {
+      if (!companyId) {
+        setAllUsers(sellers);
+        const adminIds = new Set();
+        sellers.forEach(s => {
+          if (ADMIN_ROLES.includes(s.Role)) {
+            adminIds.add(s.id);
+          }
+        });
+        setAdminUserIds(adminIds);
+        return;
+      }
+      
+      setUsersLoading(true);
+      try {
+        const usersQuery = query(
+          collection(db, 'users'),
+          where('company_id', '==', companyId)
+        );
+        const usersSnap = await getDocs(usersQuery);
+        const usersList = usersSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            name: `${data.firstname || ''} ${data.lastname || ''}`.trim() || data.email || 'Unknown',
+            role: data.Role || data.role || 'User'
+          };
+        });
+        setAllUsers(usersList);
+        
+        const adminIds = new Set();
+        usersList.forEach(user => {
+          if (ADMIN_ROLES.includes(user.Role) || ADMIN_ROLES.includes(user.role)) {
+            adminIds.add(user.id);
+          }
+        });
+        setAdminUserIds(adminIds);
+        
+        console.log('📊 [LeadTable] Fetched all users:', usersList.length);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        setAllUsers(sellers);
+        const adminIds = new Set();
+        sellers.forEach(s => {
+          if (ADMIN_ROLES.includes(s.Role)) {
+            adminIds.add(s.id);
+          }
+        });
+        setAdminUserIds(adminIds);
+      } finally {
+        setUsersLoading(false);
+      }
+    };
+
+    fetchAllUsers();
+  }, [companyId, sellers]);
 
   useEffect(() => {
-    // Sort by newest CreationDate by default
     const sortedLeads = [...leads].sort((a, b) => {
       const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
       const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-      return dateB - dateA; // Newest first
+      return dateB - dateA;
     });
 
     setData(sortedLeads);
@@ -83,7 +153,6 @@ const LeadTable = ({
     }),
   };
 
-  // Handle bulk convert
   const handleBulkConvert = () => {
     if (selectedRowKeys.length === 0) {
       message.warning('Please select leads to convert');
@@ -93,9 +162,7 @@ const LeadTable = ({
     setSelectedRowKeys([]);
   };
 
-  // Handle status change with auto-conversion
   const handleStatusChange = async (leadId, newStatus, record) => {
-    // If changing to CONVERTED, confirm with user
     if (newStatus === LeadStatus.CONVERTED && !record.convertedContactId) {
       confirm({
         title: 'Convert Lead to Contact',
@@ -128,7 +195,6 @@ const LeadTable = ({
       return;
     }
 
-    // Regular status change
     setChangingStatus(prev => ({ ...prev, [leadId]: true }));
     try {
       await onStatusChange?.(leadId, newStatus);
@@ -140,16 +206,21 @@ const LeadTable = ({
     }
   };
 
-  // Handle reassign seller - opens the AssignSellerForm
-  const handleReassignSeller = (record) => {
-    onAssignSeller(record);
+  const getUserName = (userId) => {
+    if (!userId) return null;
+    const user = allUsers.find(u => u.id === userId);
+    return user ? user.name : null;
   };
 
-  // Get current seller name
-  const getSellerName = (sellerId) => {
-    if (!sellerId) return 'Unassigned';
-    const seller = sellers.find(s => s.id === sellerId);
-    return seller ? seller.name : 'Unknown';
+  const getUserRole = (userId) => {
+    if (!userId) return null;
+    const user = allUsers.find(u => u.id === userId);
+    return user ? (user.Role || user.role || 'User') : null;
+  };
+
+  const isAdmin = (userId) => {
+    if (!userId) return false;
+    return adminUserIds.has(userId);
   };
 
   const columns = [
@@ -157,14 +228,15 @@ const LeadTable = ({
       title: 'Lead',
       dataIndex: 'name',
       key: 'name',
-      ellipsis: true,
+      fixed: 'left',
+      width: 220,
       render: (text, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Avatar
-            size={32}
+            size={36}
             style={{
               background: stringToColor(text || 'U'),
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: 700,
               flexShrink: 0,
             }}
@@ -174,16 +246,24 @@ const LeadTable = ({
           <div style={{ minWidth: 0 }}>
             <a
               onClick={() => onViewDetails(record)}
-              style={{ fontWeight: 600, color: '#1d1d1d', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              style={{ 
+                fontWeight: 600, 
+                color: '#1d1d1d', 
+                display: 'block', 
+                fontSize: 13,
+                whiteSpace: 'nowrap', 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis' 
+              }}
             >
               {text}
             </a>
             <Space size={4} wrap>
               {record.region && (
-                <Text type="secondary" style={{ fontSize: 11 }}>
-                  <GlobalOutlined style={{ marginRight: 3 }} />
+                <Tag size="small" style={{ fontSize: 10, margin: 0 }}>
+                  <GlobalOutlined style={{ marginRight: 3, fontSize: 10 }} />
                   {record.region}
-                </Text>
+                </Tag>
               )}
             </Space>
           </div>
@@ -194,7 +274,7 @@ const LeadTable = ({
     {
       title: 'Contact',
       key: 'contact',
-      width: 90,
+      width: 80,
       render: (_, record) => (
         <Space size={2} onClick={e => e.stopPropagation()}>
           {record.email && (
@@ -202,7 +282,7 @@ const LeadTable = ({
               <Button
                 type="text"
                 size="small"
-                icon={<MailOutlined style={{ color: '#1677ff' }} />}
+                icon={<MailOutlined style={{ color: '#1677ff', fontSize: 14 }} />}
                 href={`mailto:${record.email}`}
                 onClick={e => e.stopPropagation()}
               />
@@ -213,7 +293,7 @@ const LeadTable = ({
               <Button
                 type="text"
                 size="small"
-                icon={<PhoneOutlined style={{ color: '#52c41a' }} />}
+                icon={<PhoneOutlined style={{ color: '#52c41a', fontSize: 14 }} />}
                 href={`tel:${record.phoneNumber}`}
                 onClick={e => e.stopPropagation()}
               />
@@ -226,43 +306,56 @@ const LeadTable = ({
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: 180,
+      width: 170,
       render: (status, record) => {
         const isConverted = record.convertedContactId || status === LeadStatus.CONVERTED;
+        const config = statusConfig[status] || { color: 'default', label: status || '—', icon: null };
         
-        // If converted, show as read-only tag with auto-convert indicator
         if (isConverted) {
-          const config = statusConfig[status] || { color: 'default', label: status || '—' };
           return (
-            <Tooltip title="This lead has been converted to a contact">
-              <Tag
-                color={config.color}
-                style={{ borderRadius: 20, fontWeight: 500, fontSize: 11, cursor: 'default' }}
-                onClick={e => e.stopPropagation()}
-              >
-                {config.label} ✓
-              </Tag>
-            </Tooltip>
+            <Tag
+              color="purple"
+              style={{ 
+                borderRadius: 20, 
+                fontWeight: 600, 
+                fontSize: 12, 
+                padding: '4px 12px',
+                cursor: 'default',
+                border: 'none'
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {config.icon} {config.label} ✓
+            </Tag>
           );
         }
 
-        // Status dropdown for non-converted leads
         return (
-          <div onClick={e => e.stopPropagation()} style={{ display: 'inline-block' }}>
+          <div onClick={e => e.stopPropagation()} style={{ display: 'inline-block', width: '100%' }}>
             <Select
               value={status || LeadStatus.NEW}
               onChange={(value) => handleStatusChange(record.id, value, record)}
               loading={changingStatus[record.id]}
-              style={{ width: 130 }}
+              style={{ width: '100%', minWidth: 130 }}
               size="small"
-              dropdownMatchSelectWidth={200}
+              dropdownMatchSelectWidth={220}
               disabled={changingStatus[record.id]}
               onClick={e => e.stopPropagation()}
               onMouseDown={e => e.stopPropagation()}
+              className="status-select"
             >
               {statusOptions.map(option => (
                 <Select.Option key={option.value} value={option.value}>
-                  <Tag color={option.color} style={{ margin: 0 }}>
+                  <Tag 
+                    color={option.color} 
+                    style={{ 
+                      margin: 0, 
+                      padding: '2px 10px',
+                      borderRadius: 12,
+                      fontWeight: 500,
+                      fontSize: 12
+                    }}
+                  >
                     {option.label}
                   </Tag>
                 </Select.Option>
@@ -276,11 +369,17 @@ const LeadTable = ({
       title: 'Interest',
       dataIndex: 'InterestLevel',
       key: 'InterestLevel',
-      width: 100,
+      width: 90,
       render: level => (
         <Tag
           color={interestLevelColors[level] || 'default'}
-          style={{ borderRadius: 20, fontWeight: 500, fontSize: 11 }}
+          style={{ 
+            borderRadius: 12, 
+            fontWeight: 600, 
+            fontSize: 11,
+            padding: '2px 10px',
+            border: 'none'
+          }}
           onClick={e => e.stopPropagation()}
         >
           {level || '—'}
@@ -288,24 +387,33 @@ const LeadTable = ({
       ),
     },
     {
-      title: 'Seller',
+      title: 'Assigned To',
       dataIndex: 'seller_id',
       key: 'seller_id',
-      width: 150,
+      width: 140,
       render: (sellerId, record) => {
-        const sellerName = getSellerName(sellerId);
+        const sellerName = getUserName(sellerId);
         const isAssigned = sellerId && sellerId !== '';
         
         return (
           <Space size={4} onClick={e => e.stopPropagation()}>
+            {isAssigned ? (
+              <Avatar size={22} style={{ background: '#722ed1', fontSize: 10 }}>
+                {(sellerName || 'U')[0].toUpperCase()}
+              </Avatar>
+            ) : (
+              <Avatar size={22} style={{ background: '#d9d9d9', fontSize: 10 }}>
+                <UserOutlined />
+              </Avatar>
+            )}
             <Text style={{ fontSize: 12 }}>
-              {isAssigned ? sellerName : 'Unassigned'}
+              {isAssigned ? (sellerName || 'Unknown') : 'Unassigned'}
             </Text>
             <Tooltip title={isAssigned ? "Reassign to another seller" : "Assign to seller"}>
               <Button
                 type="text"
                 size="small"
-                icon={<UserAddOutlined style={{ color: isAssigned ? '#722ed1' : '#1677ff' }} />}
+                icon={<UserAddOutlined style={{ color: isAssigned ? '#722ed1' : '#1677ff', fontSize: 13 }} />}
                 onClick={(e) => {
                   e.stopPropagation();
                   onAssignSeller(record);
@@ -317,34 +425,96 @@ const LeadTable = ({
       },
     },
     {
+      title: 'Created By',
+      dataIndex: 'createdBy',
+      key: 'createdBy',
+      width: 150,
+      render: (createdBy, record) => {
+        if (createdBy) {
+          const userName = getUserName(createdBy);
+          const isSameAsAssigned = record.seller_id === createdBy;
+          const isAdminUser = isAdmin(createdBy);
+          
+          if (userName) {
+            return (
+              <Tooltip title={isSameAsAssigned ? "Created by assigned seller" : `Created by ${userName}`}>
+                <Space size={4}>
+                  {isAdminUser ? (
+                    <CrownOutlined style={{ fontSize: 14, color: '#faad14' }} />
+                  ) : (
+                    <UserOutlined style={{ fontSize: 14, color: isSameAsAssigned ? '#52c41a' : '#1677ff' }} />
+                  )}
+                  <Text style={{ 
+                    fontSize: 12, 
+                    color: isAdminUser ? '#faad14' : (isSameAsAssigned ? '#52c41a' : '#1677ff'),
+                    fontWeight: isAdminUser ? 600 : 400
+                  }}>
+                    {userName.length > 12 ? userName.substring(0, 12) + '...' : userName}
+                    {isSameAsAssigned && ' ✓'}
+                  </Text>
+                </Space>
+              </Tooltip>
+            );
+          } 
+          
+          return (
+            <Tooltip title={`User ID: ${createdBy}`}>
+              <Space size={4}>
+                <UserOutlined style={{ fontSize: 14, color: '#faad14' }} />
+                <Text style={{ fontSize: 12, color: '#faad14' }}>
+                  {createdBy.length > 10 ? createdBy.substring(0, 10) + '...' : createdBy}
+                </Text>
+              </Space>
+            </Tooltip>
+          );
+        }
+        
+        return (
+          <Tooltip title="No creator information available">
+            <Text type="secondary" style={{ fontSize: 12 }}>Unknown</Text>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: 'Looking For',
       dataIndex: 'lookingFor',
       key: 'lookingFor',
+      width: 120,
       ellipsis: true,
-      render: (text) => text ? <Text>{text}</Text> : <Text type="secondary">—</Text>,
+      render: (text) => text ? (
+        <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: text }}>
+          {text}
+        </Text>
+      ) : (
+        <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+      ),
       responsive: ['lg'],
     },
     {
       title: 'Budget',
       dataIndex: 'Budget',
       key: 'Budget',
-      width: 160,
+      width: 120,
       render: (budget) => {
         if (!budget) {
-          return <Text type="secondary">—</Text>;
+          return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
         }
         if (typeof budget === 'number' || !isNaN(Number(budget))) {
           const num = Number(budget);
           return (
-            <Text strong style={{ color: '#1677ff' }}>
-              AED {num.toLocaleString()}
-            </Text>
+            <Space size={4}>
+              <DollarOutlined style={{ color: '#52c41a', fontSize: 12 }} />
+              <Text strong style={{ color: '#1677ff', fontSize: 12 }}>
+                {num >= 1000000 ? `${(num / 1000000).toFixed(1)}M` : `${(num / 1000).toFixed(0)}K`}
+              </Text>
+            </Space>
           );
         }
         return (
           <Tooltip title={budget}>
-            <Text strong style={{ color: '#1677ff', cursor: 'help' }}>
-              {budget.length > 25 ? budget.substring(0, 25) + '...' : budget}
+            <Text style={{ fontSize: 12, cursor: 'help' }}>
+              {budget.length > 15 ? budget.substring(0, 15) + '...' : budget}
             </Text>
           </Tooltip>
         );
@@ -354,7 +524,6 @@ const LeadTable = ({
         const valB = typeof b.Budget === 'number' ? b.Budget : 0;
         return valA - valB;
       },
-      responsive: ['md'],
     },
     {
       title: 'Created',
@@ -363,11 +532,11 @@ const LeadTable = ({
       width: 110,
       render: date =>
         date ? (
-          <Text style={{ fontSize: 12 }}>
+          <Text style={{ fontSize: 11 }}>
             {dayjs(date.toDate?.() || date).format('MMM DD, YYYY')}
           </Text>
         ) : (
-          <Text type="secondary">—</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>—</Text>
         ),
       sorter: (a, b) => {
         if (!a.CreationDate) return -1;
@@ -375,19 +544,19 @@ const LeadTable = ({
         return (a.CreationDate.toDate?.() || new Date(a.CreationDate)) -
           (b.CreationDate.toDate?.() || new Date(b.CreationDate));
       },
-      responsive: ['lg'],
     },
     {
-      title: '',
+      title: 'Actions',
       key: 'actions',
-      width: 80,
+      width: 90,
+      fixed: 'right',
       render: (_, record) => (
-        <Space size={2} onClick={e => e.stopPropagation()}>
+        <Space size={4} onClick={e => e.stopPropagation()}>
           <Tooltip title="Edit">
             <Button
               type="text"
               size="small"
-              icon={<EditOutlined />}
+              icon={<EditOutlined style={{ fontSize: 14 }} />}
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit(record);
@@ -399,7 +568,7 @@ const LeadTable = ({
               type="text"
               size="small"
               danger
-              icon={<DeleteOutlined />}
+              icon={<DeleteOutlined style={{ fontSize: 14 }} />}
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(record);
@@ -429,9 +598,11 @@ const LeadTable = ({
           }}
           onClick={e => e.stopPropagation()}
         >
-          <Text strong style={{ color: '#1677ff' }}>
-            {selectedRowKeys.length} lead{selectedRowKeys.length > 1 ? 's' : ''} selected
-          </Text>
+          <Badge count={selectedRowKeys.length} style={{ backgroundColor: '#1677ff' }}>
+            <Text strong style={{ color: '#1677ff', marginRight: 8 }}>
+              Selected
+            </Text>
+          </Badge>
           <Button
             type="primary"
             size="small"
@@ -477,9 +648,9 @@ const LeadTable = ({
         columns={columns}
         dataSource={data}
         rowKey="id"
-        loading={loading}
+        loading={loading || usersLoading}
         size="middle"
-        scroll={{ x: 800 }}
+        scroll={{ x: 1400 }}
         onRow={record => ({
           onClick: () => onViewDetails(record),
           style: { cursor: 'pointer' },
@@ -490,18 +661,51 @@ const LeadTable = ({
         pagination={{
           pageSize: 10,
           showSizeChanger: true,
-          pageSizeOptions: ['10', '20', '50'],
+          pageSizeOptions: ['10', '20', '50', '100'],
           showTotal: (total, range) =>
             `${range[0]}–${range[1]} of ${total} leads`,
-          size: 'small',
+          size: 'default',
         }}
         style={{ borderRadius: 10, overflow: 'hidden' }}
+        bordered={false}
       />
 
       <style>{`
-        .table-row-even { background: #fff; }
+        .table-row-even { background: #ffffff; }
         .table-row-odd  { background: #fafafa; }
-        .ant-table-tbody > tr:hover > td { background: #f0f5ff !important; }
+        .ant-table-tbody > tr:hover > td { background: #e6f7ff !important; }
+        
+        .status-select .ant-select-selector {
+          border-radius: 20px !important;
+          border-color: #d9d9d9 !important;
+          height: 32px !important;
+        }
+        
+        .status-select .ant-select-selection-item {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .status-select .ant-select-arrow {
+          color: #888;
+        }
+        
+        .ant-table-cell {
+          padding: 12px 10px !important;
+        }
+        
+        .ant-table-thead > tr > th {
+          background: #f5f6fa !important;
+          font-weight: 600 !important;
+          font-size: 12px !important;
+          color: #1a1a2e !important;
+          border-bottom: 2px solid #e8e8e8 !important;
+        }
+        
+        .ant-tag {
+          border: none;
+        }
       `}</style>
     </div>
   );
@@ -509,7 +713,7 @@ const LeadTable = ({
 
 // Deterministic color from string
 function stringToColor(str) {
-  const palette = ['#1677ff', '#52c41a', '#722ed1', '#fa8c16', '#13c2c2', '#eb2f96', '#faad14'];
+  const palette = ['#1677ff', '#52c41a', '#722ed1', '#fa8c16', '#13c2c2', '#eb2f96', '#faad14', '#2f54eb', '#eb2f96'];
   let hash = 0;
   for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
   return palette[Math.abs(hash) % palette.length];

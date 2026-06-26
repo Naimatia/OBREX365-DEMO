@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Typography, Space, Button, message, Modal,
-  Row, Col, Divider, Badge, Tooltip, Tag, Spin
+  Row, Col, Divider, Badge, Tooltip, Tag, Spin, DatePicker
 } from 'antd';
 import { useSelector } from 'react-redux';
 import {
@@ -13,26 +13,31 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   UserAddOutlined,
+  FilterOutlined,
+  ReloadOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
-import { db, collection, getDocs } from 'configs/FirebaseConfig';
+
+import { db, collection, getDocs,where, query } from 'configs/FirebaseConfig';
 import LeadService from 'services/firebase/LeadService';
 import { LeadStatus, LeadInterestLevel, LeadStatusLabels, LeadStatusColors } from 'models/LeadModel';
 import { serverTimestamp } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
+import dayjs from 'dayjs';
 
-import LeadTable        from './components/LeadTable';
-import LeadForm         from './components/LeadForm';
-import LeadDetailsPro   from './components/LeadDetails';
-import LeadFilters      from './components/LeadFilters';
+import LeadTable from './components/LeadTable';
+import LeadForm from './components/LeadForm';
+import LeadDetailsPro from './components/LeadDetails';
+import LeadFilters from './components/LeadFilters';
 import AssignSellerForm from './components/AssignSellerForm';
-import LeadStats        from './components/LeadStats';
-import LeadStatsDrawer  from './components/LeadStatsDrawer';
-import { UserRoles }    from 'models/UserModel';
-import API_BASE_URL     from '../../../../constants/ApiConstant';
+import LeadStats from './components/LeadStats';
+import LeadStatsDrawer from './components/LeadStatsDrawer';
+import { UserRoles } from 'models/UserModel';
+import API_BASE_URL from '../../../../constants/ApiConstant';
 import { APP_NAME } from 'configs/AppConfig';
 
 const { Title, Text } = Typography;
-const { confirm }     = Modal;
+const { confirm } = Modal;
 
 const salesRoles = [
   UserRoles.SELLER,
@@ -44,7 +49,15 @@ const salesRoles = [
   UserRoles.READY_TO_MOVE_SALES,
 ];
 
-// ─── Meta → Lead mapper ───────────────────────────────────────────────────────
+// CEO and Admin roles that should see all leads
+const adminRoles = [
+  UserRoles.ADMIN,
+  UserRoles.CEO,
+  UserRoles.MANAGER,
+  UserRoles.SUPER_ADMIN,
+];
+
+// ─── Meta Lead mapper ───────────────────────────────────────────────────────
 const mapMetaLeadToModel = (metaLead, companyId) => {
   const raw = metaLead.raw_fields || {};
   
@@ -64,31 +77,31 @@ const mapMetaLeadToModel = (metaLead, companyId) => {
   }
 
   return {
-    name:            metaLead.full_name || raw.full_name || 'Unknown',
-    email:           metaLead.email || raw.email || '',
-    phoneNumber:     metaLead.phone_number || raw.phone_number || raw.work_phone_number || '',
-    secondaryEmail:  raw.secondary_email || '',
-    phoneNumber2:    raw.secondary_phone || raw.additional_phone || '',
-    region:          nationality || 'UAE',
-    status:          LeadStatus.NEW, // Changed from PENDING to NEW
-    InterestLevel:   LeadInterestLevel.MEDIUM,
-    Budget:          budget ? String(budget) : null,
-    lookingFor:      lookingFor || null,
-    RedirectedFrom:  redirectedFrom,
-    company_id:      companyId,
-    Notes:           [],
-    CreationDate:    metaLead.created_time ? new Date(metaLead.created_time) : new Date(),
-    meta_lead_id:    metaLead.lead_id,
-    meta_form_id:    metaLead.form_id,
-    meta_form_name:  metaLead.form_name,
-    meta_ad_name:    metaLead.ad_name || '',
-    meta_campaign:   metaLead.campaign_name || '',
-    meta_adset:      metaLead.adset_name || '',
-    meta_platform:   metaLead.platform || metaLead.meta_platform || 'facebook',
+    name: metaLead.full_name || raw.full_name || 'Unknown',
+    email: metaLead.email || raw.email || '',
+    phoneNumber: metaLead.phone_number || raw.phone_number || raw.work_phone_number || '',
+    secondaryEmail: raw.secondary_email || '',
+    phoneNumber2: raw.secondary_phone || raw.additional_phone || '',
+    region: nationality || 'UAE',
+    status: LeadStatus.NEW,
+    InterestLevel: LeadInterestLevel.MEDIUM,
+    Budget: budget ? String(budget) : null,
+    lookingFor: lookingFor || null,
+    RedirectedFrom: redirectedFrom,
+    company_id: companyId,
+    Notes: [],
+    CreationDate: metaLead.created_time ? new Date(metaLead.created_time) : new Date(),
+    meta_lead_id: metaLead.lead_id,
+    meta_form_id: metaLead.form_id,
+    meta_form_name: metaLead.form_name,
+    meta_ad_name: metaLead.ad_name || '',
+    meta_campaign: metaLead.campaign_name || '',
+    meta_adset: metaLead.adset_name || '',
+    meta_platform: metaLead.platform || metaLead.meta_platform || 'facebook',
     raw_meta_fields: raw,
     sourceDetails: {
       formName: metaLead.form_name,
-      adName:   metaLead.ad_name,
+      adName: metaLead.ad_name,
       campaign: metaLead.campaign_name,
     },
     createdAt: serverTimestamp(),
@@ -172,69 +185,213 @@ const MetaSyncModal = ({ visible, onClose, syncing, syncResult, onSync }) => (
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const LeadsPage = () => {
-  const initialFilters = { search: '', status: '', InterestLevel: '', region: '', seller_id: '' };
+  const initialFilters = { 
+    search: '', 
+    status: '', 
+    InterestLevel: '', 
+    region: '', 
+    createdBy: '', // Filter by who created the lead
+    assignedTo: '', // Filter by who the lead is assigned to
+    dateRange: null,
+  };
 
-  const [leads, setLeads]                           = useState([]);
-  const [loading, setLoading]                       = useState(false);
-  const [formVisible, setFormVisible]               = useState(false);
-  const [confirmLoading, setConfirmLoading]         = useState(false);
-  const [editingLead, setEditingLead]               = useState(null);
-  const [selectedLead, setSelectedLead]             = useState(null);
-  const [detailsVisible, setDetailsVisible]         = useState(false);
-  const [sellers, setSellers]                       = useState([]);
+  const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [formVisible, setFormVisible] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [editingLead, setEditingLead] = useState(null);
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [detailsVisible, setDetailsVisible] = useState(false);
+  const [sellers, setSellers] = useState([]);
   const [assignSellerVisible, setAssignSellerVisible] = useState(false);
-  const [assigningLead, setAssigningLead]           = useState(null);
-  const [filters, setFilters]                       = useState(initialFilters);
+  const [assigningLead, setAssigningLead] = useState(null);
+  const [filters, setFilters] = useState(initialFilters);
   const [statsDrawerVisible, setStatsDrawerVisible] = useState(false);
 
-  const [bulkAssignVisible, setBulkAssignVisible]   = useState(false);
-  const [bulkLeadIds, setBulkLeadIds]               = useState([]);
+  const [bulkAssignVisible, setBulkAssignVisible] = useState(false);
+  const [bulkLeadIds, setBulkLeadIds] = useState([]);
 
-  const [syncModalVisible, setSyncModalVisible]     = useState(false);
-  const [syncing, setSyncing]                       = useState(false);
-  const [syncResult, setSyncResult]                 = useState(null);
+  const [syncModalVisible, setSyncModalVisible] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
 
-  const user      = useSelector(state => state.auth.user);
+  const user = useSelector(state => state.auth.user);
   const companyId = user?.company_id;
+  const userRole = user?.Role;
 
+  // Check if user should see all leads (CEO/Admin)
+  const isAdminView = adminRoles.includes(userRole);
+
+  // Set default date range to current month
   useEffect(() => {
-    if (companyId) { fetchLeads(); fetchSellers(); }
+    if (companyId) {
+      const startOfMonth = dayjs().startOf('month');
+      const endOfMonth = dayjs().endOf('month');
+      setFilters(prev => ({
+        ...prev,
+        dateRange: [startOfMonth, endOfMonth]
+      }));
+      
+      fetchLeads();
+      fetchSellers();
+    }
   }, [companyId]);
 
-  // ─── Fetch ────────────────────────────────────────────────────────────────
-  const fetchLeads = useCallback(async () => {
-    if (!companyId) return;
+
+const fetchLeads = useCallback(async () => {
+  if (!companyId) return;
+  
+  setLoading(true);
+  try {
+    console.log('🔍 [LeadsPage] Fetching leads for company:', companyId);
+    console.log('🔍 [LeadsPage] User role:', userRole);
+    console.log('🔍 [LeadsPage] Is Admin View:', isAdminView);
     
-    setLoading(true);
-    try {
-      let leadsData = filters.search
-        ? await LeadService.searchLeads(companyId, filters.search)
-        : await LeadService.getLeadsByCompany(companyId);
-
-      if (filters.status && filters.status !== '') {
-        leadsData = leadsData.filter(l => l.status === filters.status);
-      }
+    // Get ALL leads from company directly using Firestore
+    const allLeadsQuery = query(
+      collection(db, 'leads'),
+      where('company_id', '==', companyId)
+    );
+    
+    const allLeadsSnap = await getDocs(allLeadsQuery);
+    let allLeads = allLeadsSnap.docs.map(doc => ({ 
+      id: doc.id, 
+      ...doc.data(),
+      _createdAt: doc.data().createdAt?.toDate?.() || null,
+      _creationDate: doc.data().CreationDate?.toDate?.() || null
+    }));
+    
+    console.log('📊 [LeadsPage] Total leads in company:', allLeads.length);
+    
+    // Log sample to debug
+    if (allLeads.length > 0) {
+      console.log('📝 [LeadsPage] Sample lead data:', {
+        id: allLeads[0].id,
+        name: allLeads[0].name,
+        createdBy: allLeads[0].createdBy,
+        seller_id: allLeads[0].seller_id,
+        status: allLeads[0].status
+      });
       
-      if (filters.InterestLevel && filters.InterestLevel !== '') {
-        leadsData = leadsData.filter(l => l.InterestLevel === filters.InterestLevel);
-      }
-      
-      if (filters.region && filters.region !== '') {
-        leadsData = leadsData.filter(l => l.region === filters.region);
-      }
-      
-      if (filters.seller_id && filters.seller_id !== '') {
-        leadsData = leadsData.filter(l => l.seller_id === filters.seller_id);
-      }
-
-      setLeads(leadsData);
-    } catch (error) {
-      console.error('Error fetching leads:', error);
-      message.error('Failed to fetch leads');
-    } finally {
-      setLoading(false);
+      const withCreatedBy = allLeads.filter(l => l.createdBy).length;
+      const withoutCreatedBy = allLeads.length - withCreatedBy;
+      console.log(`📊 [LeadsPage] CreatedBy stats: ${withCreatedBy} have createdBy, ${withoutCreatedBy} don't`);
     }
-  }, [companyId, filters.search, filters.status, filters.InterestLevel, filters.region, filters.seller_id]);
+    
+    let leadsData = [];
+    const currentUserId = user?.id;
+    
+    if (isAdminView) {
+      // CEO/Admin: Apply filters - SHOW ALL LEADS
+      console.log('🔍 [LeadsPage] Admin view - applying filters:', filters);
+      
+      // DO NOT modify createdBy for admin view - show all leads as-is
+      
+      // Filter by date range
+      if (filters.dateRange && filters.dateRange.length === 2) {
+        const [start, end] = filters.dateRange;
+        allLeads = allLeads.filter(lead => {
+          const date = lead._createdAt || lead._creationDate;
+          return date && dayjs(date).isBetween(start, end, 'day', '[]');
+        });
+        console.log('📊 [LeadsPage] After date filter:', allLeads.length);
+      }
+      
+      // Filter by creator (createdBy)
+      if (filters.createdBy && filters.createdBy !== '') {
+        allLeads = allLeads.filter(lead => {
+          const match = lead.createdBy === filters.createdBy;
+          return match;
+        });
+        console.log('📊 [LeadsPage] After createdBy filter:', allLeads.length);
+      }
+      
+      // Filter by assigned seller (seller_id)
+      if (filters.assignedTo && filters.assignedTo !== '') {
+        allLeads = allLeads.filter(lead => {
+          const match = lead.seller_id === filters.assignedTo;
+          return match;
+        });
+        console.log('📊 [LeadsPage] After assignedTo filter:', allLeads.length);
+      }
+      
+      leadsData = allLeads;
+    } else {
+      // Seller View: Get leads they created OR assigned to them
+      console.log('🔍 [LeadsPage] Seller view - filtering for seller:', currentUserId);
+      
+      // DO NOT modify createdBy for seller view either
+      
+      // Find leads assigned to this seller (by seller_id)
+      const assignedToSeller = allLeads.filter(lead => {
+        const match = lead.seller_id === currentUserId;
+        if (match) {
+          console.log('✅ [LeadsPage] Lead assigned to seller:', lead.id, lead.name, '(assigned)');
+        }
+        return match;
+      });
+      
+      // Find leads created by this seller (by createdBy)
+      const createdBySeller = allLeads.filter(lead => {
+        const match = lead.createdBy === currentUserId;
+        if (match) {
+          console.log('✅ [LeadsPage] Lead created by seller:', lead.id, lead.name, '(created)');
+        }
+        return match;
+      });
+      
+      console.log('📊 [LeadsPage] Assigned to seller count:', assignedToSeller.length);
+      console.log('📊 [LeadsPage] Created by seller count:', createdBySeller.length);
+      
+      // Combine both sets - UNION of created and assigned leads
+      const combined = [...createdBySeller, ...assignedToSeller];
+      leadsData = Array.from(new Map(combined.map(lead => [lead.id, lead])).values());
+      
+      console.log('📊 [LeadsPage] Total unique leads for seller:', leadsData.length);
+      
+      // Log breakdown
+      const finalCreated = leadsData.filter(l => l.createdBy === currentUserId).length;
+      const finalAssigned = leadsData.filter(l => l.seller_id === currentUserId && l.createdBy !== currentUserId).length;
+      console.log(`📊 [LeadsPage] Breakdown: ${finalCreated} created by seller, ${finalAssigned} assigned to seller`);
+    }
+
+    // Apply additional client-side filters
+    if (filters.search) {
+      leadsData = leadsData.filter(l => 
+        l.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        l.email?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        l.phoneNumber?.includes(filters.search)
+      );
+    }
+
+    if (filters.status && filters.status !== '') {
+      leadsData = leadsData.filter(l => l.status === filters.status);
+    }
+    
+    if (filters.InterestLevel && filters.InterestLevel !== '') {
+      leadsData = leadsData.filter(l => l.InterestLevel === filters.InterestLevel);
+    }
+    
+    if (filters.region && filters.region !== '') {
+      leadsData = leadsData.filter(l => l.region === filters.region);
+    }
+
+    // Sort by createdAt (newest first)
+    leadsData.sort((a, b) => {
+      const dateA = a._createdAt || a._creationDate || new Date(0);
+      const dateB = b._createdAt || b._creationDate || new Date(0);
+      return dateB - dateA;
+    });
+
+    console.log('📊 [LeadsPage] Final leads count:', leadsData.length);
+    setLeads(leadsData);
+  } catch (error) {
+    console.error('❌ [LeadsPage] Error fetching leads:', error);
+    message.error('Failed to fetch leads');
+  } finally {
+    setLoading(false);
+  }
+}, [companyId, isAdminView, user?.id, userRole, filters]);
 
   useEffect(() => {
     if (companyId) {
@@ -253,11 +410,20 @@ const LeadsPage = () => {
   };
 
   const handleClearFilters = () => {
-    setFilters(initialFilters);
+    const startOfMonth = dayjs().startOf('month');
+    const endOfMonth = dayjs().endOf('month');
+    setFilters({ 
+      ...initialFilters,
+      dateRange: [startOfMonth, endOfMonth] 
+    });
   };
 
   const handleSearch = (value) => {
     setFilters(prevFilters => ({ ...prevFilters, search: value || '' }));
+  };
+
+  const handleDateRangeChange = (dates) => {
+    setFilters(prevFilters => ({ ...prevFilters, dateRange: dates }));
   };
 
   useEffect(() => {
@@ -273,7 +439,7 @@ const LeadsPage = () => {
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(u => u.company_id === companyId && salesRoles.includes(u.Role))
         .map(u => ({
-          id:   u.id,
+          id: u.id,
           name: `${u.firstname ?? ''} ${u.lastname ?? ''}${u.country ? ` (${u.country})` : ''}`.trim(),
           phoneNumber: u.phoneNumber || u.phone || '',
           email: u.email || '',
@@ -307,10 +473,10 @@ const LeadsPage = () => {
       const { leads: metaLeads = [] } = await res.json();
       if (metaLeads.length === 0) { setSyncResult({ total: 0, saved: 0, skipped: 0, failed: 0 }); return; }
 
-      const existing     = await LeadService.getLeadsByCompany(companyId);
-      const metaIds      = new Set(existing.map(l => l.meta_lead_id).filter(Boolean));
-      const emails       = new Set(existing.map(l => l.email?.toLowerCase().trim()).filter(Boolean));
-      const phones       = new Set(existing.map(l => normalizePhone(l.phoneNumber)).filter(Boolean));
+      const existing = await LeadService.getLeadsByCompany(companyId);
+      const metaIds = new Set(existing.map(l => l.meta_lead_id).filter(Boolean));
+      const emails = new Set(existing.map(l => l.email?.toLowerCase().trim()).filter(Boolean));
+      const phones = new Set(existing.map(l => normalizePhone(l.phoneNumber)).filter(Boolean));
 
       let saved = 0, skipped = 0, failed = 0;
 
@@ -357,11 +523,11 @@ const LeadsPage = () => {
         status: values.status || LeadStatus.NEW,
         convertedContactId: null,
         convertedAt: null,
+        createdBy: user?.uid, // Track who created the lead
       };
 
-      // If autoConvert is true or status is CONVERTED, create contact
       if (values.autoConvert || values.status === LeadStatus.CONVERTED) {
-        await LeadService.create(leadData, true); // Pass true to auto-create contact
+        await LeadService.create(leadData, true);
         message.success('Lead created successfully with contact');
       } else {
         await LeadService.create(leadData, false);
@@ -377,6 +543,7 @@ const LeadsPage = () => {
       setConfirmLoading(false);
     }
   };
+
 
   const handleUpdateLead = async (values) => {
     setConfirmLoading(true);
@@ -834,7 +1001,6 @@ const handleReassignSeller = async (leadId, sellerId) => {
     throw error;
   }
 };
-
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="leads-page" style={{ padding: '0 0 24px' }}>
@@ -853,12 +1019,24 @@ const handleReassignSeller = async (leadId, sellerId) => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
               <div>
                 <Title level={3} style={{ margin: 0, fontWeight: 600 }}>
-                  Leads Management
+                  {isAdminView ? '📊 All Leads' : 'My Leads'}
                 </Title>
-                <Text type="secondary">Manage and track all your real estate leads</Text>
+                <Text type="secondary">
+                  {isAdminView 
+                    ? `Manage all leads across the company (${leads.length} total)`
+                    : 'Manage and track your assigned leads'}
+                </Text>
               </div>
 
               <Space wrap size={10}>
+                <DatePicker.RangePicker
+                  value={filters.dateRange}
+                  onChange={handleDateRangeChange}
+                  format="DD/MM/YYYY"
+                  style={{ width: 240 }}
+                  allowClear={false}
+                />
+
                 <Tooltip title="Sync leads from Facebook Meta Forms">
                   <Button
                     icon={<FacebookOutlined />}
@@ -868,9 +1046,6 @@ const handleReassignSeller = async (leadId, sellerId) => {
                       borderColor: '#1877F2', 
                       color: '#fff', 
                       fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6
                     }}
                   >
                     Sync Meta Leads
@@ -881,7 +1056,7 @@ const handleReassignSeller = async (leadId, sellerId) => {
                   icon={<UploadOutlined />}
                   onClick={() => document.getElementById('csv-upload').click()}
                 >
-                  Import CSV / Excel
+                  Import
                 </Button>
 
                 <input
@@ -901,7 +1076,15 @@ const handleReassignSeller = async (leadId, sellerId) => {
                   }}
                   style={{ height: 40, padding: '0 20px' }}
                 >
-                  Add New Lead
+                  Add Lead
+                </Button>
+
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={fetchLeads}
+                  loading={loading}
+                >
+                  Refresh
                 </Button>
               </Space>
             </div>
@@ -915,6 +1098,9 @@ const handleReassignSeller = async (leadId, sellerId) => {
               sellers={sellers}
               loading={loading}
               filters={filters}
+              isAdminView={isAdminView}
+              dateRange={filters.dateRange}
+              onDateRangeChange={handleDateRangeChange}
             />
           </Card>
         </Col>
@@ -938,29 +1124,54 @@ const handleReassignSeller = async (leadId, sellerId) => {
             }}
             bodyStyle={{ padding: 0 }}
           >
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid #f0f0f0' }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Title level={5} style={{ margin: 0 }}>
-                All Leads 
+                {isAdminView ? (
+                  filters.createdBy && filters.createdBy !== '' ? (
+                    <>
+                      Leads Created By: <Text type="primary">
+                        {sellers.find(s => s.id === filters.createdBy)?.name || 'Selected Seller'}
+                      </Text>
+                    </>
+                  ) : filters.assignedTo && filters.assignedTo !== '' ? (
+                    <>
+                      Leads Assigned To: <Text type="primary">
+                        {sellers.find(s => s.id === filters.assignedTo)?.name || 'Selected Seller'}
+                      </Text>
+                    </>
+                  ) : (
+                    'All Leads'
+                  )
+                ) : (
+                  'My Leads'
+                )}
                 <Text type="secondary" style={{ marginLeft: 8, fontSize: 14 }}>
-                  ({leads.length} total)
+                  ({leads.length} leads)
                 </Text>
+                {filters.dateRange && (
+                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                    · {filters.dateRange[0].format('DD MMM')} - {filters.dateRange[1].format('DD MMM YYYY')}
+                  </Text>
+                )}
               </Title>
             </div>
 
             <LeadTable
-  leads={leads}
-  loading={loading}
-  onEdit={handleEditLead}
-  onDelete={handleDeleteLead}
-  onAssignSeller={handleShowAssignSeller}
-  onViewDetails={handleViewDetails}
-  onBulkAssign={handleBulkAssignOpen}
-  onConvertToContact={handleConvertToContact}
-  onBulkConvert={handleBulkConvertToContacts}
-  onStatusChange={handleStatusChange} // Add this
-  sellers={sellers} // Add this
-  onReassignSeller={handleReassignSeller} // Add this
-/>
+              leads={leads}
+              loading={loading}
+              onEdit={handleEditLead}
+              onDelete={handleDeleteLead}
+              onAssignSeller={handleShowAssignSeller}
+              onViewDetails={handleViewDetails}
+              onBulkAssign={handleBulkAssignOpen}
+              onConvertToContact={handleConvertToContact}
+              onBulkConvert={handleBulkConvertToContacts}
+              onStatusChange={handleStatusChange}
+              sellers={sellers}
+              onReassignSeller={handleReassignSeller}
+              isAdminView={isAdminView}
+              companyId={companyId}
+            />
           </Card>
         </Col>
       </Row>

@@ -25,7 +25,6 @@ import {
   StarOutlined,
   ShareAltOutlined
 } from '@ant-design/icons';
-import LeadsService from 'services/LeadsService';
 import countries from 'constants/countries';
 
 const { Option } = Select;

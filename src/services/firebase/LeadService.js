@@ -10,28 +10,23 @@ import {
   deleteDoc, 
   serverTimestamp, 
   getFirestore,
-  writeBatch ,
+  writeBatch,
   getDoc,
   orderBy,
   limit
 } from 'firebase/firestore';
-import { db } from 'configs/FirebaseConfig'; // Add this import
+import { db } from 'configs/FirebaseConfig';
 import BaseFirebaseService from './BaseFirebaseService';
 import { convertToLeadModel, LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import ContactService from './ContactService';
-import { ContactStatus, ContactType  } from 'models/ContactModel';
+import { ContactStatus, ContactType } from 'models/ContactModel';
 import sellerActivityService, { ActivityTypes, EntityTypes } from './SellerActivityService';
-
-// Remove CrmModels import - we'll use 'leads', 'contacts' directly
 
 /**
  * Service for managing leads with Firebase
  * Extends BaseFirebaseService for common CRUD operations
  */
 class LeadService extends BaseFirebaseService {
-  /**
-   * Constructor
-   */
   constructor() {
     super('leads', convertToLeadModel);
     this.contactService = ContactService;
@@ -39,13 +34,9 @@ class LeadService extends BaseFirebaseService {
 
   /**
    * Create a new lead with automatic contact creation
-   * @param {Object} leadData - Lead data
-   * @param {boolean} createContact - Whether to auto-create contact
-   * @returns {Promise<Object>} - Created lead with contact info
    */
   async create(leadData, createContact = false) {
     try {
-      // Prepare lead data
       const lead = {
         ...leadData,
         status: leadData.status || LeadStatus.NEW,
@@ -53,32 +44,29 @@ class LeadService extends BaseFirebaseService {
         convertedAt: null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        createdBy: leadData.createdBy || leadData.seller_id || null, // Track who created the lead
       };
 
-      // Create lead
       const leadRef = await addDoc(collection(db, 'leads'), lead);
       const leadId = leadRef.id;
       let contactId = null;
 
-      // Auto-create contact if requested
       if (createContact || leadData.status === LeadStatus.CONVERTED) {
         contactId = await this.createContactFromLead(leadId, lead);
       }
 
-          // Log activity
-    if (leadData.seller_id || leadData.createdBy) {
-      const sellerId = leadData.seller_id || leadData.createdBy;
-      await this.logLeadActivity(
-        sellerId,
-        leadData.company_id,
-        ActivityTypes.LEAD_CREATED,
-        leadId,
-        leadData,
-        { name: leadData.name, email: leadData.email },
-        { status: leadData.status || LeadStatus.NEW, source: leadData.source }
-      );
-    }
-
+      if (leadData.seller_id || leadData.createdBy) {
+        const sellerId = leadData.seller_id || leadData.createdBy;
+        await this.logLeadActivity(
+          sellerId,
+          leadData.company_id,
+          ActivityTypes.LEAD_CREATED,
+          leadId,
+          leadData,
+          { name: leadData.name, email: leadData.email },
+          { status: leadData.status || LeadStatus.NEW, source: leadData.source }
+        );
+      }
 
       return {
         id: leadId,
@@ -92,91 +80,80 @@ class LeadService extends BaseFirebaseService {
   }
 
   async logLeadActivity(sellerId, companyId, activityType, leadId, leadData, details = {}, metadata = {}) {
-  return sellerActivityService.logActivity({
-    sellerId,
-    companyId,
-    activityType,
-    entityType: EntityTypes.LEAD,
-    entityId: leadId,
-    entityName: leadData?.name || details?.name || 'Unknown Lead',
-    details: {
-      ...details,
-      name: leadData?.name || details?.name,
-      email: leadData?.email || details?.email,
-      phone: leadData?.phoneNumber || details?.phone,
-      status: leadData?.status || details?.status,
-    },
-    metadata,
-  });
-}
-
+    return sellerActivityService.logActivity({
+      sellerId,
+      companyId,
+      activityType,
+      entityType: EntityTypes.LEAD,
+      entityId: leadId,
+      entityName: leadData?.name || details?.name || 'Unknown Lead',
+      details: {
+        ...details,
+        name: leadData?.name || details?.name,
+        email: leadData?.email || details?.email,
+        phone: leadData?.phoneNumber || details?.phone,
+        status: leadData?.status || details?.status,
+      },
+      metadata,
+    });
+  }
 
   /**
    * Create a contact from lead data
-   * @param {string} leadId - Lead ID
-   * @param {Object} leadData - Lead data
-   * @returns {Promise<string>} - Created contact ID
    */
-async createContactFromLead(leadId, leadData) {
-  try {
-    // Ensure all required fields have values
-    const contactData = {
-      leadId: leadId,
-      name: leadData.name || 'Unknown',
-      firstName: leadData.name?.split(' ')[0] || '',
-      lastName: leadData.name?.split(' ').slice(1).join(' ') || '',
-      phone: leadData.phoneNumber || '',
-      phoneNumber: leadData.phoneNumber || '',
-      email: leadData.email || '',
-      status: ContactStatus.ACTIVE, // Now this will work
-      company_id: leadData.company_id || '',
-      region: leadData.region || '',
-      // Additional fields from lead
-      secondaryEmail: leadData.secondaryEmail || '',
-      phoneNumber2: leadData.phoneNumber2 || '',
-      lookingFor: leadData.lookingFor || '',
-      Budget: leadData.Budget || null,
-      InterestLevel: leadData.InterestLevel || 'Medium',
-      source: leadData.RedirectedFrom || leadData.source || 'direct',
-      assignedTo: leadData.assignedTo || null,
-      assignedAt: leadData.assignedAt || null,
-      Notes: leadData.Notes || [],
-      CreationDate: leadData.CreationDate || serverTimestamp(),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      // Contact specific fields
-      type: ContactType.LEAD,
-    };
+  async createContactFromLead(leadId, leadData) {
+    try {
+      const contactData = {
+        leadId: leadId,
+        name: leadData.name || 'Unknown',
+        firstName: leadData.name?.split(' ')[0] || '',
+        lastName: leadData.name?.split(' ').slice(1).join(' ') || '',
+        phone: leadData.phoneNumber || '',
+        phoneNumber: leadData.phoneNumber || '',
+        email: leadData.email || '',
+        status: ContactStatus.ACTIVE,
+        company_id: leadData.company_id || '',
+        region: leadData.region || '',
+        secondaryEmail: leadData.secondaryEmail || '',
+        phoneNumber2: leadData.phoneNumber2 || '',
+        lookingFor: leadData.lookingFor || '',
+        Budget: leadData.Budget || null,
+        InterestLevel: leadData.InterestLevel || 'Medium',
+        source: leadData.RedirectedFrom || leadData.source || 'direct',
+        assignedTo: leadData.assignedTo || null,
+        assignedAt: leadData.assignedAt || null,
+        Notes: leadData.Notes || [],
+        CreationDate: leadData.CreationDate || serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        type: ContactType.LEAD,
+      };
 
-    // Remove any undefined values to prevent Firebase errors
-    Object.keys(contactData).forEach(key => {
-      if (contactData[key] === undefined) {
-        delete contactData[key];
-      }
-    });
+      Object.keys(contactData).forEach(key => {
+        if (contactData[key] === undefined) {
+          delete contactData[key];
+        }
+      });
 
-    const contactRef = await addDoc(collection(db, 'contacts'), contactData);
-    const contactId = contactRef.id;
+      const contactRef = await addDoc(collection(db, 'contacts'), contactData);
+      const contactId = contactRef.id;
 
-    // Update lead with contact ID
-    await this.update(leadId, {
-      convertedContactId: contactId,
-      convertedAt: serverTimestamp(),
-      status: LeadStatus.CONVERTED,
-      updatedAt: serverTimestamp()
-    });
+      await this.update(leadId, {
+        convertedContactId: contactId,
+        convertedAt: serverTimestamp(),
+        status: LeadStatus.CONVERTED,
+        updatedAt: serverTimestamp()
+      });
 
-    return contactId;
-  } catch (error) {
-    console.error('Error creating contact from lead:', error);
-    throw error;
+      return contactId;
+    } catch (error) {
+      console.error('Error creating contact from lead:', error);
+      throw error;
+    }
   }
-}
 
   /**
-   * Convert a lead to contact (manual conversion)
-   * @param {string} leadId - Lead ID
-   * @returns {Promise<Object>} - Created contact
+   * Convert a lead to contact
    */
   async convertToContact(leadId) {
     try {
@@ -190,17 +167,14 @@ async createContactFromLead(leadId, leadData) {
         throw new Error('Lead already converted to contact');
       }
 
-      // Create contact from lead
       const contactId = await this.createContactFromLead(leadId, lead);
       
-      // Update lead status
       await this.update(leadId, {
         status: LeadStatus.CONVERTED,
         convertedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
 
-      // Return the created contact
       const contact = await this.contactService.getById(contactId);
       return contact;
     } catch (error) {
@@ -211,8 +185,6 @@ async createContactFromLead(leadId, leadData) {
 
   /**
    * Bulk convert leads to contacts
-   * @param {Array<string>} leadIds - Array of lead IDs
-   * @returns {Promise<Object>} - Results of conversion
    */
   async bulkConvertToContacts(leadIds) {
     const results = {
@@ -240,7 +212,6 @@ async createContactFromLead(leadId, leadData) {
           continue;
         }
 
-        // Convert to contact
         const contact = await this.convertToContact(leadId);
         results.converted.push({ leadId, contactId: contact.id });
       } catch (error) {
@@ -253,9 +224,6 @@ async createContactFromLead(leadId, leadData) {
 
   /**
    * Get leads by status
-   * @param {string} companyId - Company ID
-   * @param {string} status - Lead status
-   * @returns {Promise<Array>} - Array of leads
    */
   async getLeadsByStatus(companyId, status) {
     try {
@@ -281,90 +249,78 @@ async createContactFromLead(leadId, leadData) {
 
   /**
    * Update lead status and optionally create contact
-   * @param {string} leadId - Lead ID
-   * @param {string} newStatus - New status
-   * @param {Object} additionalData - Additional data to update
-   * @returns {Promise<Object>} - Updated lead
    */
-async updateStatus(leadId, newStatus, additionalData = {}) {
-  try {
-    const lead = await this.getById(leadId);
-    
-    if (!lead) {
-      throw new Error('Lead not found');
-    }
-
-    const oldStatus = lead.status;
-
-    // If converting to CONVERTED, automatically create contact if not exists
-    if (newStatus === LeadStatus.CONVERTED && !lead.convertedContactId) {
-      await this.convertToContact(leadId);
-    }
-
-    // Update lead
-    const updateData = {
-      status: newStatus,
-      ...additionalData,
-      updatedAt: serverTimestamp()
-    };
-
-    await this.update(leadId, updateData);
-    
-    // Log status change
-    await this.logLeadActivity(
-      lead.seller_id || lead.createdBy,
-      lead.company_id,
-      ActivityTypes.LEAD_STATUS_CHANGED,
-      leadId,
-      lead,
-      { 
-        name: lead.name,
-        previousStatus: oldStatus,
-        newStatus: newStatus,
-      },
-      { 
-        oldStatus: oldStatus, 
-        newStatus: newStatus,
-        converted: newStatus === LeadStatus.CONVERTED,
+  async updateStatus(leadId, newStatus, additionalData = {}) {
+    try {
+      const lead = await this.getById(leadId);
+      
+      if (!lead) {
+        throw new Error('Lead not found');
       }
-    );
 
-    // If converted, log conversion
-    if (newStatus === LeadStatus.CONVERTED && lead.convertedContactId) {
+      const oldStatus = lead.status;
+
+      if (newStatus === LeadStatus.CONVERTED && !lead.convertedContactId) {
+        await this.convertToContact(leadId);
+      }
+
+      const updateData = {
+        status: newStatus,
+        ...additionalData,
+        updatedAt: serverTimestamp()
+      };
+
+      await this.update(leadId, updateData);
+      
       await this.logLeadActivity(
         lead.seller_id || lead.createdBy,
         lead.company_id,
-        ActivityTypes.LEAD_CONVERTED,
+        ActivityTypes.LEAD_STATUS_CHANGED,
         leadId,
         lead,
         { 
           name: lead.name,
-          contactId: lead.convertedContactId,
+          previousStatus: oldStatus,
+          newStatus: newStatus,
         },
         { 
-          convertedAt: new Date().toISOString(),
+          oldStatus: oldStatus, 
+          newStatus: newStatus,
+          converted: newStatus === LeadStatus.CONVERTED,
         }
       );
+
+      if (newStatus === LeadStatus.CONVERTED && lead.convertedContactId) {
+        await this.logLeadActivity(
+          lead.seller_id || lead.createdBy,
+          lead.company_id,
+          ActivityTypes.LEAD_CONVERTED,
+          leadId,
+          lead,
+          { 
+            name: lead.name,
+            contactId: lead.convertedContactId,
+          },
+          { 
+            convertedAt: new Date().toISOString(),
+          }
+        );
+      }
+      
+      return this.getById(leadId);
+    } catch (error) {
+      console.error('Error updating lead status:', error);
+      throw error;
     }
-    
-    // Return updated lead
-    return this.getById(leadId);
-  } catch (error) {
-    console.error('Error updating lead status:', error);
-    throw error;
   }
-}
 
   /**
    * Get leads with their contact info (if converted)
-   * @param {string} companyId - Company ID
-   * @returns {Promise<Array>} - Array of leads with contact info
    */
   async getLeadsWithContacts(companyId) {
     try {
       const leads = await this.getLeadsByCompany(companyId);
       
-      // Get contacts for converted leads
       const leadsWithContacts = await Promise.all(
         leads.map(async (lead) => {
           if (lead.convertedContactId) {
@@ -387,28 +343,51 @@ async updateStatus(leadId, newStatus, additionalData = {}) {
   }
 
   /**
-   * Get leads by seller ID
-   * @param {string} companyId - Company ID
-   * @param {string} sellerId - Seller ID
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of leads
+   * Get leads by seller ID (both created AND assigned)
    */
   async getLeadsBySeller(companyId, sellerId, options = {}) {
-    const sellerFilter = ['seller_id', '==', sellerId];
-    const filters = options.filters ? [...options.filters, sellerFilter] : [sellerFilter];
-    
+    try {
+      // Get leads created by this seller
+      const createdLeads = await this.getLeadsCreatedBySeller(companyId, sellerId, options);
+      
+      // Get leads assigned to this seller
+      const assignedLeads = await this.getLeadsAssignedToSeller(companyId, sellerId, options);
+      
+      // Combine and deduplicate
+      const allLeads = [...createdLeads, ...assignedLeads];
+      const uniqueLeads = Array.from(
+        new Map(allLeads.map(lead => [lead.id, lead])).values()
+      );
+      
+      return uniqueLeads;
+    } catch (error) {
+      console.error('Error getting leads by seller:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get leads created by a specific seller
+   */
+  async getLeadsCreatedBySeller(companyId, sellerId, options = {}) {
     return this.getAllByCompany(companyId, {
       ...options,
-      filters
+      filters: [...(options.filters || []), ['createdBy', '==', sellerId]]
+    });
+  }
+
+  /**
+   * Get leads assigned to a specific seller
+   */
+  async getLeadsAssignedToSeller(companyId, sellerId, options = {}) {
+    return this.getAllByCompany(companyId, {
+      ...options,
+      filters: [...(options.filters || []), ['seller_id', '==', sellerId]]
     });
   }
 
   /**
    * Search leads by name, email, or phone
-   * @param {string} companyId - Company ID
-   * @param {string} searchTerm - Search term
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of leads
    */
   async searchLeads(companyId, searchTerm, options = {}) {
     if (!searchTerm) {
@@ -469,9 +448,6 @@ async updateStatus(leadId, newStatus, additionalData = {}) {
 
   /**
    * Get recent leads for a company
-   * @param {string} companyId - Company ID
-   * @param {number} limit - Number of leads to return
-   * @returns {Promise<Array>} - Array of leads
    */
   async getRecentLeads(companyId, limit = 5) {
     return this.getAllByCompany(companyId, {
@@ -482,8 +458,6 @@ async updateStatus(leadId, newStatus, additionalData = {}) {
 
   /**
    * Get lead statistics by status
-   * @param {string} companyId - Company ID
-   * @returns {Promise<Object>} - Statistics by status
    */
   async getLeadStats(companyId) {
     try {
@@ -498,15 +472,12 @@ async updateStatus(leadId, newStatus, additionalData = {}) {
       };
 
       leads.forEach(lead => {
-        // Status stats
         const status = lead.status || LeadStatus.NEW;
         stats.byStatus[status] = (stats.byStatus[status] || 0) + 1;
 
-        // Interest stats
         const interest = lead.InterestLevel || LeadInterestLevel.MEDIUM;
         stats.byInterest[interest] = (stats.byInterest[interest] || 0) + 1;
 
-        // Conversion stats
         if (lead.convertedContactId || status === LeadStatus.CONVERTED) {
           stats.converted++;
         } else {
@@ -523,64 +494,57 @@ async updateStatus(leadId, newStatus, additionalData = {}) {
 
   /**
    * Assign or reassign a lead to a user/seller
-   * @param {string} leadId - Lead document ID
-   * @param {Object} user - User/seller object
-   * @returns {Promise<Object>} - Updated lead data
    */
-async assignTo(leadId, user) {
-  if (!leadId || !user?.id) {
-    throw new Error('Missing leadId or user.id');
-  }
-
-  const now = serverTimestamp();
-  const lead = await this.getById(leadId);
-
-  const updateData = {
-    seller_id: user.id,
-    assignedAt: now,
-    updatedAt: now,
-    assignedTo: {
-      id: user.id,
-      name: `${user.firstName || ''} ${user.lastName || ''}`.trim()
+  async assignTo(leadId, user) {
+    if (!leadId || !user?.id) {
+      throw new Error('Missing leadId or user.id');
     }
-  };
 
-  try {
-    await this.update(leadId, updateData);
-    const updatedLead = await this.getById(leadId);
-    
-    // Log assignment
-    if (lead) {
-      await this.logLeadActivity(
-        user.id,
-        lead.company_id,
-        ActivityTypes.LEAD_ASSIGNED,
-        leadId,
-        lead,
-        { 
-          name: lead.name,
-          assignedTo: user.id,
-          assignedByName: `${user.firstName || ''} ${user.lastName || ''}`.trim()
-        },
-        { 
-          previousSellerId: lead.seller_id,
-          newSellerId: user.id,
-        }
-      );
+    const now = serverTimestamp();
+    const lead = await this.getById(leadId);
+
+    const updateData = {
+      seller_id: user.id,
+      assignedAt: now,
+      updatedAt: now,
+      assignedTo: {
+        id: user.id,
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim()
+      }
+    };
+
+    try {
+      await this.update(leadId, updateData);
+      const updatedLead = await this.getById(leadId);
+      
+      if (lead) {
+        await this.logLeadActivity(
+          user.id,
+          lead.company_id,
+          ActivityTypes.LEAD_ASSIGNED,
+          leadId,
+          lead,
+          { 
+            name: lead.name,
+            assignedTo: user.id,
+            assignedByName: `${user.firstName || ''} ${user.lastName || ''}`.trim()
+          },
+          { 
+            previousSellerId: lead.seller_id,
+            newSellerId: user.id,
+          }
+        );
+      }
+      
+      return updatedLead;
+    } catch (error) {
+      console.error('Failed to assign lead:', error);
+      throw error;
     }
-    
-    return updatedLead;
-  } catch (error) {
-    console.error('Failed to assign lead:', error);
-    throw error;
   }
-}
 
   /**
    * Get leads by company ID
-   * @param {string} companyId - Company ID
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} - Array of leads
    */
   async getLeadsByCompany(companyId, options = {}) {
     return this.getAllByCompany(companyId, options);
@@ -588,44 +552,38 @@ async assignTo(leadId, user) {
 
   /**
    * Get a single lead by ID
-   * @param {string} leadId - Lead ID
-   * @returns {Promise<Object>} - Lead data
    */
- async getById(leadId, sellerId = null) {
-  try {
-    const docRef = doc(db, 'leads', leadId);
-    const docSnap = await getDoc(docRef);
-    
-    if (docSnap.exists()) {
-      const lead = convertToLeadModel(docSnap);
+  async getById(leadId, sellerId = null) {
+    try {
+      const docRef = doc(db, 'leads', leadId);
+      const docSnap = await getDoc(docRef);
       
-      // Log view if sellerId provided
-      if (sellerId) {
-        await this.logLeadActivity(
-          sellerId,
-          lead.company_id,
-          ActivityTypes.LEAD_VIEWED,
-          leadId,
-          lead,
-          { name: lead.name },
-          { status: lead.status }
-        );
+      if (docSnap.exists()) {
+        const lead = convertToLeadModel(docSnap);
+        
+        if (sellerId) {
+          await this.logLeadActivity(
+            sellerId,
+            lead.company_id,
+            ActivityTypes.LEAD_VIEWED,
+            leadId,
+            lead,
+            { name: lead.name },
+            { status: lead.status }
+          );
+        }
+        
+        return lead;
       }
-      
-      return lead;
+      return null;
+    } catch (error) {
+      console.error('Error getting lead by ID:', error);
+      throw error;
     }
-    return null;
-  } catch (error) {
-    console.error('Error getting lead by ID:', error);
-    throw error;
   }
-}
 
   /**
    * Update a lead
-   * @param {string} leadId - Lead ID
-   * @param {Object} data - Data to update
-   * @returns {Promise<void>}
    */
   async update(leadId, data) {
     try {
@@ -642,77 +600,95 @@ async assignTo(leadId, user) {
 
   /**
    * Delete a lead
-   * @param {string} leadId - Lead ID
-   * @returns {Promise<void>}
    */
-async delete(leadId) {
-  try {
-    const lead = await this.getById(leadId);
-    const docRef = doc(db, 'leads', leadId);
-    await deleteDoc(docRef);
-    
-    // Log deletion
-    if (lead) {
-      await this.logLeadActivity(
-        lead.seller_id || lead.createdBy,
-        lead.company_id,
-        'lead_deleted',
-        leadId,
-        lead,
-        { name: lead.name },
-        { deletedAt: new Date().toISOString() }
-      );
-    }
-  } catch (error) {
-    console.error('Error deleting lead:', error);
-    throw error;
-  }
-}
-
-  /**
-   * Get all leads for a company (with filters)
-   * @param {string} companyId - Company ID
-   * @param {Object} options - Options including filters, orderBy, limit
-   * @returns {Promise<Array>} - Array of leads
-   */
-  async getAllByCompany(companyId, options = {}) {
+  async delete(leadId) {
     try {
-      let q = query(collection(db, 'leads'), where('company_id', '==', companyId));
+      const lead = await this.getById(leadId);
+      const docRef = doc(db, 'leads', leadId);
+      await deleteDoc(docRef);
       
-      // Apply additional filters
-      if (options.filters && options.filters.length > 0) {
-        options.filters.forEach(filter => {
-          q = query(q, where(filter[0], filter[1], filter[2]));
-        });
+      if (lead) {
+        await this.logLeadActivity(
+          lead.seller_id || lead.createdBy,
+          lead.company_id,
+          'lead_deleted',
+          leadId,
+          lead,
+          { name: lead.name },
+          { deletedAt: new Date().toISOString() }
+        );
       }
-      
-      // Apply order by
-      if (options.orderByFields && options.orderByFields.length > 0) {
-        options.orderByFields.forEach(field => {
-          q = query(q, orderBy(field[0], field[1] || 'asc'));
-        });
-      } else {
-        q = query(q, orderBy('createdAt', 'desc'));
-      }
-      
-      // Apply limit
-      if (options.limitCount) {
-        q = query(q, limit(options.limitCount));
-      }
-      
-      const querySnapshot = await getDocs(q);
-      const leads = [];
-      
-      querySnapshot.forEach((doc) => {
-        leads.push(convertToLeadModel(doc));
-      });
-      
-      return leads;
     } catch (error) {
-      console.error('Error getting leads by company:', error);
+      console.error('Error deleting lead:', error);
       throw error;
     }
   }
+
+/**
+ * Get all leads for a company with advanced filtering
+ * @param {string} companyId - Company ID
+ * @param {Object} options - Options including:
+ *   - filters: Array of [field, operator, value] filters
+ *   - orderByFields: Array of [field, direction] 
+ *   - limitCount: Number to limit results
+ *   - dateRange: { field: 'createdAt'|'CreationDate', start: Date, end: Date }
+ */
+async getAllByCompany(companyId, options = {}) {
+  try {
+    // Start with base query - only company_id filter
+    let q = query(collection(db, 'leads'), where('company_id', '==', companyId));
+    
+    // Apply additional filters (but avoid date filters here - handle them client-side)
+    if (options.filters && options.filters.length > 0) {
+      // Only add filters that are NOT date range filters
+      const nonDateFilters = options.filters.filter(filter => {
+        // Skip date range filters (they'll be handled client-side)
+        return filter[0] !== 'createdAt' && filter[0] !== 'CreationDate';
+      });
+      
+      nonDateFilters.forEach(filter => {
+        q = query(q, where(filter[0], filter[1], filter[2]));
+      });
+    }
+    
+    // Apply order by
+    if (options.orderByFields && options.orderByFields.length > 0) {
+      options.orderByFields.forEach(field => {
+        q = query(q, orderBy(field[0], field[1] || 'asc'));
+      });
+    } else {
+      // Default order by createdAt
+      q = query(q, orderBy('createdAt', 'desc'));
+    }
+    
+    // Apply limit
+    if (options.limitCount) {
+      q = query(q, limit(options.limitCount));
+    }
+    
+    const querySnapshot = await getDocs(q);
+    let leads = [];
+    
+    querySnapshot.forEach((doc) => {
+      leads.push(convertToLeadModel(doc));
+    });
+    
+    // Apply date range filter client-side (if provided)
+    if (options.dateRange) {
+      const { field = 'createdAt', start, end } = options.dateRange;
+      leads = leads.filter(lead => {
+        if (!lead[field]) return false;
+        const date = lead[field]?.toDate ? lead[field].toDate() : new Date(lead[field]);
+        return date >= start && date <= end;
+      });
+    }
+    
+    return leads;
+  } catch (error) {
+    console.error('Error getting leads by company:', error);
+    throw error;
+  }
+}
 }
 
 // Create and export a singleton instance
