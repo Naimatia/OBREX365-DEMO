@@ -689,6 +689,80 @@ async getAllByCompany(companyId, options = {}) {
     throw error;
   }
 }
+/**
+   * Migrate all leads with "pending" status to "new" status
+   * @param {string} companyId - The company ID to filter leads
+   * @returns {Promise<{success: number, failed: number, total: number, skipped: number}>}
+   */
+   async migratePendingToNew(companyId) {
+    try {
+      // Validate companyId
+      if (!companyId) {
+        throw new Error('Company ID is required');
+      }
+
+      console.log(`🔍 Searching for leads with 'pending' status in company: ${companyId}`);
+      
+      // Get all leads with status "pending"
+      const pendingQuery = query(
+        collection(db, 'leads'),
+        where('company_id', '==', companyId),
+        where('status', '==', 'Pending')
+      );
+      
+      const snapshot = await getDocs(pendingQuery);
+      const total = snapshot.size;
+      
+      if (total === 0) {
+        console.log('✅ No pending leads found to migrate');
+        return { success: 0, failed: 0, total: 0, skipped: 0 };
+      }
+      
+      console.log(`🔄 Found ${total} leads with 'pending' status. Migrating to 'new'...`);
+      
+      // Use batch writes for better performance
+      const batch = writeBatch(db);
+      let successCount = 0;
+      let failedCount = 0;
+      
+      snapshot.docs.forEach((docSnapshot) => {
+        try {
+          const leadRef = doc(db, 'leads', docSnapshot.id);
+          batch.update(leadRef, {
+            status: LeadStatus.NEW,
+            updatedAt: serverTimestamp(),
+          });
+          successCount++;
+        } catch (error) {
+          console.error(`❌ Failed to update lead ${docSnapshot.id}:`, error);
+          failedCount++;
+        }
+      });
+      
+      // Commit the batch if there are successful updates
+      if (successCount > 0) {
+        await batch.commit();
+        console.log(`✅ Successfully migrated ${successCount} leads from 'pending' to 'new'`);
+      }
+      
+      if (failedCount > 0) {
+        console.warn(`⚠️ Failed to update ${failedCount} leads`);
+      }
+      
+      return { 
+        success: successCount, 
+        failed: failedCount, 
+        total,
+        skipped: 0 
+      };
+      
+    } catch (error) {
+      console.error('❌ Error migrating pending leads:', error);
+      throw new Error(`Migration failed: ${error.message}`);
+    }
+  }
+
+
 }
 
 // Create and export a singleton instance

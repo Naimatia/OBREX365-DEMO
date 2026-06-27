@@ -1,5 +1,7 @@
+// LeadTable.js - With Created Date/Time and Assigned Date/Time
+
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Button, Tooltip, Space, Typography, Avatar, Dropdown, message, Select, Modal, Badge } from 'antd';
+import { Table, Tag, Button, Tooltip, Space, Typography, Avatar, message, Select, Modal, Badge } from 'antd';
 import {
   EditOutlined,
   DeleteOutlined,
@@ -10,13 +12,14 @@ import {
   TeamOutlined,
   CheckCircleOutlined,
   UserOutlined,
-  MoreOutlined,
-  SwapOutlined,
   ExclamationCircleOutlined,
   CrownOutlined,
   ClockCircleOutlined,
   DollarOutlined,
   CloseCircleOutlined,
+  EyeOutlined,
+  CalendarOutlined,
+  UserSwitchOutlined,
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel, LeadStatusLabels, LeadStatusColors } from 'models/LeadModel';
 import { db, collection, getDocs, query, where } from 'configs/FirebaseConfig';
@@ -51,6 +54,7 @@ const interestLevelColors = {
 
 // Admin roles that should be highlighted
 const ADMIN_ROLES = [UserRoles.CEO, UserRoles.ADMIN, UserRoles.MANAGER, UserRoles.SUPER_ADMIN];
+const HR_ROLES = [UserRoles.HR];
 
 const LeadTable = ({
   leads,
@@ -65,6 +69,8 @@ const LeadTable = ({
   sellers = [],
   onReassignSeller,
   companyId,
+  userRole,
+  onViewHistory,
 }) => {
   const [data, setData] = useState([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
@@ -72,6 +78,11 @@ const LeadTable = ({
   const [allUsers, setAllUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [adminUserIds, setAdminUserIds] = useState(new Set());
+
+  // Check if user is HR
+  const isHR = HR_ROLES.includes(userRole);
+  // Check if user is CEO/Admin
+  const isCEO = userRole === UserRoles.CEO || userRole === UserRoles.SUPER_ADMIN;
 
   // Fetch all users from the company
   useEffect(() => {
@@ -144,7 +155,8 @@ const LeadTable = ({
     setSelectedRowKeys([]);
   }, [leads]);
 
-  const rowSelection = {
+  // HR cannot select rows
+  const rowSelection = isHR ? undefined : {
     selectedRowKeys,
     onChange: (keys) => setSelectedRowKeys(keys),
     columnWidth: 40,
@@ -163,6 +175,11 @@ const LeadTable = ({
   };
 
   const handleStatusChange = async (leadId, newStatus, record) => {
+    if (isHR) {
+      message.warning('HR users cannot change lead status');
+      return;
+    }
+
     if (newStatus === LeadStatus.CONVERTED && !record.convertedContactId) {
       confirm({
         title: 'Convert Lead to Contact',
@@ -212,24 +229,186 @@ const LeadTable = ({
     return user ? user.name : null;
   };
 
-  const getUserRole = (userId) => {
-    if (!userId) return null;
-    const user = allUsers.find(u => u.id === userId);
-    return user ? (user.Role || user.role || 'User') : null;
-  };
-
-  const isAdmin = (userId) => {
+  const checkIsAdmin = (userId) => {
     if (!userId) return false;
     return adminUserIds.has(userId);
   };
 
-  const columns = [
+  // Format date with time
+  const formatDateWithTime = (date) => {
+    if (!date) return '—';
+    const d = date.toDate?.() || date;
+    return dayjs(d).format('MMM DD, YYYY HH:mm');
+  };
+
+  // Format date without time (for compact display)
+  const formatDateShort = (date) => {
+    if (!date) return '—';
+    const d = date.toDate?.() || date;
+    return dayjs(d).format('MMM DD, YYYY');
+  };
+
+  // Format time only
+  const formatTime = (date) => {
+    if (!date) return '—';
+    const d = date.toDate?.() || date;
+    return dayjs(d).format('HH:mm');
+  };
+
+  // ─── HR COLUMNS ──────────────────────────────────────────────────────────
+  const hrColumns = [
     {
       title: 'Lead',
       dataIndex: 'name',
       key: 'name',
       fixed: 'left',
-      width: 220,
+      width: 200,
+      render: (text, record) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Avatar
+            size={36}
+            style={{
+              background: stringToColor(text || 'U'),
+              fontSize: 14,
+              fontWeight: 700,
+              flexShrink: 0,
+            }}
+          >
+            {(text || 'U')[0].toUpperCase()}
+          </Avatar>
+          <div style={{ minWidth: 0 }}>
+            <Text style={{ 
+              fontWeight: 600, 
+              color: '#1d1d1d', 
+              display: 'block', 
+              fontSize: 13,
+              whiteSpace: 'nowrap', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis' 
+            }}>
+              {text}
+            </Text>
+            <Space size={4} wrap>
+              {record.region && (
+                <Tag size="small" style={{ fontSize: 10, margin: 0 }}>
+                  <GlobalOutlined style={{ marginRight: 3, fontSize: 10 }} />
+                  {record.region}
+                </Tag>
+              )}
+            </Space>
+          </div>
+        </div>
+      ),
+      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
+    },
+    {
+      title: 'Assigned To',
+      dataIndex: 'seller_id',
+      key: 'seller_id',
+      width: 160,
+      render: (sellerId, record) => {
+        const sellerName = getUserName(sellerId);
+        const isAssigned = sellerId && sellerId !== '';
+        
+        return (
+          <div>
+            <Space size={4}>
+              {isAssigned ? (
+                <Avatar size={22} style={{ background: '#722ed1', fontSize: 10 }}>
+                  {(sellerName || 'U')[0].toUpperCase()}
+                </Avatar>
+              ) : (
+                <Avatar size={22} style={{ background: '#d9d9d9', fontSize: 10 }}>
+                  <UserOutlined />
+                </Avatar>
+              )}
+              <Text style={{ fontSize: 12 }}>
+                {isAssigned ? (sellerName || 'Unknown') : 'Unassigned'}
+              </Text>
+            </Space>
+            {isAssigned && record.assignedAt && (
+              <div style={{ fontSize: 10, color: '#8c8c8c', marginTop: 2 }}>
+                <UserSwitchOutlined style={{ marginRight: 3, fontSize: 10 }} />
+                Assigned: {formatDateWithTime(record.assignedAt)}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Created By',
+      dataIndex: 'createdBy',
+      key: 'createdBy',
+      width: 160,
+      render: (createdBy, record) => {
+        if (createdBy) {
+          const userName = getUserName(createdBy);
+          const isAdmin = checkIsAdmin(createdBy);
+          
+          return (
+            <div>
+              <Space size={4}>
+                {isAdmin ? (
+                  <CrownOutlined style={{ fontSize: 14, color: '#faad14' }} />
+                ) : (
+                  <UserOutlined style={{ fontSize: 14, color: '#1677ff' }} />
+                )}
+                <Text style={{ 
+                  fontSize: 12, 
+                  color: isAdmin ? '#faad14' : '#1677ff',
+                  fontWeight: isAdmin ? 600 : 400
+                }}>
+                  {userName || 'Unknown'}
+                </Text>
+              </Space>
+              <div style={{ fontSize: 10, color: '#8c8c8c', marginTop: 2 }}>
+                <CalendarOutlined style={{ marginRight: 3, fontSize: 10 }} />
+                Created: {formatDateWithTime(record.CreationDate)}
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>Unknown</Text>
+            <div style={{ fontSize: 10, color: '#8c8c8c', marginTop: 2 }}>
+              <CalendarOutlined style={{ marginRight: 3, fontSize: 10 }} />
+              Created: {formatDateWithTime(record.CreationDate)}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 80,
+      fixed: 'right',
+      render: (_, record) => (
+        <Tooltip title="View History">
+          <Button
+            type="text"
+            size="small"
+            icon={<EyeOutlined style={{ fontSize: 14, color: '#1677ff' }} />}
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewHistory?.(record);
+            }}
+          />
+        </Tooltip>
+      ),
+    },
+  ];
+
+  // ─── CEO/ADMIN FULL COLUMNS ──────────────────────────────────────────────
+  const fullColumns = [
+    {
+      title: 'Lead',
+      dataIndex: 'name',
+      key: 'name',
+      fixed: 'left',
+      width: 200,
       render: (text, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Avatar
@@ -390,37 +569,45 @@ const LeadTable = ({
       title: 'Assigned To',
       dataIndex: 'seller_id',
       key: 'seller_id',
-      width: 140,
+      width: 170,
       render: (sellerId, record) => {
         const sellerName = getUserName(sellerId);
         const isAssigned = sellerId && sellerId !== '';
         
         return (
-          <Space size={4} onClick={e => e.stopPropagation()}>
-            {isAssigned ? (
-              <Avatar size={22} style={{ background: '#722ed1', fontSize: 10 }}>
-                {(sellerName || 'U')[0].toUpperCase()}
-              </Avatar>
-            ) : (
-              <Avatar size={22} style={{ background: '#d9d9d9', fontSize: 10 }}>
-                <UserOutlined />
-              </Avatar>
+          <div>
+            <Space size={4} onClick={e => e.stopPropagation()}>
+              {isAssigned ? (
+                <Avatar size={22} style={{ background: '#722ed1', fontSize: 10 }}>
+                  {(sellerName || 'U')[0].toUpperCase()}
+                </Avatar>
+              ) : (
+                <Avatar size={22} style={{ background: '#d9d9d9', fontSize: 10 }}>
+                  <UserOutlined />
+                </Avatar>
+              )}
+              <Text style={{ fontSize: 12 }}>
+                {isAssigned ? (sellerName || 'Unknown') : 'Unassigned'}
+              </Text>
+              <Tooltip title={isAssigned ? "Reassign to another seller" : "Assign to seller"}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<UserAddOutlined style={{ color: isAssigned ? '#722ed1' : '#1677ff', fontSize: 13 }} />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssignSeller(record);
+                  }}
+                />
+              </Tooltip>
+            </Space>
+            {isAssigned && record.assignedAt && (
+              <div style={{ fontSize: 10, color: '#8c8c8c', marginTop: 2 }}>
+                <UserSwitchOutlined style={{ marginRight: 3, fontSize: 10 }} />
+                Assigned: {formatDateWithTime(record.assignedAt)}
+              </div>
             )}
-            <Text style={{ fontSize: 12 }}>
-              {isAssigned ? (sellerName || 'Unknown') : 'Unassigned'}
-            </Text>
-            <Tooltip title={isAssigned ? "Reassign to another seller" : "Assign to seller"}>
-              <Button
-                type="text"
-                size="small"
-                icon={<UserAddOutlined style={{ color: isAssigned ? '#722ed1' : '#1677ff', fontSize: 13 }} />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAssignSeller(record);
-                }}
-              />
-            </Tooltip>
-          </Space>
+          </div>
         );
       },
     },
@@ -428,51 +615,47 @@ const LeadTable = ({
       title: 'Created By',
       dataIndex: 'createdBy',
       key: 'createdBy',
-      width: 150,
+      width: 170,
       render: (createdBy, record) => {
         if (createdBy) {
           const userName = getUserName(createdBy);
           const isSameAsAssigned = record.seller_id === createdBy;
-          const isAdminUser = isAdmin(createdBy);
+          const isAdmin = checkIsAdmin(createdBy);
           
-          if (userName) {
-            return (
+          return (
+            <div>
               <Tooltip title={isSameAsAssigned ? "Created by assigned seller" : `Created by ${userName}`}>
                 <Space size={4}>
-                  {isAdminUser ? (
+                  {isAdmin ? (
                     <CrownOutlined style={{ fontSize: 14, color: '#faad14' }} />
                   ) : (
                     <UserOutlined style={{ fontSize: 14, color: isSameAsAssigned ? '#52c41a' : '#1677ff' }} />
                   )}
                   <Text style={{ 
                     fontSize: 12, 
-                    color: isAdminUser ? '#faad14' : (isSameAsAssigned ? '#52c41a' : '#1677ff'),
-                    fontWeight: isAdminUser ? 600 : 400
+                    color: isAdmin ? '#faad14' : (isSameAsAssigned ? '#52c41a' : '#1677ff'),
+                    fontWeight: isAdmin ? 600 : 400
                   }}>
-                    {userName.length > 12 ? userName.substring(0, 12) + '...' : userName}
+                    {userName}
                     {isSameAsAssigned && ' ✓'}
                   </Text>
                 </Space>
               </Tooltip>
-            );
-          } 
-          
-          return (
-            <Tooltip title={`User ID: ${createdBy}`}>
-              <Space size={4}>
-                <UserOutlined style={{ fontSize: 14, color: '#faad14' }} />
-                <Text style={{ fontSize: 12, color: '#faad14' }}>
-                  {createdBy.length > 10 ? createdBy.substring(0, 10) + '...' : createdBy}
-                </Text>
-              </Space>
-            </Tooltip>
+              <div style={{ fontSize: 10, color: '#8c8c8c', marginTop: 2 }}>
+                <CalendarOutlined style={{ marginRight: 3, fontSize: 10 }} />
+                Created: {formatDateWithTime(record.CreationDate)}
+              </div>
+            </div>
           );
         }
-        
         return (
-          <Tooltip title="No creator information available">
+          <div>
             <Text type="secondary" style={{ fontSize: 12 }}>Unknown</Text>
-          </Tooltip>
+            <div style={{ fontSize: 10, color: '#8c8c8c', marginTop: 2 }}>
+              <CalendarOutlined style={{ marginRight: 3, fontSize: 10 }} />
+              Created: {formatDateWithTime(record.CreationDate)}
+            </div>
+          </div>
         );
       },
     },
@@ -526,26 +709,6 @@ const LeadTable = ({
       },
     },
     {
-      title: 'Created',
-      dataIndex: 'CreationDate',
-      key: 'CreationDate',
-      width: 110,
-      render: date =>
-        date ? (
-          <Text style={{ fontSize: 11 }}>
-            {dayjs(date.toDate?.() || date).format('MMM DD, YYYY')}
-          </Text>
-        ) : (
-          <Text type="secondary" style={{ fontSize: 11 }}>—</Text>
-        ),
-      sorter: (a, b) => {
-        if (!a.CreationDate) return -1;
-        if (!b.CreationDate) return 1;
-        return (a.CreationDate.toDate?.() || new Date(a.CreationDate)) -
-          (b.CreationDate.toDate?.() || new Date(b.CreationDate));
-      },
-    },
-    {
       title: 'Actions',
       key: 'actions',
       width: 90,
@@ -575,15 +738,29 @@ const LeadTable = ({
               }}
             />
           </Tooltip>
+          <Tooltip title="View History">
+            <Button
+              type="text"
+              size="small"
+              icon={<EyeOutlined style={{ fontSize: 14, color: '#1677ff' }} />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewHistory?.(record);
+              }}
+            />
+          </Tooltip>
         </Space>
       ),
     },
   ];
 
+  // Select columns based on user role
+  const columns = isHR ? hrColumns : fullColumns;
+
   return (
     <div>
-      {/* Bulk action toolbar */}
-      {selectedRowKeys.length > 0 && (
+      {/* Bulk action toolbar - Hide for HR */}
+      {!isHR && selectedRowKeys.length > 0 && (
         <div
           style={{
             display: 'flex',
@@ -650,10 +827,10 @@ const LeadTable = ({
         rowKey="id"
         loading={loading || usersLoading}
         size="middle"
-        scroll={{ x: 1400 }}
+        scroll={{ x: isHR ? 650 : 1500 }}
         onRow={record => ({
-          onClick: () => onViewDetails(record),
-          style: { cursor: 'pointer' },
+          onClick: isHR ? undefined : () => onViewDetails(record),
+          style: { cursor: isHR ? 'default' : 'pointer' },
         })}
         rowClassName={(_, index) =>
           index % 2 === 0 ? 'table-row-even' : 'table-row-odd'
@@ -673,7 +850,7 @@ const LeadTable = ({
       <style>{`
         .table-row-even { background: #ffffff; }
         .table-row-odd  { background: #fafafa; }
-        .ant-table-tbody > tr:hover > td { background: #e6f7ff !important; }
+        .ant-table-tbody > tr:hover > td { background: ${isHR ? '#fafafa' : '#e6f7ff'} !important; }
         
         .status-select .ant-select-selector {
           border-radius: 20px !important;

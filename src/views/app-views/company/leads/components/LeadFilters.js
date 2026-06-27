@@ -28,7 +28,8 @@ import {
   GlobalOutlined,
   ReloadOutlined,
   PlusOutlined,
-  MinusOutlined
+  MinusOutlined,
+  UserDeleteOutlined // Add this icon
 } from '@ant-design/icons';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
 import countries from 'constants/countries';
@@ -225,32 +226,79 @@ const LeadFilters = ({
           </Col>
         )}
 
-        {/* Assigned To */}
-        <Col xs={24} sm={12} md={8} lg={4}>
-          <Form.Item name="assignedTo" label={
-            <span style={{ fontWeight: 600, fontSize: 13 }}>
-              <UserAddOutlined style={{ marginRight: 6, color: '#1677ff' }} />
-              Assigned To
-            </span>
-          }>
-            <Select
-              placeholder="All Sellers"
-              allowClear
-              showSearch
-              optionFilterProp="children"
-              size="middle"
-              style={{ borderRadius: 8 }}
-              suffixIcon={<UserAddOutlined style={{ color: '#bbb' }} />}
-            >
-              {sellers.map(seller => (
-                <Select.Option key={seller.id} value={seller.id}>
-                  <UserAddOutlined style={{ marginRight: 4, color: '#1677ff' }} />
-                  {seller.name || `${seller.firstName || ''} ${seller.lastName || ''}`.trim()}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-        </Col>
+    {/* Assigned To - Updated with Unsigned option */}
+<Col xs={24} sm={12} md={8} lg={4}>
+  <Form.Item name="assignedTo" label={
+    <span style={{ fontWeight: 600, fontSize: 13 }}>
+      <UserAddOutlined style={{ marginRight: 6, color: '#1677ff' }} />
+      Assigned To
+    </span>
+  }>
+    <Select
+      placeholder="All Sellers"
+      allowClear
+      showSearch
+      optionFilterProp="children"
+      size="middle"
+      style={{ borderRadius: 8 }}
+      suffixIcon={<UserAddOutlined style={{ color: '#bbb' }} />}
+      dropdownRender={(menu) => (
+        <div>
+          {/* Custom Unsigned option at the top */}
+          <div 
+            style={{ 
+              padding: '8px 12px', 
+              cursor: 'pointer',
+              borderBottom: '1px solid #f0f0f0',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'background 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#f5f5f5'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onClick={() => {
+              const select = document.querySelector('.ant-select-selection-search-input');
+              if (select) {
+                // Trigger select change
+                const event = new Event('mousedown', { bubbles: true });
+                select.dispatchEvent(event);
+              }
+              // Set value to 'unsigned'
+              form.setFieldsValue({ assignedTo: 'unsigned' });
+              // Manually trigger onFilter after a small delay
+              setTimeout(() => {
+                const values = form.getFieldsValue();
+                const cleanedValues = {};
+                Object.keys(values).forEach(key => {
+                  if (values[key] && values[key] !== '') {
+                    cleanedValues[key] = values[key];
+                  }
+                });
+                onFilter(cleanedValues);
+              }, 100);
+            }}
+          >
+            <UserDeleteOutlined style={{ color: '#ff4d4f', fontSize: 16 }} />
+            <span style={{ color: '#ff4d4f', fontWeight: 600 }}>Unsigned</span>
+            <Tag color="red" style={{ marginLeft: 'auto', fontSize: 10, borderRadius: 10 }}>
+              No Seller Assigned
+            </Tag>
+          </div>
+          {menu}
+        </div>
+      )}
+    >
+      {/* Regular seller options */}
+      {sellers.map(seller => (
+        <Select.Option key={seller.id} value={seller.id}>
+          <UserAddOutlined style={{ marginRight: 4, color: '#1677ff' }} />
+          {seller.name || `${seller.firstName || ''} ${seller.lastName || ''}`.trim()}
+        </Select.Option>
+      ))}
+    </Select>
+  </Form.Item>
+</Col>
 
       
       </Row>
@@ -468,7 +516,14 @@ const getFilterLabel = (key) => {
 };
 
 const getFilterDisplayValue = (key, value, sellers) => {
-  if (key === 'createdBy' || key === 'assignedTo') {
+  if (key === 'createdBy') {
+    const seller = sellers.find(s => s.id === value);
+    return seller ? seller.name : value;
+  }
+  if (key === 'assignedTo') {
+    if (value === 'unsigned') {
+      return 'Unsigned';
+    }
     const seller = sellers.find(s => s.id === value);
     return seller ? seller.name : value;
   }

@@ -1,3 +1,5 @@
+// LeadDetailsPro.js - Fixed version with proper user name fetching
+
 import React, { useState, useEffect } from 'react';
 import {
   Drawer, Button, Typography, Tag, Space, Divider, Form, Input, Avatar, Card, Tooltip, message, Row, Col, Timeline, Modal,
@@ -8,12 +10,14 @@ import {
   CalendarOutlined, UserOutlined, DollarOutlined, TagOutlined,
   MessageOutlined, CopyOutlined, CheckOutlined, InfoCircleOutlined,
   WhatsAppOutlined, PhoneFilled, HistoryOutlined,
-  EyeOutlined
+  EyeOutlined, LockOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import { LeadStatus, LeadInterestLevel } from 'models/LeadModel';
+import { UserRoles } from 'models/UserModel';
 import UserService from 'services/firebase/UserService';
 import LeadHistoryService from 'services/firebase/LeadHistoryService';
+import { db, collection, getDocs, query, where, doc, getDoc } from 'configs/FirebaseConfig';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -86,17 +90,27 @@ We have an **exclusive property match** for you:
 
 [View Full Details]
 
-This unit won’t last long. Reply to this email or call me at {{sellerPhone}} to book a viewing.
+This unit won't last long. Reply to this email or call me at {{sellerPhone}} to book a viewing.
 
 Best,
 {{seller}}
 {{sellerPhone}} | {{sellerEmail}}`
 };
 
-const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
+const LeadDetailsPro = ({ 
+  visible, 
+  onClose, 
+  lead, 
+  onEdit, 
+  onStatusChange,
+  isHR = false,
+  userRole
+}) => {
   const [sellerInfo, setSellerInfo] = useState(null);
   const [companyInfo, setCompanyInfo] = useState(null);
   const [history, setHistory] = useState([]);
+  const [createdByUser, setCreatedByUser] = useState(null);
+  const [allUsers, setAllUsers] = useState([]);
   const [noteForm] = Form.useForm();
   const [whatsappForm] = Form.useForm();
   const [emailForm] = Form.useForm();
@@ -108,6 +122,37 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
   const [callVisible, setCallVisible] = useState(false);
 
   const currentUser = useSelector(state => state.auth.user);
+
+  // Fetch all users from the company (for HR view)
+  useEffect(() => {
+    const fetchAllUsers = async () => {
+      if (!lead?.company_id) return;
+      
+      try {
+        const usersQuery = query(
+          collection(db, 'users'),
+          where('company_id', '==', lead.company_id)
+        );
+        const usersSnap = await getDocs(usersQuery);
+        const usersList = usersSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            name: `${data.firstname || ''} ${data.lastname || ''}`.trim() || data.email || 'Unknown',
+            role: data.Role || data.role || 'User'
+          };
+        });
+        setAllUsers(usersList);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+      }
+    };
+
+    if (visible && lead) {
+      fetchAllUsers();
+    }
+  }, [visible, lead]);
 
   // Load seller + company
   useEffect(() => {
@@ -121,13 +166,38 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
       if (lead.company_id) {
         LeadHistoryService.getCompanyData(lead.company_id).then(setCompanyInfo);
       }
+
+      // Load created by user
+      if (lead.createdBy) {
+        fetchCreatedByUser(lead.createdBy);
+      }
     }
   }, [visible, lead]);
+
+  // Fetch created by user
+  const fetchCreatedByUser = async (userId) => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        setCreatedByUser({
+          id: userId,
+          ...data,
+          name: `${data.firstname || ''} ${data.lastname || ''}`.trim() || data.email || 'Unknown'
+        });
+      } else {
+        setCreatedByUser(null);
+      }
+    } catch (error) {
+      console.error('Error fetching created by user:', error);
+      setCreatedByUser(null);
+    }
+  };
 
   // Load history
   useEffect(() => {
     if (visible && lead?.id) {
-      const unsubscribe = LeadHistoryService.listenToHistory(lead.id,lead.seller_id, setHistory);
+      const unsubscribe = LeadHistoryService.listenToHistory(lead.id, lead.seller_id, setHistory);
       return () => unsubscribe();
     }
   }, [visible, lead?.id]);
@@ -147,8 +217,7 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
       await LeadHistoryService.addHistory(lead.id, {
         type: 'note',
         message: note,
-              sellerId: currentUser.id,               // ← important new field
-
+        sellerId: currentUser.id,
         createdBy: { id: currentUser.id, name: `${currentUser.firstname} ${currentUser.lastname}` }
       });
       noteForm.resetFields();
@@ -173,7 +242,6 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
     const url = `https://wa.me/${lead.phoneNumber.replace(/[^\d]/g, '')}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
 
-    // Use assigned seller name in history
     const historyName = sellerInfo
       ? await LeadHistoryService.getSellerName(lead.seller_id)
       : `${currentUser.firstname} ${currentUser.lastname}`;
@@ -182,6 +250,7 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
       type: 'whatsapp',
       message,
       templateId: values.template,
+      sellerId: currentUser.id,
       createdBy: { id: currentUser.id, name: historyName }
     });
 
@@ -207,13 +276,12 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
       .replace(/{{company}}/g, companyName);
 
     const subject = values.template === 'intro'
-      ? 'Your Property Inquiry – Let’s Find Your Dream Home'
+      ? 'Your Property Inquiry – Lets Find Your Dream Home'
       : 'Exclusive Property Match Just for You';
 
     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(lead.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     const newWindow = window.open(gmailUrl, '_blank');
 
-    // Use assigned seller name in history
     const historyName = sellerInfo
       ? await LeadHistoryService.getSellerName(lead.seller_id)
       : `${currentUser.firstname} ${currentUser.lastname}`;
@@ -222,7 +290,7 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
       type: 'email',
       message: body,
       templateId: values.template,
-            sellerId: currentUser.id,               // ← important new field
+      sellerId: currentUser.id,
       createdBy: { id: currentUser.id, name: historyName }
     });
 
@@ -244,8 +312,7 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
       type: 'call',
       duration: values.duration,
       outcome: values.outcome,
-            sellerId: currentUser.id,               // ← important new field
-
+      sellerId: currentUser.id,
       createdBy: { id: currentUser.id, name: historyName }
     });
     callForm.resetFields();
@@ -263,29 +330,212 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
     await LeadHistoryService.addHistory(lead.id, {
       type: 'status',
       message: `Status changed to ${newStatus}`,
-            sellerId: currentUser.id,               // ← important new field
-
+      sellerId: currentUser.id,
       createdBy: { id: currentUser.id, name: historyName }
     });
   };
 
+  // Helper function to get user name from allUsers list
+  const getUserNameFromList = (userId) => {
+    if (!userId) return 'Unknown';
+    const user = allUsers.find(u => u.id === userId);
+    return user ? user.name : userId;
+  };
+
   if (!lead) return null;
 
-  const statusColors = { [LeadStatus.PENDING]: 'blue', [LeadStatus.GAIN]: 'green', [LeadStatus.LOSS]: 'red' };
-  const interestColors = { [LeadInterestLevel.LOW]: 'orange', [LeadInterestLevel.MEDIUM]: 'blue', [LeadInterestLevel.HIGH]: 'green' };
+  // ─── HR VIEW ──────────────────────────────────────────────────────────────
+  if (isHR || userRole === UserRoles.HR) {
+    // Get the created by name
+    const createdByName = createdByUser?.name || getUserNameFromList(lead.createdBy) || lead.createdBy || 'Unknown';
+    const assignedName = sellerInfo ? `${sellerInfo.firstname} ${sellerInfo.lastname}` : 'Unassigned';
+
+    return (
+      <Drawer
+        title={
+          <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+            <Title level={4} style={{ margin: 0 }}>
+              <LockOutlined style={{ color: '#faad14', marginRight: 8 }} />
+              {lead.name} - History
+            </Title>
+            <Tag color="orange">Read-Only</Tag>
+          </Space>
+        }
+        width={720}
+        placement="right"
+        onClose={onClose}
+        open={visible}
+      >
+        <div style={{ padding: '0 8px' }}>
+          {/* Basic Lead Info - Read-only */}
+          <Card 
+            title={
+              <Space>
+                <InfoCircleOutlined />
+                Lead Information
+                <Tag color="blue">Read-Only</Tag>
+              </Space>
+            } 
+            style={{ marginBottom: 16 }}
+          >
+            <Row gutter={16}>
+              <Col span={12}>
+                <Text type="secondary">Name</Text><br />
+                <Text strong>{lead.name}</Text>
+              </Col>
+              <Col span={12}>
+                <Text type="secondary">Region</Text><br />
+                <Text strong>{lead.region || '—'}</Text>
+              </Col>
+              <Col span={12}>
+                <Text type="secondary">Assigned To</Text><br />
+                <Text strong>{assignedName}</Text>
+              </Col>
+              <Col span={12}>
+                <Text type="secondary">Created By</Text><br />
+                <Text strong>{createdByName}</Text>
+              </Col>
+              <Col span={12}>
+                <Text type="secondary">Created Date</Text><br />
+                <Text strong>
+                  {dayjs(lead.CreationDate?.toDate?.() || lead.CreationDate).format('MMM DD, YYYY HH:mm')}
+                </Text>
+              </Col>
+              <Col span={12}>
+                <Text type="secondary">Lead Source</Text><br />
+                <Tag color={lead?.RedirectedFrom === 'Instagram' ? 'magenta' : 'blue'}>
+                  {lead?.RedirectedFrom || 'Facebook'}
+                </Tag>
+              </Col>
+            </Row>
+          </Card>
+
+          {/* History Timeline */}
+          <Card 
+            title={
+              <Space>
+                <HistoryOutlined />
+                Activity History
+                <Tag color="green">{history.length} events</Tag>
+              </Space>
+            }
+            style={{ marginTop: 16 }}
+          >
+            {history.length > 0 ? (
+              <Timeline>
+                {history.map((h, i) => (
+                  <Timeline.Item
+                    key={i}
+                    color={
+                      h.type === 'whatsapp' ? '#25D366' :
+                      h.type === 'email' ? '#1890ff' :
+                      h.type === 'call' ? '#722ed1' :
+                      h.type === 'status' ? '#1890ff' :
+                      h.type === 'note' ? '#8c8c8c' : 'gray'
+                    }
+                    dot={
+                      h.type === 'whatsapp' ? <WhatsAppOutlined style={{ fontSize: 16 }} /> :
+                      h.type === 'email' ? <MailOutlined style={{ fontSize: 16 }} /> :
+                      h.type === 'call' ? <PhoneFilled style={{ fontSize: 16 }} /> :
+                      h.type === 'status' ? <TagOutlined style={{ fontSize: 16 }} /> :
+                      h.type === 'note' ? <MessageOutlined style={{ fontSize: 16 }} /> : null
+                    }
+                  >
+                    <div>
+                      <Text strong>{h.createdBy?.name || 'Unknown'}</Text>
+                      <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                        {dayjs(h.createdAt).format('MMM DD, HH:mm')}
+                      </Text>
+                    </div>
+
+                    <div style={{ 
+                      marginTop: 8, 
+                      padding: '8px 12px', 
+                      background: '#fafafa', 
+                      borderRadius: 6, 
+                      border: '1px solid #f0f0f0', 
+                      whiteSpace: 'pre-wrap' 
+                    }}>
+                      {h.type === 'status' && (
+                        <Tag color="blue">Status → {h.message.split('to ')[1]}</Tag>
+                      )}
+                      {h.type === 'note' && <Text>{h.message}</Text>}
+                      {h.type === 'call' && (
+                        <Text>
+                          <PhoneFilled /> Call ({h.duration}Min) – <Tag color={h.outcome === 'answered' ? 'green' : 'red'}>{h.outcome}</Tag>
+                        </Text>
+                      )}
+                      {h.type === 'whatsapp' && (
+                        <div>
+                          <Text type="secondary" style={{ fontSize: 12 }}>WhatsApp Message:</Text><br />
+                          <Text style={{ fontSize: 14, color: '#25D366', fontWeight: 500, whiteSpace: 'pre-line' }}>{h.message}</Text>
+                        </div>
+                      )}
+                      {h.type === 'email' && (
+                        <div>
+                          <Text type="secondary" style={{ fontSize: 12 }}>Email Sent:</Text><br />
+                          <Text style={{ fontSize: 14, color: '#1890ff', fontWeight: 500, whiteSpace: 'pre-line' }}>{h.message}</Text>
+                        </div>
+                      )}
+                    </div>
+                  </Timeline.Item>
+                ))}
+              </Timeline>
+            ) : (
+              <Text type="secondary" style={{ display: 'block', textAlign: 'center', padding: '40px 0' }}>
+                No activity history available
+              </Text>
+            )}
+          </Card>
+
+          {/* HR Restriction Notice */}
+          <div style={{ 
+            marginTop: 16, 
+            padding: '12px 16px', 
+            background: '#fffbe6', 
+            borderRadius: 8,
+            border: '1px solid #ffe58f'
+          }}>
+            <Space>
+              <LockOutlined style={{ color: '#faad14' }} />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                HR View - You can only view lead information and history. Contact details and other sensitive information are restricted.
+              </Text>
+            </Space>
+          </div>
+        </div>
+      </Drawer>
+    );
+  }
+
+  // ─── FULL VIEW (Non-HR) ──────────────────────────────────────────────────
+  const statusColors = { 
+    [LeadStatus.NEW]: 'blue', 
+    [LeadStatus.CONTACTED]: 'orange', 
+    [LeadStatus.INTERESTED]: 'green', 
+    [LeadStatus.NOT_INTERESTED]: 'red', 
+    [LeadStatus.CONVERTED]: 'purple', 
+    [LeadStatus.JUNK_LEAD]: 'gray' 
+  };
+  
+  const interestColors = { 
+    [LeadInterestLevel.LOW]: 'orange', 
+    [LeadInterestLevel.MEDIUM]: 'blue', 
+    [LeadInterestLevel.HIGH]: 'green' 
+  };
 
   return (
     <Drawer
-  title={
-  <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
-    <Title level={4} style={{ margin: 0 }}>
-      {lead.name}
-    </Title>
-    <Button type="primary" icon={<EditOutlined />} onClick={() => onEdit(lead)}>
-      Edit
-    </Button>
-  </Space>
-}
+      title={
+        <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Title level={4} style={{ margin: 0 }}>
+            {lead.name}
+          </Title>
+          <Button type="primary" icon={<EditOutlined />} onClick={() => onEdit(lead)}>
+            Edit
+          </Button>
+        </Space>
+      }
       width={720}
       placement="right"
       onClose={onClose}
@@ -317,6 +567,18 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
                 <Button icon={<PhoneFilled />} size="small" onClick={() => setCallVisible(true)} />
               </Space>
             </Col>
+            <Col span={12}>
+              <Text type="secondary">Status</Text><br />
+              <Tag color={statusColors[lead.status] || 'blue'}>{lead.status || 'New'}</Tag>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary">Created Date</Text><br />
+              <Text strong>{dayjs(lead.CreationDate?.toDate?.() || lead.CreationDate).format('MMM DD, YYYY HH:mm')}</Text>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary">Assigned Date</Text><br />
+              <Text strong>{lead.assignedAt ? dayjs(lead.assignedAt?.toDate?.() || lead.assignedAt).format('MMM DD, YYYY HH:mm') : 'Not assigned'}</Text>
+            </Col>
           </Row>
         </Card>
 
@@ -336,56 +598,56 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
           </Col>
         </Row>
 
-       {/* ==================== META LEAD SOURCE ==================== */}
-<Card 
-  title={
-    <Space>
-      <EyeOutlined style={{ color: '#1877F2' }} />
-      Meta Lead Source
-      <Tag 
-        color={lead?.RedirectedFrom === 'Instagram' ? 'magenta' : 'blue'}
-      >
-        {lead?.RedirectedFrom || 'Facebook'}
-      </Tag>
-    </Space>
-  } 
-  style={{ marginBottom: 16 }}
->
-  <Row gutter={[16, 12]}>
-    <Col span={12}>
-      <Text type="secondary">Form Name</Text><br />
-      <Text strong>{lead.meta_form_name || '—'}</Text>
-    </Col>
-    <Col span={12}>
-      <Text type="secondary">Ad Name</Text><br />
-      <Text strong>{lead.meta_ad_name || '—'}</Text>
-    </Col>
-    <Col span={12}>
-      <Text type="secondary">Campaign</Text><br />
-      <Text strong>{lead.meta_campaign || '—'}</Text>
-    </Col>
-    <Col span={12}>
-      <Text type="secondary">Ad Set</Text><br />
-      <Text strong>{lead.meta_adset || '—'}</Text>
-    </Col>
-    <Col span={12}>
-      <Text type="secondary">Platform</Text><br />
-      <Tag color="blue">{lead.meta_platform || 'fb'}</Tag>
-    </Col>
-    <Col span={24}>
-      <Text type="secondary">Meta Lead ID</Text><br />
-      <Text copyable strong style={{ fontFamily: 'monospace' }}>
-        {lead.meta_lead_id || '—'}
-      </Text>
-    </Col>
-  </Row>
-</Card>
+        {/* Meta Lead Source */}
+        <Card 
+          title={
+            <Space>
+              <EyeOutlined style={{ color: '#1877F2' }} />
+              Meta Lead Source
+              <Tag 
+                color={lead?.RedirectedFrom === 'Instagram' ? 'magenta' : 'blue'}
+              >
+                {lead?.RedirectedFrom || 'Facebook'}
+              </Tag>
+            </Space>
+          } 
+          style={{ marginBottom: 16, marginTop: 16 }}
+        >
+          <Row gutter={[16, 12]}>
+            <Col span={12}>
+              <Text type="secondary">Form Name</Text><br />
+              <Text strong>{lead.meta_form_name || '—'}</Text>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary">Ad Name</Text><br />
+              <Text strong>{lead.meta_ad_name || '—'}</Text>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary">Campaign</Text><br />
+              <Text strong>{lead.meta_campaign || '—'}</Text>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary">Ad Set</Text><br />
+              <Text strong>{lead.meta_adset || '—'}</Text>
+            </Col>
+            <Col span={12}>
+              <Text type="secondary">Platform</Text><br />
+              <Tag color="blue">{lead.meta_platform || 'fb'}</Tag>
+            </Col>
+            <Col span={24}>
+              <Text type="secondary">Meta Lead ID</Text><br />
+              <Text copyable strong style={{ fontFamily: 'monospace' }}>
+                {lead.meta_lead_id || '—'}
+              </Text>
+            </Col>
+          </Row>
+        </Card>
 
         {/* Assigned Seller */}
         <Card title={<><UserOutlined /> Assigned Seller</>} style={{ margin: '16px 0' }}>
           {sellerInfo ? (
             <Space>
-              <Avatar style={{ backgroundColor: '#1890ff' }}>{sellerInfo.firstname[0]}</Avatar>
+              <Avatar style={{ backgroundColor: '#1890ff' }}>{sellerInfo.firstname?.[0] || 'U'}</Avatar>
               <div>
                 <Text strong>{sellerInfo.firstname} {sellerInfo.lastname}</Text><br />
                 <Text type="secondary">{sellerInfo.email}</Text>
@@ -522,7 +784,7 @@ const LeadDetailsPro = ({ visible, onClose, lead, onEdit, onStatusChange }) => {
         destroyOnClose
       >
         <Form form={callForm} onFinish={logCall} layout="vertical">
-          <Form.Item name="duration" label="Duration (munites)" initialValue={2}>
+          <Form.Item name="duration" label="Duration (minutes)" initialValue={2}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="outcome" label="Outcome" initialValue="answered">
