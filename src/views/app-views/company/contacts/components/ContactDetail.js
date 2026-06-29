@@ -28,7 +28,8 @@ import {
   ClockCircleOutlined,
   DeleteOutlined,
   HistoryOutlined,
-  TeamOutlined
+  TeamOutlined,
+  LockOutlined
 } from '@ant-design/icons';
 import { ContactStatus } from 'models/ContactModel';
 import dayjs from 'dayjs';
@@ -43,7 +44,8 @@ const ContactDetail = ({
   onAddNote,
   onUpdateNote,
   onDeleteNote,
-  onClose 
+  onClose,
+  isHR = false
 }) => {
   const [noteModalVisible, setNoteModalVisible] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
@@ -91,20 +93,29 @@ const ContactDetail = ({
     }
   };
 
-  // Note handlers
+  // Note handlers - Disabled for HR
   const openAddNoteModal = () => {
+    if (isHR) {
+      message.warning('HR users cannot add notes');
+      return;
+    }
     setEditingNote(null);
     noteForm.resetFields();
     setNoteModalVisible(true);
   };
 
   const openEditNoteModal = (note) => {
+    if (isHR) {
+      message.warning('HR users cannot edit notes');
+      return;
+    }
     setEditingNote(note);
     noteForm.setFieldsValue({ note: note.note });
     setNoteModalVisible(true);
   };
 
   const handleNoteSubmit = async () => {
+    if (isHR) return;
     try {
       const values = await noteForm.validateFields();
       setSubmitting(true);
@@ -129,6 +140,10 @@ const ContactDetail = ({
   };
 
   const handleDeleteNoteClick = (noteId) => {
+    if (isHR) {
+      message.warning('HR users cannot delete notes');
+      return;
+    }
     Modal.confirm({
       title: 'Delete this note?',
       content: 'This action cannot be undone.',
@@ -150,6 +165,15 @@ const ContactDetail = ({
 
   // Check if contact is from lead
   const isFromLead = contact.leadId || contact.convertedFromLeadId;
+
+  // HR can't edit
+  const handleEdit = () => {
+    if (isHR) {
+      message.warning('HR users cannot edit contacts');
+      return;
+    }
+    onEdit(contact);
+  };
 
   return (
     <div className="contact-detail">
@@ -174,21 +198,38 @@ const ContactDetail = ({
                 </Tag>
                 {isFromLead && <Tag color="purple">From Lead</Tag>}
                 {contact.source && <Tag color="blue">{contact.source}</Tag>}
+                {isHR && <Tag color="orange" icon={<LockOutlined />}>Read-Only</Tag>}
               </Space>
             </div>
           </Space>
         }
         extra={
           <Space>
-            <Button icon={<EditOutlined />} onClick={() => onEdit(contact)}>
-              Edit
-            </Button>
+            {!isHR && (
+              <Button icon={<EditOutlined />} onClick={handleEdit}>
+                Edit
+              </Button>
+            )}
             <Button type="primary" onClick={onClose}>
               Close
             </Button>
           </Space>
         }
       >
+        {isHR && (
+          <div style={{ 
+            marginBottom: 16, 
+            padding: '8px 12px', 
+            background: '#fffbe6', 
+            borderRadius: 6,
+            border: '1px solid #ffe58f'
+          }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              <LockOutlined /> HR View - You can view all information but cannot edit or modify any data.
+            </Text>
+          </div>
+        )}
+
         <Row gutter={[16, 24]}>
           <Col xs={24} md={12}>
             <Descriptions title="Contact Information" column={1} bordered size="small">
@@ -257,13 +298,15 @@ const ContactDetail = ({
               <Title level={4} style={{ margin: 0 }}>Notes History</Title>
               {hasNotes && <Tag color="blue">{contact.Notes.length}</Tag>}
             </Space>
-            <Button 
-              type="primary" 
-              icon={<PlusOutlined />} 
-              onClick={openAddNoteModal}
-            >
-              Add Note
-            </Button>
+            {!isHR && (
+              <Button 
+                type="primary" 
+                icon={<PlusOutlined />} 
+                onClick={openAddNoteModal}
+              >
+                Add Note
+              </Button>
+            )}
           </div>
 
           {hasNotes ? (
@@ -281,25 +324,27 @@ const ContactDetail = ({
                   <Paragraph style={{ marginBottom: 8, whiteSpace: 'pre-wrap' }}>
                     {note.note}
                   </Paragraph>
-                  <Space size="small">
-                    <Button 
-                      size="small" 
-                      type="text"
-                      icon={<EditOutlined />} 
-                      onClick={() => openEditNoteModal(note)}
-                    >
-                      Edit
-                    </Button>
-                    <Button 
-                      size="small" 
-                      type="text"
-                      danger 
-                      icon={<DeleteOutlined />} 
-                      onClick={() => handleDeleteNoteClick(note.id)}
-                    >
-                      Delete
-                    </Button>
-                  </Space>
+                  {!isHR && (
+                    <Space size="small">
+                      <Button 
+                        size="small" 
+                        type="text"
+                        icon={<EditOutlined />} 
+                        onClick={() => openEditNoteModal(note)}
+                      >
+                        Edit
+                      </Button>
+                      <Button 
+                        size="small" 
+                        type="text"
+                        danger 
+                        icon={<DeleteOutlined />} 
+                        onClick={() => handleDeleteNoteClick(note.id)}
+                      >
+                        Delete
+                      </Button>
+                    </Space>
+                  )}
                 </Timeline.Item>
               ))}
             </Timeline>
@@ -307,44 +352,48 @@ const ContactDetail = ({
             <div style={{ textAlign: 'center', padding: 40, color: '#8c8c8c' }}>
               <ClockCircleOutlined style={{ fontSize: 32, marginBottom: 16, display: 'block' }} />
               <Text>No notes available for this contact yet.</Text>
-              <div>
-                <Button type="link" onClick={openAddNoteModal}>
-                  Add your first note
-                </Button>
-              </div>
+              {!isHR && (
+                <div>
+                  <Button type="link" onClick={openAddNoteModal}>
+                    Add your first note
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
       </Card>
 
-      {/* Add / Edit Note Modal */}
-      <Modal
-        title={editingNote ? "Edit Note" : "Add New Note"}
-        open={noteModalVisible}
-        onOk={handleNoteSubmit}
-        onCancel={() => {
-          setNoteModalVisible(false);
-          setEditingNote(null);
-          noteForm.resetFields();
-        }}
-        confirmLoading={submitting}
-        okText={editingNote ? "Update Note" : "Add Note"}
-        width={500}
-      >
-        <Form form={noteForm} layout="vertical">
-          <Form.Item
-            name="note"
-            rules={[{ required: true, message: 'Please enter note content' }]}
-          >
-            <TextArea 
-              rows={5} 
-              placeholder="Write your note here..." 
-              maxLength={500}
-              showCount
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {/* Add / Edit Note Modal - Hidden for HR */}
+      {!isHR && (
+        <Modal
+          title={editingNote ? "Edit Note" : "Add New Note"}
+          open={noteModalVisible}
+          onOk={handleNoteSubmit}
+          onCancel={() => {
+            setNoteModalVisible(false);
+            setEditingNote(null);
+            noteForm.resetFields();
+          }}
+          confirmLoading={submitting}
+          okText={editingNote ? "Update Note" : "Add Note"}
+          width={500}
+        >
+          <Form form={noteForm} layout="vertical">
+            <Form.Item
+              name="note"
+              rules={[{ required: true, message: 'Please enter note content' }]}
+            >
+              <TextArea 
+                rows={5} 
+                placeholder="Write your note here..." 
+                maxLength={500}
+                showCount
+              />
+            </Form.Item>
+          </Form>
+        </Modal>
+      )}
     </div>
   );
 };

@@ -38,7 +38,8 @@ import {
   StarOutlined,
   TagOutlined,
   ClockCircleOutlined,
-  UserAddOutlined
+  UserAddOutlined,
+  LockOutlined
 } from '@ant-design/icons';
 import { ContactStatus } from 'models/ContactModel';
 import { LeadInterestLevel } from 'models/LeadModel';
@@ -98,7 +99,8 @@ const ContactList = ({
   onAssignSeller,
   onUpdateStatus,
   onAddNote,
-  sellers
+  sellers,
+  isHR = false // Add isHR prop
 }) => {
   const [data, setData] = useState([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
@@ -163,8 +165,12 @@ const ContactList = ({
     return dayjs(d).format('DD MMM YYYY');
   };
 
-  // Assign Modal - FIXED: Handle both single and bulk
+  // Assign Modal - Disabled for HR
   const showAssignModal = (record) => {
+    if (isHR) {
+      message.warning('HR users cannot assign contacts');
+      return;
+    }
     setSelectedRecord(record);
     setIsBulkAssign(false);
     setAssignModalVisible(true);
@@ -172,6 +178,10 @@ const ContactList = ({
   };
 
   const showBulkAssignModal = () => {
+    if (isHR) {
+      message.warning('HR users cannot assign contacts');
+      return;
+    }
     setIsBulkAssign(true);
     setSelectedRecord(null);
     setAssignModalVisible(true);
@@ -181,10 +191,8 @@ const ContactList = ({
   const handleAssign = () => {
     assignForm.validateFields().then(values => {
       if (isBulkAssign && selectedRowKeys.length > 0) {
-        // Bulk assign - pass array of IDs
         onAssignSeller(selectedRowKeys, values.seller_id, values.affectingDate?.toDate());
       } else if (selectedRecord) {
-        // Single assign - pass array with one ID
         onAssignSeller([selectedRecord.id], values.seller_id, values.affectingDate?.toDate());
       }
       setAssignModalVisible(false);
@@ -193,8 +201,12 @@ const ContactList = ({
     });
   };
 
-  // Note Modal
+  // Note Modal - Disabled for HR
   const showNoteModal = (record) => {
+    if (isHR) {
+      message.warning('HR users cannot add notes');
+      return;
+    }
     setSelectedRecord(record);
     setNoteModalVisible(true);
     noteForm.resetFields();
@@ -215,8 +227,12 @@ const ContactList = ({
     });
   };
 
-  // Delete handler
+  // Delete handler - Disabled for HR
   const handleDelete = (record) => {
+    if (isHR) {
+      message.warning('HR users cannot delete contacts');
+      return;
+    }
     confirm({
       title: 'Delete Contact',
       icon: <ExclamationCircleOutlined />,
@@ -229,8 +245,12 @@ const ContactList = ({
     });
   };
 
-  // Handle status change
+  // Handle status change - Disabled for HR
   const handleStatusChange = async (contactId, newStatus, record) => {
+    if (isHR) {
+      message.warning('HR users cannot change status');
+      return;
+    }
     setChangingStatus(prev => ({ ...prev, [contactId]: true }));
     try {
       await onUpdateStatus(contactId, newStatus);
@@ -300,7 +320,169 @@ const ContactList = ({
     return counts;
   }, [contacts]);
 
-  const columns = [
+  // HR Columns (Read-only, limited actions)
+  const hrColumns = [
+    {
+      title: 'Contact',
+      dataIndex: 'name',
+      key: 'name',
+      width: 200,
+      fixed: 'left',
+      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
+      render: (text, record) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Avatar
+            size={32}
+            style={{
+              background: stringToColor(text || 'U'),
+              fontSize: 13,
+              fontWeight: 700,
+              flexShrink: 0,
+            }}
+          >
+            {(text || 'U')[0].toUpperCase()}
+          </Avatar>
+          <div style={{ minWidth: 0 }}>
+            <Text style={{ fontWeight: 600, color: '#1d1d1d', display: 'block' }}>
+              {text || 'Unknown'}
+            </Text>
+            <Space size={4} wrap>
+              {record.region && (
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  <GlobalOutlined style={{ marginRight: 3 }} />
+                  {record.region}
+                </Text>
+              )}
+            </Space>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Contact Info',
+      key: 'contact',
+      width: 90,
+      render: (_, record) => (
+        <Space size={2}>
+          {record.email && (
+            <Tooltip title={record.email}>
+              <Button
+                type="text"
+                size="small"
+                icon={<MailOutlined style={{ color: '#1677ff' }} />}
+                href={`mailto:${record.email}`}
+              />
+            </Tooltip>
+          )}
+          {record.phoneNumber && (
+            <Tooltip title={record.phoneNumber}>
+              <Button
+                type="text"
+                size="small"
+                icon={<PhoneOutlined style={{ color: '#52c41a' }} />}
+                href={`tel:${record.phoneNumber}`}
+              />
+            </Tooltip>
+          )}
+        </Space>
+      ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 130,
+      render: (status) => {
+        const config = statusConfig[status] || { color: 'default', label: status || '—', icon: null };
+        return (
+          <Tag
+            color={config.color}
+            style={{ borderRadius: 20, fontWeight: 500, fontSize: 12 }}
+          >
+            {config.icon} {config.label}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: 'Assigned To',
+      dataIndex: 'seller_id',
+      key: 'seller_id',
+      width: 150,
+      render: (_, record) => {
+        const sellerName = getSellerName(record);
+        const isAssigned = isContactAssigned(record);
+        
+        return (
+          <Space size={4}>
+            <Text style={{ fontSize: 12 }}>
+              {isAssigned ? sellerName : 'Unassigned'}
+            </Text>
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Created',
+      dataIndex: 'CreationDate',
+      key: 'CreationDate',
+      width: 110,
+      render: date =>
+        date ? (
+          <Text style={{ fontSize: 12 }}>
+            {formatDate(date)}
+          </Text>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+      sorter: (a, b) => {
+        const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+        const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+        return dateA - dateB;
+      },
+    },
+    {
+      title: 'Budget',
+      dataIndex: 'Budget',
+      key: 'Budget',
+      width: 120,
+      render: (budget) => {
+        if (!budget) return <Text type="secondary">—</Text>;
+        if (typeof budget === 'number' || !isNaN(Number(budget))) {
+          const num = Number(budget);
+          return (
+            <Text strong style={{ color: '#1677ff' }}>
+              <DollarOutlined /> AED {num.toLocaleString()}
+            </Text>
+          );
+        }
+        return <Text type="secondary">—</Text>;
+      },
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 60,
+      fixed: 'right',
+      render: (_, record) => (
+        <Tooltip title="View Details">
+          <Button
+            type="text"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewContact(record);
+            }}
+            style={{ color: '#1890ff' }}
+          />
+        </Tooltip>
+      ),
+    },
+  ];
+
+  // Full Columns (with edit/delete for non-HR)
+  const fullColumns = [
     {
       title: 'Contact',
       dataIndex: 'name',
@@ -565,7 +747,11 @@ const ContactList = ({
     },
   ];
 
-  const rowSelection = {
+  // Choose columns based on HR status
+  const columns = isHR ? hrColumns : fullColumns;
+
+  // Row selection - Disabled for HR
+  const rowSelection = isHR ? undefined : {
     selectedRowKeys,
     onChange: (keys) => setSelectedRowKeys(keys),
     columnWidth: 40,
@@ -576,6 +762,25 @@ const ContactList = ({
 
   return (
     <div>
+      {/* HR Read-Only Banner */}
+      {isHR && (
+        <div style={{ 
+          marginBottom: 12, 
+          padding: '8px 16px', 
+          background: '#fffbe6', 
+          borderRadius: 6,
+          border: '1px solid #ffe58f',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <LockOutlined style={{ color: '#faad14' }} />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            HR View - View only. Actions are disabled.
+          </Text>
+        </div>
+      )}
+
       {/* Filter Section */}
       <div style={{ 
         marginBottom: 16, 
@@ -694,8 +899,8 @@ const ContactList = ({
         })}
       </div>
 
-      {/* Bulk action toolbar */}
-      {selectedRowKeys.length > 0 && (
+      {/* Bulk action toolbar - Hidden for HR */}
+      {!isHR && selectedRowKeys.length > 0 && (
         <div
           style={{
             display: 'flex',
@@ -746,7 +951,7 @@ const ContactList = ({
         rowKey="id"
         loading={loading}
         size="middle"
-        scroll={{ x: 800 }}
+        scroll={{ x: isHR ? 650 : 1200 }}
         onRow={record => ({
           onClick: () => onViewContact(record),
           style: { cursor: 'pointer' },
@@ -765,83 +970,86 @@ const ContactList = ({
         style={{ borderRadius: 10, overflow: 'hidden' }}
       />
 
-      {/* Assign to Seller Modal - FIXED */}
-      <Modal
-        title={isBulkAssign ? `Assign ${selectedRowKeys.length} Contacts to Seller` : "Assign Contact to Seller"}
-        open={assignModalVisible}
-        onOk={handleAssign}
-        onCancel={() => {
-          setAssignModalVisible(false);
-          assignForm.resetFields();
-          setIsBulkAssign(false);
-        }}
-        okText="Assign"
-        cancelText="Cancel"
-        width={500}
-      >
-        <Form form={assignForm} layout="vertical">
-          <Form.Item
-            name="seller_id"
-            label="Select Seller"
-            rules={[{ required: true, message: 'Please select a seller' }]}
+      {/* Modals - Hidden for HR */}
+      {!isHR && (
+        <>
+          <Modal
+            title={isBulkAssign ? `Assign ${selectedRowKeys.length} Contacts to Seller` : "Assign Contact to Seller"}
+            open={assignModalVisible}
+            onOk={handleAssign}
+            onCancel={() => {
+              setAssignModalVisible(false);
+              assignForm.resetFields();
+              setIsBulkAssign(false);
+            }}
+            okText="Assign"
+            cancelText="Cancel"
+            width={500}
           >
-            <Select 
-              placeholder="Search and select a seller"
-              showSearch
-              optionFilterProp="children"
-            >
-              {sellers.map(s => (
-                <Option key={s.id} value={s.id}>
-                  <Space>
-                    <Avatar size={20} style={{ backgroundColor: '#1890ff' }}>
-                      {(s.name || 'S')[0].toUpperCase()}
-                    </Avatar>
-                    {s.name}
-                    {s.phoneNumber && (
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        <PhoneOutlined style={{ marginLeft: 4 }} /> {s.phoneNumber}
-                      </Text>
-                    )}
-                  </Space>
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
+            <Form form={assignForm} layout="vertical">
+              <Form.Item
+                name="seller_id"
+                label="Select Seller"
+                rules={[{ required: true, message: 'Please select a seller' }]}
+              >
+                <Select 
+                  placeholder="Search and select a seller"
+                  showSearch
+                  optionFilterProp="children"
+                >
+                  {sellers.map(s => (
+                    <Option key={s.id} value={s.id}>
+                      <Space>
+                        <Avatar size={20} style={{ backgroundColor: '#1890ff' }}>
+                          {(s.name || 'S')[0].toUpperCase()}
+                        </Avatar>
+                        {s.name}
+                        {s.phoneNumber && (
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            <PhoneOutlined style={{ marginLeft: 4 }} /> {s.phoneNumber}
+                          </Text>
+                        )}
+                      </Space>
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
 
-          <Form.Item 
-            name="affectingDate" 
-            label="Assignment Date"
-            tooltip="Date when this assignment becomes effective"
-          >
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-        </Form>
-      </Modal>
+              <Form.Item 
+                name="affectingDate" 
+                label="Assignment Date"
+                tooltip="Date when this assignment becomes effective"
+              >
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Form>
+          </Modal>
 
-      {/* Add Note Modal */}
-      <Modal
-        title={`Add Note - ${selectedRecord?.name || 'Contact'}`}
-        open={noteModalVisible}
-        onOk={handleAddNote}
-        onCancel={() => setNoteModalVisible(false)}
-        okText="Add Note"
-        cancelText="Cancel"
-        width={500}
-      >
-        <Form form={noteForm} layout="vertical">
-          <Form.Item
-            name="note"
-            rules={[{ required: true, message: 'Please enter a note' }]}
+          <Modal
+            title={`Add Note - ${selectedRecord?.name || 'Contact'}`}
+            open={noteModalVisible}
+            onOk={handleAddNote}
+            onCancel={() => setNoteModalVisible(false)}
+            okText="Add Note"
+            cancelText="Cancel"
+            width={500}
           >
-            <Input.TextArea 
-              rows={4} 
-              placeholder="Write your note here..." 
-              maxLength={500}
-              showCount
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+            <Form form={noteForm} layout="vertical">
+              <Form.Item
+                name="note"
+                rules={[{ required: true, message: 'Please enter a note' }]}
+              >
+                <Input.TextArea 
+                  rows={4} 
+                  placeholder="Write your note here..." 
+                  maxLength={500}
+                  showCount
+                />
+              </Form.Item>
+            </Form>
+          </Modal>
+        </>
+      )}
 
       <style>{`
         .table-row-even { background: #fff; }

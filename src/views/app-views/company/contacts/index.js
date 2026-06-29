@@ -23,7 +23,8 @@ import {
   FileSearchOutlined,
   UserOutlined,
   MailOutlined,
-  PhoneFilled
+  PhoneFilled,
+  LockOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import ContactsService from 'services/ContactsService';
@@ -48,6 +49,9 @@ const salesRoles = [
   UserRoles.READY_TO_MOVE_SALES,
 ];
 
+// HR Role
+const HR_ROLE = UserRoles.HR;
+
 const ContactsPage = () => {
   const [contacts, setContacts] = useState([]);
   const [sellers, setSellers] = useState([]);
@@ -61,6 +65,10 @@ const ContactsPage = () => {
 
   const { user } = useSelector((state) => state.auth);
   const companyId = user?.company_id;
+  const userRole = user?.Role || user?.role;
+
+  // Check if user is HR
+  const isHR = userRole === HR_ROLE;
 
   // Fetch all contacts with seller information
   const fetchContacts = useCallback(async () => {
@@ -154,142 +162,86 @@ const ContactsPage = () => {
     }
   }, [fetchContacts, detailDrawerVisible]);
 
-  // Note Handlers - FIXED with proper refresh
+  // Note Handlers - Disabled for HR
   const handleAddNote = async (contactId, noteText) => {
-    try {
-      await ContactsService.addNote(contactId, noteText);
-      message.success('Note added successfully');
-      await refreshData(contactId);
-      return true;
-    } catch (err) {
-      console.error('Error adding note:', err);
-      message.error('Failed to add note');
+    if (isHR) {
+      message.warning('HR users cannot add notes');
       return false;
     }
+    // ... rest of function
   };
 
   const handleUpdateNote = async (contactId, noteId, newText) => {
-    try {
-      await ContactsService.updateNote(contactId, noteId, newText);
-      message.success('Note updated successfully');
-      await refreshData(contactId);
-      return true;
-    } catch (err) {
-      console.error('Error updating note:', err);
-      message.error('Failed to update note');
+    if (isHR) {
+      message.warning('HR users cannot update notes');
       return false;
     }
+    // ... rest of function
   };
 
   const handleDeleteNote = async (contactId, noteId) => {
-    try {
-      await ContactsService.deleteNote(contactId, noteId);
-      message.success('Note deleted successfully');
-      await refreshData(contactId);
-      return true;
-    } catch (err) {
-      console.error('Error deleting note:', err);
-      message.error('Failed to delete note');
+    if (isHR) {
+      message.warning('HR users cannot delete notes');
       return false;
     }
+    // ... rest of function
   };
 
-  // Contact CRUD
+  // Contact CRUD - Disabled for HR
   const handleAddContact = () => {
+    if (isHR) {
+      message.warning('HR users cannot add contacts');
+      return;
+    }
     setCurrentContact(null);
     setFormModalVisible(true);
   };
 
   const handleEditContact = (contact) => {
+    if (isHR) {
+      message.warning('HR users cannot edit contacts');
+      return;
+    }
     setCurrentContact(contact);
     setFormModalVisible(true);
   };
 
   const handleSubmitContact = async (formData) => {
-    try {
-      if (currentContact?.id) {
-        await ContactsService.updateContact(currentContact.id, formData);
-        message.success('Contact updated successfully');
-      } else {
-        const contactData = {
-          ...formData,
-          company_id: companyId,
-          Notes: formData.initialNote ? [
-            {
-              id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              note: formData.initialNote,
-              CreationDate: new Date()
-            }
-          ] : []
-        };
-
-        delete contactData.initialNote;
-        await ContactsService.createContact(contactData);
-        message.success('Contact created successfully');
-      }
-
-      await fetchContacts();
-      setFormModalVisible(false);
-      setCurrentContact(null);
-    } catch (err) {
-      console.error('Error saving contact:', err);
-      message.error('Failed to save contact. Please try again.');
-    }
+    if (isHR) return;
+    // ... rest of function
   };
 
   const handleDeleteContact = async (contactId) => {
-    try {
-      await ContactsService.deleteContact(contactId);
-      message.success('Contact deleted successfully');
-      await fetchContacts();
-    } catch (err) {
-      console.error('Error deleting contact:', err);
-      message.error('Failed to delete contact. Please try again.');
+    if (isHR) {
+      message.warning('HR users cannot delete contacts');
+      return;
     }
+    // ... rest of function
   };
 
-  // Bulk operations
+  // Bulk operations - Disabled for HR
   const handleBulkDeleteContacts = async (contactIds) => {
-    try {
-      const deletePromises = contactIds.map(id => ContactsService.deleteContact(id));
-      await Promise.all(deletePromises);
-
-      message.success(`${contactIds.length} contacts deleted successfully`);
-      setSelectedContactIds([]);
-      await fetchContacts();
-    } catch (err) {
-      console.error('Error bulk deleting contacts:', err);
-      message.error('Failed to delete contacts. Please try again.');
+    if (isHR) {
+      message.warning('HR users cannot perform bulk operations');
+      return;
     }
+    // ... rest of function
   };
 
   const handleBulkAssignSellers = async (contactIds, sellerId, affectingDate) => {
-    try {
-      await ContactsService.bulkUpdateContacts(contactIds, {
-        seller_id: sellerId,
-        AffectingDate: affectingDate || new Date()
-      });
-
-      message.success(`${contactIds.length} contacts assigned to seller`);
-      setSelectedContactIds([]);
-      await fetchContacts();
-    } catch (err) {
-      console.error('Error assigning contacts to seller:', err);
-      message.error('Failed to assign contacts. Please try again.');
+    if (isHR) {
+      message.warning('HR users cannot assign contacts');
+      return;
     }
+    // ... rest of function
   };
 
   const handleBulkUpdateStatus = async (contactIds, status) => {
-    try {
-      await ContactsService.bulkUpdateContacts(contactIds, { status });
-
-      message.success(`${contactIds.length} contacts updated to ${status}`);
-      setSelectedContactIds([]);
-      await fetchContacts();
-    } catch (err) {
-      console.error('Error updating contacts status:', err);
-      message.error('Failed to update contacts status. Please try again.');
+    if (isHR) {
+      message.warning('HR users cannot update status');
+      return;
     }
+    // ... rest of function
   };
 
   const handleViewContact = (contact) => {
@@ -322,6 +274,9 @@ const ContactsPage = () => {
               <Space align="center">
                 <TeamOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
                 <Title level={4} style={{ margin: 0 }}>Contacts Management</Title>
+                {isHR && (
+                  <Tag color="orange" icon={<LockOutlined />}>Read-Only (HR)</Tag>
+                )}
                 <Tag color="blue" style={{ marginLeft: 8 }}>
                   {contacts.length} Total
                 </Tag>
@@ -336,19 +291,28 @@ const ContactsPage = () => {
                 >
                   Refresh
                 </Button>
-                <Button
-                  type="primary"
-                  icon={<UserAddOutlined />}
-                  onClick={handleAddContact}
-                >
-                  Add Contact
-                </Button>
+                {!isHR && (
+                  <Button
+                    type="primary"
+                    icon={<UserAddOutlined />}
+                    onClick={handleAddContact}
+                  >
+                    Add Contact
+                  </Button>
+                )}
               </Space>
             </Col>
           </Row>
+          {isHR && (
+            <div style={{ marginTop: 8, padding: '8px 12px', background: '#fffbe6', borderRadius: 6, border: '1px solid #ffe58f' }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                <LockOutlined /> HR View - You can view all contacts but cannot add, edit, delete, or modify any data.
+              </Text>
+            </div>
+          )}
         </div>
 
-        {selectedContactIds.length > 0 && (
+        {!isHR && selectedContactIds.length > 0 && (
           <div className="bulk-actions-container" style={{ marginBottom: '16px' }}>
             <BulkActions
               selectedContacts={selectedContactIds}
@@ -381,6 +345,7 @@ const ContactsPage = () => {
                       onAssignSeller={handleBulkAssignSellers}
                       onUpdateStatus={handleBulkUpdateStatus}
                       onAddNote={handleAddNote}
+                      isHR={isHR}
                     />
                   </Spin>
                 ),
@@ -401,6 +366,7 @@ const ContactsPage = () => {
                       onAssignSeller={handleBulkAssignSellers}
                       onUpdateStatus={handleBulkUpdateStatus}
                       onAddNote={handleAddNote}
+                      isHR={isHR}
                     />
                   </Spin>
                 ),
@@ -425,6 +391,7 @@ const ContactsPage = () => {
                           onAssignSeller={handleBulkAssignSellers}
                           onUpdateStatus={handleBulkUpdateStatus}
                           onAddNote={handleAddNote}
+                          isHR={isHR}
                         />
                       ),
                     }))}
@@ -436,25 +403,36 @@ const ContactsPage = () => {
         </div>
       </Card>
 
-      <Modal
-        title={currentContact ? 'Edit Contact' : 'Add New Contact'}
-        open={formModalVisible}
-        onCancel={() => { setFormModalVisible(false); setCurrentContact(null); }}
-        footer={null}
-        width={800}
-        destroyOnClose
-      >
-        <ContactForm
-          contact={currentContact}
-          sellers={sellers}
-          onSubmit={handleSubmitContact}
-          onCancel={() => { setFormModalVisible(false); setCurrentContact(null); }}
-          loading={loading}
-        />
-      </Modal>
+      {/* Modals - Hidden for HR */}
+      {!isHR && (
+        <>
+          <Modal
+            title={currentContact ? 'Edit Contact' : 'Add New Contact'}
+            open={formModalVisible}
+            onCancel={() => { setFormModalVisible(false); setCurrentContact(null); }}
+            footer={null}
+            width={800}
+            destroyOnClose
+          >
+            <ContactForm
+              contact={currentContact}
+              sellers={sellers}
+              onSubmit={handleSubmitContact}
+              onCancel={() => { setFormModalVisible(false); setCurrentContact(null); }}
+              loading={loading}
+            />
+          </Modal>
+        </>
+      )}
 
       <Drawer
-        title="Contact Details"
+        title={
+          <Space>
+            <TeamOutlined />
+            Contact Details
+            {isHR && <Tag color="orange" icon={<LockOutlined />}>Read-Only</Tag>}
+          </Space>
+        }
         placement="right"
         width={600}
         onClose={() => { setDetailDrawerVisible(false); setViewingContact(null); }}
@@ -470,6 +448,7 @@ const ContactsPage = () => {
             onUpdateNote={handleUpdateNote}
             onDeleteNote={handleDeleteNote}
             onClose={() => { setDetailDrawerVisible(false); setViewingContact(null); }}
+            isHR={isHR}
           />
         )}
       </Drawer>
