@@ -1,20 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, Form, Row, Col, Input, Select, DatePicker, Button, Space } from 'antd';
-import { SearchOutlined, FilterOutlined, ClearOutlined } from '@ant-design/icons';
+import { SearchOutlined, FilterOutlined, ClearOutlined, TagOutlined } from '@ant-design/icons';
 import { InvoiceStatus } from 'models/InvoiceModel';
 import UserService from 'services/firebase/UserService';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
-/**
- * Component for filtering invoices
- */
+const DEPARTMENTS = {
+  OFFICE_SUPPLY: 'office_supply',
+  MARKETING_EXPENSE: 'marketing_expense',
+  OFFICE_OPERATIONS: 'office_operations',
+  GENERAL: 'general'
+};
+
 const InvoiceFilters = ({ onFilter, companyId, loading }) => {
   const [form] = Form.useForm();
   const [users, setUsers] = useState([]);
-  const [years, setYears] = useState([]);
-  const [months] = useState([
+  const isFirstRender = useRef(true);
+
+  const months = [
     { value: 0, label: 'January' },
     { value: 1, label: 'February' },
     { value: 2, label: 'March' },
@@ -27,19 +33,19 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
     { value: 9, label: 'October' },
     { value: 10, label: 'November' },
     { value: 11, label: 'December' }
-  ]);
+  ];
 
-  // Generate years from current year down to 5 years ago
-  useEffect(() => {
-    const currentYear = new Date().getFullYear();
-    const yearsList = [];
-    for (let i = 0; i < 6; i++) {
-      yearsList.push(currentYear - i);
-    }
-    setYears(yearsList);
-  }, []);
+  const currentDate = new Date();
+  const currentMonth = currentDate.getMonth();
+  const currentYear = currentDate.getFullYear();
 
-  // Fetch users for the company
+  // Generate years
+  const years = [];
+  for (let i = 0; i < 6; i++) {
+    years.push(currentYear - i);
+  }
+
+  // Fetch users
   useEffect(() => {
     const fetchUsers = async () => {
       if (companyId) {
@@ -52,50 +58,76 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
         }
       }
     };
-
     fetchUsers();
   }, [companyId]);
 
+  // Set default filters on mount - THIS MONTH
+  useEffect(() => {
+    if (isFirstRender.current) {
+      const defaultValues = {
+        status: 'all',
+        year: currentYear,
+        month: currentMonth,
+        department: 'all',
+        creatorId: 'all',
+        amountRange: 'all',
+        search: undefined,
+        sortBy: undefined,
+      };
+      
+      form.setFieldsValue(defaultValues);
+      isFirstRender.current = false;
+      
+      // Apply default filters - THIS MONTH
+      onFilter(defaultValues);
+    }
+  }, [form, onFilter, currentYear, currentMonth]);
+
   const handleFilter = (values) => {
-    onFilter(values);
+    // Ensure we have the current month/year if not specified
+    const filterValues = {
+      ...values,
+      year: values.year || currentYear,
+      month: values.month !== undefined && values.month !== '' ? values.month : currentMonth,
+    };
+    onFilter(filterValues);
   };
 
   const handleReset = () => {
-    form.resetFields();
-    onFilter({});
+    const resetValues = {
+      status: 'all',
+      year: currentYear,
+      month: currentMonth,
+      department: 'all',
+      creatorId: 'all',
+      amountRange: 'all',
+      search: undefined,
+      sortBy: undefined,
+    };
+    form.setFieldsValue(resetValues);
+    onFilter(resetValues);
   };
 
   return (
-    <Card 
-      title={
-        <Space>
-          <FilterOutlined /> Filter Invoices
-        </Space>
-      }
-      style={{ marginBottom: 16 }}
-    >
+    <Card style={{ marginBottom: 16 }}>
       <Form
         form={form}
         layout="vertical"
         onFinish={handleFilter}
-        initialValues={{
-          status: 'all',
-          year: new Date().getFullYear(),
-        }}
       >
         <Row gutter={16}>
           <Col xs={24} sm={12} md={6}>
             <Form.Item name="search" label="Search">
               <Input
                 prefix={<SearchOutlined />}
-                placeholder="Search by title or invoice #"
+                placeholder="Search invoices..."
                 allowClear
               />
             </Form.Item>
           </Col>
           <Col xs={24} sm={12} md={6}>
             <Form.Item name="status" label="Status">
-              <Select placeholder="Select status">
+              <Select placeholder="All Statuses">
                 <Option value="all">All Statuses</Option>
                 <Option value={InvoiceStatus.PENDING}>Pending</Option>
                 <Option value={InvoiceStatus.PAID}>Paid</Option>
@@ -105,16 +137,19 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
             </Form.Item>
           </Col>
           <Col xs={24} sm={12} md={6}>
+            <Form.Item name="department" label="Department">
+              <Select placeholder="All Departments" suffixIcon={<TagOutlined />}>
+                <Option value="all">All Departments</Option>
+                <Option value={DEPARTMENTS.OFFICE_SUPPLY}>🏢 Office Supply</Option>
+                <Option value={DEPARTMENTS.MARKETING_EXPENSE}>📊 Marketing Expense</Option>
+                <Option value={DEPARTMENTS.OFFICE_OPERATIONS}>⚙️ Office Operations</Option>
+                <Option value={DEPARTMENTS.GENERAL}>📋 General</Option>
+              </Select>
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
             <Form.Item name="creatorId" label="Creator">
-              <Select 
-                placeholder="Select creator"
-                showSearch
-                optionFilterProp="children"
-                filterOption={(input, option) => {
-                  if (!option || !option.children) return false;
-                  return String(option.children).toLowerCase().indexOf(input.toLowerCase()) >= 0;
-                }}
-              >
+              <Select placeholder="All Creators" showSearch>
                 <Option value="all">All Creators</Option>
                 {users.map(user => (
                   <Option key={user.id} value={user.id}>
@@ -124,19 +159,8 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
               </Select>
             </Form.Item>
           </Col>
-          <Col xs={24} sm={12} md={6}>
-            <Form.Item name="sortBy" label="Sort By">
-              <Select placeholder="Sort by">
-                <Option value="dateDesc">Date (Newest)</Option>
-                <Option value="dateAsc">Date (Oldest)</Option>
-                <Option value="amountDesc">Amount (Highest)</Option>
-                <Option value="amountAsc">Amount (Lowest)</Option>
-                <Option value="dueDateAsc">Due Date (Soonest)</Option>
-              </Select>
-            </Form.Item>
-          </Col>
         </Row>
-        
+
         <Row gutter={16}>
           <Col xs={24} sm={12} md={6}>
             <Form.Item name="year" label="Year">
@@ -160,17 +184,33 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
               </Select>
             </Form.Item>
           </Col>
-          <Col xs={24} sm={12} md={12}>
-            <Form.Item name="dateRange" label="Date Range">
-              <RangePicker style={{ width: '100%' }} />
+          <Col xs={24} sm={12} md={6}>
+            <Form.Item name="amountRange" label="Amount Range">
+              <Select placeholder="All Amounts">
+                <Option value="all">All Amounts</Option>
+                <Option value="lessThan1000">Less than AED 1,000</Option>
+                <Option value="between1000And5000">AED 1,000 - AED 5,000</Option>
+                <Option value="between5000And10000">AED 5,000 - AED 10,000</Option>
+                <Option value="greaterThan10000">Greater than AED 10,000</Option>
+              </Select>
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12} md={6}>
+            <Form.Item name="sortBy" label="Sort By">
+              <Select placeholder="Sort by">
+                <Option value="dateDesc">Date (Newest)</Option>
+                <Option value="dateAsc">Date (Oldest)</Option>
+                <Option value="amountDesc">Amount (Highest)</Option>
+                <Option value="amountAsc">Amount (Lowest)</Option>
+              </Select>
             </Form.Item>
           </Col>
         </Row>
-        
+
         <Row justify="end">
           <Space>
             <Button onClick={handleReset} icon={<ClearOutlined />}>
-              Reset
+              Reset to Current Month
             </Button>
             <Button type="primary" htmlType="submit" icon={<FilterOutlined />} loading={loading}>
               Apply Filters

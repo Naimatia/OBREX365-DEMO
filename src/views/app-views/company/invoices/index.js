@@ -43,6 +43,7 @@ const InvoicesPage = () => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
+const [initialFiltersApplied, setInitialFiltersApplied] = useState(false);
 
   // Get user from Redux store
   const user = useSelector(state => state.auth.user);
@@ -85,112 +86,142 @@ const InvoicesPage = () => {
     }
   };
 
-  // Initial data loading
-  useEffect(() => {
-    if (hasAccess && companyId) {
-      fetchInvoices();
-      fetchUsers();
-    }
-  }, [companyId, hasAccess]);
-
-  // Apply filters to invoices
-  const applyFilters = (invoiceList, filterValues) => {
-    if (!invoiceList) return;
-
-    let result = [...invoiceList];
-
-    // Apply search filter
-    if (filterValues.search) {
-      const searchTerm = filterValues.search.toLowerCase();
-      result = result.filter(invoice =>
-        invoice.Title?.toLowerCase()?.includes(searchTerm) ||
-        invoice.id?.toLowerCase()?.includes(searchTerm) ||
-        invoice.description?.toLowerCase()?.includes(searchTerm)
-      );
-    }
-
-    // Apply status filter
-    if (filterValues.status && filterValues.status !== 'all') {
-      result = result.filter(invoice => invoice.Status === filterValues.status);
-    }
-
-    // Apply creator filter
-    if (filterValues.creatorId && filterValues.creatorId !== 'all') {
-      result = result.filter(invoice => invoice.creator_id === filterValues.creatorId);
-    }
-
-    // Apply year filter
-    if (filterValues.year) {
-      result = result.filter(invoice => {
-        if (!invoice.CreationDate) return false;
-        const creationDate = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
-        return creationDate.getFullYear() === filterValues.year;
+useEffect(() => {
+  if (hasAccess && companyId) {
+    // Set initial filters to current month if not already set
+    if (!initialFiltersApplied) {
+      const currentDate = new Date();
+      const currentMonth = currentDate.getMonth();
+      const currentYear = currentDate.getFullYear();
+      
+      setFilters({
+        status: 'all',
+        year: currentYear,
+        month: currentMonth,
+        department: 'all',
+        creatorId: 'all',
+        amountRange: 'all',
       });
-      setChartYear(filterValues.year);
+      setInitialFiltersApplied(true);
     }
+    
+    fetchInvoices();
+    fetchUsers();
+  }
+}, [companyId, hasAccess, initialFiltersApplied]);
 
-    // Apply month filter
-    if (filterValues.month !== undefined && filterValues.month !== '') {
-      result = result.filter(invoice => {
-        if (!invoice.CreationDate) return false;
-        const creationDate = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
-        return creationDate.getMonth() === filterValues.month;
-      });
-    }
 
-    // Apply date range filter
-    if (filterValues.dateRange && filterValues.dateRange.length === 2) {
-      const startDate = filterValues.dateRange[0].startOf('day');
-      const endDate = filterValues.dateRange[1].endOf('day');
+const applyFilters = (invoiceList, filterValues) => {
+  if (!invoiceList) return;
 
-      result = result.filter(invoice => {
-        if (!invoice.CreationDate) return false;
-        const creationDate = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
-        return creationDate >= startDate.toDate() && creationDate <= endDate.toDate();
-      });
-    }
+  let result = [...invoiceList];
 
-    // Apply sorting
-    if (filterValues.sortBy) {
-      switch (filterValues.sortBy) {
-        case 'dateDesc':
-          result.sort((a, b) => {
-            const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
-            const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-            return dateB - dateA;
-          });
-          break;
-        case 'dateAsc':
-          result.sort((a, b) => {
-            const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
-            const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-            return dateA - dateB;
-          });
-          break;
-        case 'amountDesc':
-          result.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
-          break;
-        case 'amountAsc':
-          result.sort((a, b) => Number(a.amount || 0) - Number(a.amount || 0));
-          break;
-        case 'dueDateAsc':
-          result.sort((a, b) => {
-            const dateA = a.DateLimit?.toDate?.() || new Date(a.DateLimit) || new Date(0);
-            const dateB = b.DateLimit?.toDate?.() || new Date(b.DateLimit) || new Date(0);
-            return dateA - dateB;
-          });
-          break;
-        default:
-          result.sort((a, b) => {
-            const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
-            const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-            return dateB - dateA;
-          });
-      }
-    }
-
+  
+  // If no filter values or empty, return all invoices
+  if (!filterValues || Object.keys(filterValues).length === 0) {
     setFilteredInvoices(result);
-  };
+    return;
+  }
+
+  // Apply search filter
+  if (filterValues.search) {
+    const searchTerm = filterValues.search.toLowerCase();
+    result = result.filter(invoice =>
+      invoice.Title?.toLowerCase()?.includes(searchTerm) ||
+      invoice.invoiceNumber?.toLowerCase()?.includes(searchTerm) ||
+      invoice.description?.toLowerCase()?.includes(searchTerm)
+    );
+  }
+
+  // Apply status filter
+  if (filterValues.status && filterValues.status !== 'all') {
+    result = result.filter(invoice => invoice.Status === filterValues.status);
+  }
+
+  // Apply creator filter
+  if (filterValues.creatorId && filterValues.creatorId !== 'all') {
+    result = result.filter(invoice => invoice.creator_id === filterValues.creatorId);
+  }
+
+  // Apply department filter
+  if (filterValues.department && filterValues.department !== 'all') {
+    result = result.filter(invoice => invoice.department === filterValues.department);
+  }
+
+  // Apply year filter
+  if (filterValues.year) {
+    const year = parseInt(filterValues.year);
+    result = result.filter(invoice => {
+      if (!invoice.CreationDate) return false;
+      const date = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
+      return date.getFullYear() === year;
+    });
+    setChartYear(year);
+  }
+
+  // Apply month filter
+  if (filterValues.month !== undefined && filterValues.month !== '' && filterValues.month !== null) {
+    const month = parseInt(filterValues.month);
+    result = result.filter(invoice => {
+      if (!invoice.CreationDate) return false;
+      const date = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
+      return date.getMonth() === month;
+    });
+  }
+
+  // Apply amount range filter
+  if (filterValues.amountRange && filterValues.amountRange !== 'all') {
+    result = result.filter(invoice => {
+      const amount = Number(invoice.amount || 0);
+      switch (filterValues.amountRange) {
+        case 'lessThan1000':
+          return amount < 1000;
+        case 'between1000And5000':
+          return amount >= 1000 && amount <= 5000;
+        case 'between5000And10000':
+          return amount >= 5000 && amount <= 10000;
+        case 'greaterThan10000':
+          return amount > 10000;
+        default:
+          return true;
+      }
+    });
+  }
+
+  // Apply sorting
+  if (filterValues.sortBy) {
+    switch (filterValues.sortBy) {
+      case 'dateDesc':
+        result.sort((a, b) => {
+          const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+          const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+          return dateB - dateA;
+        });
+        break;
+      case 'dateAsc':
+        result.sort((a, b) => {
+          const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+          const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+          return dateA - dateB;
+        });
+        break;
+      case 'amountDesc':
+        result.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+        break;
+      case 'amountAsc':
+        result.sort((a, b) => Number(a.amount || 0) - Number(b.amount || 0));
+        break;
+      default:
+        result.sort((a, b) => {
+          const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+          const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+          return dateB - dateA;
+        });
+    }
+  }
+
+  setFilteredInvoices(result);
+};
 
   // Handle filter change
   const handleFilterChange = (values) => {
@@ -198,7 +229,7 @@ const InvoicesPage = () => {
     applyFilters(invoices, values);
   };
 
-  // Handle create invoice
+// Update the handleCreateInvoice function
 const handleCreateInvoice = async (values) => {
   if (!companyId || !user?.id) {
     message.error('Missing user or company information');
@@ -207,58 +238,68 @@ const handleCreateInvoice = async (values) => {
 
   try {
     setSubmitting(true);
+    console.log('Creating invoice with values:', values); // Debug log
 
     const invoiceData = {
       ...values,
       company_id: companyId,
       creator_id: user.id,
       Status: InvoiceStatus.PENDING,
-      Notes: values.Notes || '',
-      Title: values.Title || '',
-      description: values.description || '',
-      amount: Number(values.amount || 0),
-      paymentUrl: values.paymentUrl || ''
     };
 
     // Use createInvoice() → generates invoiceNumber
     const createdInvoice = await InvoiceService.createInvoice(invoiceData, []);
 
+    console.log('Invoice created:', createdInvoice); // Debug log
+
     message.success(`Invoice ${createdInvoice.invoiceNumber} created successfully`);
     setIsModalVisible(false);
+    setEditingInvoice(null);
     await fetchInvoices();
   } catch (error) {
     console.error('Error creating invoice:', error);
-    message.error('Failed to create invoice');
+    message.error('Failed to create invoice: ' + error.message);
   } finally {
     setSubmitting(false);
   }
 };
-  // Handle updating existing invoice
-  const handleUpdateInvoice = async (values) => {
-    setSubmitting(true);
-    try {
-      const updateData = {
-        ...values,
-        LastUpdate: serverTimestamp(),
-        Notes: values.Notes || '',
-        Title: values.Title || '',
-        description: values.description || '',
-        amount: Number(values.amount || 0),
-        paymentUrl: values.paymentUrl || ''
-      };
 
-      await InvoiceService.update(editingInvoice.id, updateData);
-      message.success('Invoice updated successfully');
-      setIsModalVisible(false);
-      setEditingInvoice(null);
-      await fetchInvoices();
-    } catch (error) {
-      console.error('Error updating invoice:', error);
-      message.error('Failed to update invoice');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+// Update the handleUpdateInvoice function
+const handleUpdateInvoice = async (values) => {
+  if (!editingInvoice?.id) {
+    message.error('No invoice selected for editing');
+    return;
+  }
+
+  setSubmitting(true);
+  try {
+    console.log('Updating invoice with values:', values); // Debug log
+    
+    const updateData = {
+      ...values,
+      // Don't override these fields
+      company_id: editingInvoice.company_id,
+      creator_id: editingInvoice.creator_id,
+      invoiceNumber: editingInvoice.invoiceNumber,
+    };
+
+    // Use the dedicated updateInvoice method
+    const updatedInvoice = await InvoiceService.updateInvoice(editingInvoice.id, updateData);
+    
+    console.log('Invoice updated:', updatedInvoice); // Debug log
+    
+    message.success('Invoice updated successfully');
+    setIsModalVisible(false);
+    setEditingInvoice(null);
+    await fetchInvoices();
+  } catch (error) {
+    console.error('Error updating invoice:', error);
+    message.error('Failed to update invoice: ' + error.message);
+  } finally {
+    setSubmitting(false);
+  }
+};
+
 
   // Handle viewing invoice details
   const handleViewDetails = (invoice) => {

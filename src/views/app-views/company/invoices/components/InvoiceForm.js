@@ -10,96 +10,99 @@ import {
   Col,
   Space,
   Divider,
-  Typography
+  Typography,
+  Select
 } from 'antd';
 import {
   SaveOutlined,
   CloseOutlined,
   CalendarOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  TagOutlined
 } from '@ant-design/icons';
 import { InvoiceStatus } from 'models/InvoiceModel';
 import dayjs from 'dayjs';
 
-/**
- * @typedef {Object} InvoiceData
- * @property {string} [id]
- * @property {string} [Title]
- * @property {number} [amount]
- * @property {Date|Object} [DateLimit]
- * @property {Date|Object} [CreationDate]
- * @property {string} [paymentUrl]
- * @property {string} [description]
- * @property {string} [Notes]
- * @property {string} [Status]
- */
-
 const { TextArea } = Input;
 const { Title: TitleText } = Typography;
+const { Option } = Select;
 
-/**
- * Form component for adding/editing invoices
- * @param {Object} props Component props
- * @param {(values: any) => Promise<void>} props.onSubmit Submit handler function
- * @param {React.MouseEventHandler<HTMLElement>} props.onCancel Cancel handler function
- * @param {boolean} props.loading Loading state
- * @param {InvoiceData} [props.initialValues] Optional initial form values
- */
+// Department constants - use same values as in Firestore
+const DEPARTMENTS = {
+  OFFICE_SUPPLY: 'office_supply',
+  MARKETING_EXPENSE: 'marketing_expense',
+  OFFICE_OPERATIONS: 'office_operations',
+  GENERAL: 'general'
+};
+
 const InvoiceForm = ({ onSubmit, onCancel, loading, initialValues = {} }) => {
   const [form] = Form.useForm();
   const isEditMode = !!initialValues?.id;
 
-// Add this helper at the top of the component
-const todayjs = (value) => {
-  if (!value) return null;
-  if (value?.toDate) return dayjs(value.toDate()); // Firestore Timestamp
-  if (value instanceof Date) return dayjs(value);
-  return dayjs(value);
-};
-
-useEffect(() => {
-  if (initialValues?.id) {
-    form.setFieldsValue({
-      Title: initialValues.Title || '',
-      amount: initialValues.amount || 0,
-      DateLimit: todayjs(initialValues.DateLimit) || dayjs().add(30, 'days'),
-      paymentUrl: initialValues.paymentUrl || '',
-      description: initialValues.description || '',
-      Notes: initialValues.Notes || '',
-    });
-  } else {
-    form.resetFields();
-    form.setFieldsValue({
-      DateLimit: dayjs().add(30, 'days'),
-    });
-  }
-}, [initialValues, form]);
-
-
-  const handleSubmit = async (values) => {
+  // Helper to convert various date formats to dayjs
+  const toDayjs = (value) => {
+    if (!value) return null;
+    if (typeof value === 'object' && value !== null) {
+      if (value.toDate && typeof value.toDate === 'function') {
+        return dayjs(value.toDate());
+      }
+      if (value instanceof Date) {
+        return dayjs(value);
+      }
+      if (value.isValid && typeof value.isValid === 'function') {
+        return value;
+      }
+    }
     try {
-      const formattedValues = {
-        ...values,
-        CreationDate: values.CreationDate
-          ? values.CreationDate.toDate?.() || values.CreationDate.toDate()
-          : new Date(),
-              DateLimit: values.DateLimit ? values.DateLimit.toDate() : new Date(),
-        Status: InvoiceStatus.PENDING,
-        Notes: values.Notes || '',
-        Title: values.Title || '',
-        description: values.description || '',
-        amount: Number(values.amount || 0),
-        paymentUrl: values.paymentUrl || ''
-      };
-
-      await onSubmit(formattedValues);
-    } catch (error) {
-      console.error('❌ Error submitting form:', error);
+      return dayjs(value);
+    } catch {
+      return null;
     }
   };
 
-  const today = dayjs();
-  const defaultDueDate = dayjs().add(30, 'days');
+  useEffect(() => {
+    if (isEditMode && initialValues) {
+      console.log('Editing invoice (form):', initialValues);
+      
+      const dueDate = toDayjs(initialValues.DateLimit) || dayjs().add(30, 'days');
+      
+      form.setFieldsValue({
+        Title: initialValues.Title || '',
+        amount: initialValues.amount || 0,
+        DateLimit: dueDate,
+        paymentUrl: initialValues.paymentUrl || '',
+        description: initialValues.description || '',
+        Notes: initialValues.Notes || '',
+        department: initialValues.department || DEPARTMENTS.GENERAL,
+      });
+    } else {
+      form.resetFields();
+      form.setFieldsValue({
+        DateLimit: dayjs().add(30, 'days'),
+        department: DEPARTMENTS.GENERAL,
+      });
+    }
+  }, [initialValues, isEditMode, form]);
+
+  const handleSubmit = async (values) => {
+    try {
+      // Format values for submission
+      const formattedValues = {
+        Title: values.Title || '',
+        description: values.description || '',
+        amount: Number(values.amount || 0),
+        paymentUrl: values.paymentUrl || '',
+        Notes: values.Notes || '',
+        department: values.department || DEPARTMENTS.GENERAL,
+        DateLimit: values.DateLimit ? values.DateLimit.toDate() : new Date(),
+      };
+
+      console.log('Form submitting values:', formattedValues);
+      await onSubmit(formattedValues);
+    } catch (error) {
+      console.error('Error submitting form:', error);
+    }
+  };
 
   return (
     <Card>
@@ -165,6 +168,35 @@ useEffect(() => {
           <Col xs={24} sm={12}>
             <Form.Item name="paymentUrl" label="Payment URL (Optional)">
               <Input placeholder="https://payment-provider.com/invoice/12345" />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        {/* Department Field */}
+        <Row gutter={16}>
+          <Col xs={24} sm={12}>
+            <Form.Item
+              name="department"
+              label="Department"
+              rules={[{ required: true, message: 'Please select a department' }]}
+            >
+              <Select
+                placeholder="Select department"
+                suffixIcon={<TagOutlined />}
+              >
+                <Option value="office_supply">
+                  🏢 Office Supply
+                </Option>
+                <Option value="marketing_expense">
+                  📊 Marketing Expense
+                </Option>
+                <Option value="office_operations">
+                  ⚙️ Office Operations
+                </Option>
+                <Option value="general">
+                  📋 General
+                </Option>
+              </Select>
             </Form.Item>
           </Col>
         </Row>

@@ -13,7 +13,14 @@ export const InvoiceModel = {
   Title: '',
   description: '',
   amount: 0,
-  paymentUrl: ''
+  paymentUrl: '',
+  department: 'general', // Department field
+  invoiceNumber: '', // Invoice number
+  subtotal: 0, // Subtotal before tax
+  taxAmount: 0, // Tax amount
+  total: 0, // Total amount
+  items: [], // Invoice items
+  isDeleted: false // Soft delete flag
 }
 
 /**
@@ -59,22 +66,23 @@ export const convertToInvoiceModel = (doc) => {
   return {
     id: doc.id || '',
     Title: data.Title || '',
-  amount: data.amount || 0,
-  total: data.total || 0,
-  subtotal: data.subtotal || 0,
-  taxAmount: data.taxAmount || 0,
-  invoiceNumber: data.invoiceNumber || `INV-${data.id?.slice(-6)}`, // fallback
-  Status: data.Status || InvoiceStatus.PENDING,
-  CreationDate: data.CreationDate,
-  DateLimit: data.DateLimit,
-  LastUpdate: data.LastUpdate,
-  Notes: data.Notes || '',
-  description: data.description || '',
-  paymentUrl: data.paymentUrl || '',
-  company_id: data.company_id,
-  creator_id: data.creator_id,
-  items: data.items || [],
-  isDeleted: data.isDeleted || false,
+    amount: data.amount || 0,
+    total: data.total || 0,
+    subtotal: data.subtotal || 0,
+    taxAmount: data.taxAmount || 0,
+    invoiceNumber: data.invoiceNumber || `INV-${doc.id?.slice(-6) || Date.now()}`,
+    Status: data.Status || InvoiceStatus.PENDING,
+    CreationDate: data.CreationDate || null,
+    DateLimit: data.DateLimit || null,
+    LastUpdate: data.LastUpdate || null,
+    Notes: data.Notes || '',
+    description: data.description || '',
+    paymentUrl: data.paymentUrl || '',
+    company_id: data.company_id || '',
+    creator_id: data.creator_id || '',
+    department: data.department || 'general', // ⭐ ADDED DEPARTMENT FIELD
+    items: data.items || [],
+    isDeleted: data.isDeleted || false,
   };
 };
 

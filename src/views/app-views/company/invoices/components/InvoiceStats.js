@@ -1,10 +1,18 @@
 import React, { useMemo } from 'react';
-import { Card, Row, Col, Statistic, Progress } from 'antd';
-import { DollarOutlined, CheckCircleOutlined, ClockCircleOutlined, WarningOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Statistic, Progress, Space, Typography } from 'antd';
+import { 
+  DollarOutlined, 
+  CheckCircleOutlined, 
+  ClockCircleOutlined, 
+  WarningOutlined,
+  FileTextOutlined
+} from '@ant-design/icons';
 import { InvoiceStatus } from 'models/InvoiceModel';
 
+const { Text } = Typography;
+
 /**
- * Component for displaying invoice statistics
+ * Component for displaying invoice statistics based on filtered invoices
  */
 const InvoiceStats = ({ invoices, loading }) => {
   const stats = useMemo(() => {
@@ -17,45 +25,29 @@ const InvoiceStats = ({ invoices, loading }) => {
         totalAmount: 0,
         paidAmount: 0,
         pendingAmount: 0,
-        paidPercentage: 0
+        paidPercentage: 0,
+        pendingPercentage: 0,
+        missedPercentage: 0,
       };
     }
 
-    const currentYear = new Date().getFullYear();
-    const thisYearInvoices = invoices.filter(invoice => 
-      new Date(invoice.CreationDate?.toDate()).getFullYear() === currentYear
-    );
-
-    const total = thisYearInvoices.length;
+    const total = invoices.length;
     
-    const paid = thisYearInvoices.filter(invoice => 
-      invoice.Status === InvoiceStatus.PAID
-    ).length;
+    const paid = invoices.filter(inv => inv.Status === InvoiceStatus.PAID).length;
+    const pending = invoices.filter(inv => inv.Status === InvoiceStatus.PENDING).length;
+    const missed = invoices.filter(inv => inv.Status === InvoiceStatus.MISSED).length;
     
-    const pending = thisYearInvoices.filter(invoice => 
-      invoice.Status === InvoiceStatus.PENDING
-    ).length;
-    
-    const missed = thisYearInvoices.filter(invoice => 
-      invoice.Status === InvoiceStatus.MISSED
-    ).length;
+    const totalAmount = invoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
+    const paidAmount = invoices
+      .filter(inv => inv.Status === InvoiceStatus.PAID)
+      .reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
+    const pendingAmount = invoices
+      .filter(inv => inv.Status === InvoiceStatus.PENDING)
+      .reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
 
-    const totalAmount = thisYearInvoices.reduce(
-      (sum, invoice) => sum + Number(invoice.amount || 0), 
-      0
-    );
-
-    const paidAmount = thisYearInvoices
-      .filter(invoice => invoice.Status === InvoiceStatus.PAID)
-      .reduce((sum, invoice) => sum + Number(invoice.amount || 0), 0);
-
-    const pendingAmount = thisYearInvoices
-      .filter(invoice => invoice.Status === InvoiceStatus.PENDING)
-      .reduce((sum, invoice) => sum + Number(invoice.amount || 0), 0);
-
-    const paidPercentage = total > 0 
-      ? Math.round((paid / total) * 100) 
-      : 0;
+    const paidPercentage = total > 0 ? Math.round((paid / total) * 100) : 0;
+    const pendingPercentage = total > 0 ? Math.round((pending / total) * 100) : 0;
+    const missedPercentage = total > 0 ? Math.round((missed / total) * 100) : 0;
 
     return {
       total,
@@ -65,7 +57,9 @@ const InvoiceStats = ({ invoices, loading }) => {
       totalAmount,
       paidAmount,
       pendingAmount,
-      paidPercentage
+      paidPercentage,
+      pendingPercentage,
+      missedPercentage,
     };
   }, [invoices]);
 
@@ -75,107 +69,147 @@ const InvoiceStats = ({ invoices, loading }) => {
       currency: 'AED',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(value);
+    }).format(value || 0);
   };
 
   return (
-    <Row gutter={[16, 16]}>
-      <Col xs={24} sm={12} md={6}>
-        <Card loading={loading}>
-          <Statistic
-            title="Total Invoices (This Year)"
-            value={stats.total}
-            prefix={<DollarOutlined />}
-          />
-          <div className="mt-3">
-            <Progress 
-              percent={100} 
-              status="active" 
-              size={5} 
-              showInfo={false} 
+    <>
+      {/* Status Cards */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={8}>
+          <Card loading={loading} style={{ height: '100%', background: '#f6ffed', borderColor: '#b7eb8f' }}>
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Space>
+                <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 20 }} />
+                <Text strong style={{ fontSize: 14 }}>Paid Invoices</Text>
+              </Space>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 28, fontWeight: 700, color: '#52c41a' }}>
+                  {stats.paid}
+                </span>
+                <span style={{ fontSize: 16, color: '#52c41a', fontWeight: 600 }}>
+                  {stats.paidPercentage}%
+                </span>
+              </div>
+              <Progress 
+                percent={stats.paidPercentage} 
+                strokeColor="#52c41a" 
+                size="small"
+                showInfo={false}
+              />
+            </Space>
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card loading={loading} style={{ height: '100%', background: '#e6f7ff', borderColor: '#91d5ff' }}>
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Space>
+                <ClockCircleOutlined style={{ color: '#1890ff', fontSize: 20 }} />
+                <Text strong style={{ fontSize: 14 }}>Pending Invoices</Text>
+              </Space>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 28, fontWeight: 700, color: '#1890ff' }}>
+                  {stats.pending}
+                </span>
+                <span style={{ fontSize: 16, color: '#1890ff', fontWeight: 600 }}>
+                  {stats.pendingPercentage}%
+                </span>
+              </div>
+              <Progress 
+                percent={stats.pendingPercentage} 
+                strokeColor="#1890ff" 
+                size="small"
+                showInfo={false}
+              />
+            </Space>
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card loading={loading} style={{ height: '100%', background: '#fff2e8', borderColor: '#ffccc7' }}>
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Space>
+                <WarningOutlined style={{ color: '#ff4d4f', fontSize: 20 }} />
+                <Text strong style={{ fontSize: 14 }}>Missed Invoices</Text>
+              </Space>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 28, fontWeight: 700, color: '#ff4d4f' }}>
+                  {stats.missed}
+                </span>
+                <span style={{ fontSize: 16, color: '#ff4d4f', fontWeight: 600 }}>
+                  {stats.missedPercentage}%
+                </span>
+              </div>
+              <Progress 
+                percent={stats.missedPercentage} 
+                strokeColor="#ff4d4f" 
+                size="small"
+                showInfo={false}
+              />
+            </Space>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Amount Cards */}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={8}>
+          <Card loading={loading} style={{ height: '100%' }}>
+            <Statistic
+              title="Total Amount"
+              value={formatCurrency(stats.totalAmount)}
+              prefix={<DollarOutlined />}
+              valueStyle={{ fontSize: 24 }}
             />
-          </div>
-        </Card>
-      </Col>
-      <Col xs={24} sm={12} md={6}>
-        <Card loading={loading}>
-          <Statistic
-            title="Paid Invoices"
-            value={stats.paid}
-            prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-            valueStyle={{ color: '#52c41a' }}
-          />
-          <div className="mt-3">
-            <Progress 
-              percent={stats.paidPercentage} 
-              strokeColor="#52c41a" 
-              size={5} 
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card loading={loading} style={{ height: '100%', background: '#f6ffed', borderColor: '#b7eb8f' }}>
+            <Statistic
+              title="Paid Amount"
+              value={formatCurrency(stats.paidAmount)}
+              prefix={<CheckCircleOutlined />}
+              valueStyle={{ color: '#52c41a', fontSize: 24 }}
             />
-          </div>
-        </Card>
-      </Col>
-      <Col xs={24} sm={12} md={6}>
-        <Card loading={loading}>
-          <Statistic
-            title="Pending Invoices"
-            value={stats.pending}
-            prefix={<ClockCircleOutlined style={{ color: '#1890ff' }} />}
-            valueStyle={{ color: '#1890ff' }}
-          />
-          <div className="mt-3">
-            <Progress 
-              percent={stats.pending > 0 ? Math.round((stats.pending / stats.total) * 100) : 0} 
-              strokeColor="#1890ff" 
-              size={5} 
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card loading={loading} style={{ height: '100%', background: '#e6f7ff', borderColor: '#91d5ff' }}>
+            <Statistic
+              title="Pending Amount"
+              value={formatCurrency(stats.pendingAmount)}
+              prefix={<ClockCircleOutlined />}
+              valueStyle={{ color: '#1890ff', fontSize: 24 }}
             />
-          </div>
-        </Card>
-      </Col>
-      <Col xs={24} sm={12} md={6}>
-        <Card loading={loading}>
-          <Statistic
-            title="Missed Invoices"
-            value={stats.missed}
-            prefix={<WarningOutlined style={{ color: '#ff4d4f' }} />}
-            valueStyle={{ color: '#ff4d4f' }}
-          />
-          <div className="mt-3">
-            <Progress 
-              percent={stats.missed > 0 ? Math.round((stats.missed / stats.total) * 100) : 0} 
-              strokeColor="#ff4d4f" 
-              size={5} 
-            />
-          </div>
-        </Card>
-      </Col>
-      <Col xs={24} sm={12} md={8}>
-        <Card loading={loading}>
-          <Statistic
-            title="Total Amount"
-            value={formatCurrency(stats.totalAmount)}
-            valueStyle={{ color: '#6c757d' }}
-          />
-        </Card>
-      </Col>
-      <Col xs={24} sm={12} md={8}>
-        <Card loading={loading}>
-          <Statistic
-            title="Paid Amount"
-            value={formatCurrency(stats.paidAmount)}
-            valueStyle={{ color: '#52c41a' }}
-          />
-        </Card>
-      </Col>
-      <Col xs={24} sm={12} md={8}>
-        <Card loading={loading}>
-          <Statistic
-            title="Pending Amount"
-            value={formatCurrency(stats.pendingAmount)}
-            valueStyle={{ color: '#1890ff' }}
-          />
-        </Card>
-      </Col>
-    </Row>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Summary Row */}
+      <Row style={{ marginTop: 16 }}>
+        <Col span={24}>
+          <Card loading={loading} style={{ background: '#fafafa' }}>
+            <Space size={24} wrap>
+              <Space>
+                <FileTextOutlined style={{ color: '#1890ff' }} />
+                <Text>Total Invoices: <strong>{stats.total}</strong></Text>
+              </Space>
+              <Space>
+                <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                <Text>Paid: <strong>{stats.paid}</strong></Text>
+              </Space>
+              <Space>
+                <ClockCircleOutlined style={{ color: '#1890ff' }} />
+                <Text>Pending: <strong>{stats.pending}</strong></Text>
+              </Space>
+              <Space>
+                <WarningOutlined style={{ color: '#ff4d4f' }} />
+                <Text>Missed: <strong>{stats.missed}</strong></Text>
+              </Space>
+            </Space>
+          </Card>
+        </Col>
+      </Row>
+    </>
   );
 };
 

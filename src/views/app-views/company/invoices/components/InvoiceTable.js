@@ -80,17 +80,29 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
     // First check the cache
     if (creatorCache[creatorId]) {
       const creator = creatorCache[creatorId];
-      return `${creator.firstname || creator.firstName || ''} ${creator.lastname || creator.lastName || ''}`;
+      return `${creator.firstname || creator.firstName || ''} ${creator.lastname || creator.lastName || ''}`.trim() || 'Unknown';
     }
     
     // Then check the users prop
     const creator = users.find(user => user.id === creatorId);
     if (creator) {
-      return `${creator.firstname || creator.firstName || ''} ${creator.lastname || creator.lastName || ''}`;
+      return `${creator.firstname || creator.firstName || ''} ${creator.lastname || creator.lastName || ''}`.trim() || 'Unknown';
     }
     
     // If we can't find the user yet, show loading text
-    return creatorId ? `Loading user info...` : 'Unknown';
+    return creatorId ? 'Loading...' : 'Unknown';
+  };
+
+  // Get department label
+  const getDepartmentLabel = (department) => {
+    const labels = {
+      'office_supply': { text: 'Office Supply', icon: '🏢' },
+      'marketing_expense': { text: 'Marketing Expense', icon: '📊' },
+      'office_operations': { text: 'Office Operations', icon: '⚙️' },
+      'general': { text: 'General', icon: '📋' }
+    };
+    const dept = labels[department];
+    return dept ? `${dept.icon} ${dept.text}` : department || 'N/A';
   };
 
   // Calculate days remaining until due date
@@ -99,7 +111,7 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
     
     const dueDate = dateLimit.toDate ? dateLimit.toDate() : new Date(dateLimit);
     const today = new Date();
-    const diffTime = dueDate.getTime() - today.getTime(); // Use getTime() for proper number type
+    const diffTime = dueDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     return diffDays;
@@ -174,54 +186,77 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
 
   // Set up table columns
   const columns = [
- {
-    title: 'Title',
-    dataIndex: 'Title',
-    key: 'title',
-    render: (text, record) => (
-      <Space direction="vertical" size={0}>
-        <span className="font-weight-bold">{text}</span>
-        <small style={{ color: '#8c8c8c' }}>#{record.id?.substring(0, 8)}</small>
-      </Space>
-    ),
-    sorter: (a, b) => a.Title.localeCompare(b.Title),
-  },
-  {
-    title: 'Amount',
-    dataIndex: 'amount',
-    key: 'amount',
-    render: (text) => formatCurrency(text),
-    sorter: (a, b) => a.amount - b.amount,
-  },
-{
-    title: 'Status',
-    dataIndex: 'Status',
-    key: 'status',
-    render: (status, record) => {
-      let color = 'default';
-      let icon = null;
-      
-      switch(status) {
-        case InvoiceStatus.PAID:
-          color = 'success';
-          icon = <CheckCircleOutlined />;
-          break;
-        case InvoiceStatus.PENDING:
-          color = isInvoiceOverdue(record.DateLimit) ? 'error' : 'processing';
-          icon = isInvoiceOverdue(record.DateLimit) ? 
-            <ExclamationCircleOutlined /> : <ClockCircleOutlined />;
-          break;
-        case InvoiceStatus.MISSED:
-          color = 'error';
-          icon = <ExclamationCircleOutlined />;
-          break;
-        case InvoiceStatus.CANCELLED:
-          color = 'default';
-          icon = <StopOutlined />;
-          break;
-        default:
-          color = 'default';
-      }
+    {
+      title: 'Invoice #',
+      dataIndex: 'invoiceNumber',
+      key: 'invoiceNumber',
+      render: (text, record) => (
+        <Space direction="vertical" size={0}>
+          <span className="font-weight-bold">{text || 'N/A'}</span>
+          <small style={{ color: '#8c8c8c' }}>ID: {record.id?.substring(0, 8)}</small>
+        </Space>
+      ),
+      sorter: (a, b) => (a.invoiceNumber || '').localeCompare(b.invoiceNumber || ''),
+    },
+    {
+      title: 'Title',
+      dataIndex: 'Title',
+      key: 'title',
+      render: (text) => text || 'N/A',
+      sorter: (a, b) => (a.Title || '').localeCompare(b.Title || ''),
+    },
+    {
+      title: 'Department',
+      dataIndex: 'department',
+      key: 'department',
+      render: (department) => {
+        const label = getDepartmentLabel(department);
+        return <Tag color="blue">{label}</Tag>;
+      },
+      filters: [
+        { text: '🏢 Office Supply', value: 'office_supply' },
+        { text: '📊 Marketing Expense', value: 'marketing_expense' },
+        { text: '⚙️ Office Operations', value: 'office_operations' },
+        { text: '📋 General', value: 'general' }
+      ],
+      onFilter: (value, record) => record.department === value,
+    },
+    {
+      title: 'Amount',
+      dataIndex: 'amount',
+      key: 'amount',
+      render: (text) => formatCurrency(text),
+      sorter: (a, b) => (a.amount || 0) - (b.amount || 0),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'Status',
+      key: 'status',
+      render: (status, record) => {
+        let color = 'default';
+        let icon = null;
+        
+        switch(status) {
+          case InvoiceStatus.PAID:
+            color = 'success';
+            icon = <CheckCircleOutlined />;
+            break;
+          case InvoiceStatus.PENDING:
+            color = isInvoiceOverdue(record.DateLimit) ? 'error' : 'processing';
+            icon = isInvoiceOverdue(record.DateLimit) ? 
+              <ExclamationCircleOutlined /> : <ClockCircleOutlined />;
+            break;
+          case InvoiceStatus.MISSED:
+            color = 'error';
+            icon = <ExclamationCircleOutlined />;
+            break;
+          case InvoiceStatus.CANCELLED:
+            color = 'default';
+            icon = <StopOutlined />;
+            break;
+          default:
+            color = 'default';
+        }
 
         // Show warning indicator if due soon
         if (status === InvoiceStatus.PENDING && isInvoiceDueSoon(record.DateLimit)) {
@@ -241,68 +276,81 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
         }
 
         return <Tag color={color} icon={icon}>{status}</Tag>;
-},
-    filters: Object.values(InvoiceStatus).map(status => ({
-      text: status,
-      value: status,
-    })),
-    onFilter: (value, record) => record.Status === value,
-  },
-  {
-    title: 'Created',
-    dataIndex: 'CreationDate',
-    key: 'creationDate',
-    render: (date) => formatDate(date),
-    sorter: (a, b) => {
-      const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
-      const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-      return dateA - dateB;
+      },
+      filters: Object.values(InvoiceStatus).map(status => ({
+        text: status,
+        value: status,
+      })),
+      onFilter: (value, record) => record.Status === value,
     },
-  },
-  {
-    title: 'Due Date',
-    dataIndex: 'DateLimit',
-    key: 'dateLimit',
-    render: (date, record) => {
-      const formattedDate = formatDate(date);
-      if (record.Status === InvoiceStatus.PENDING) {
-        if (isInvoiceOverdue(date)) {
-          return (
-            <span style={{ color: '#ff4d4f' }}>
-              {formattedDate} <ExclamationCircleOutlined />
-            </span>
-          );
-        } else if (isInvoiceDueSoon(date)) {
-          const daysRemaining = getDaysRemaining(date);
-          return (
-            <Tooltip title={`Due in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`}>
-              <span style={{ color: '#faad14' }}>
-                {formattedDate} <ExclamationOutlined />
+    {
+      title: 'Created Date',
+      dataIndex: 'CreationDate',
+      key: 'creationDate',
+      render: (date) => {
+        if (!date) return 'N/A';
+        const formatted = formatDate(date);
+        const time = date.toDate ? date.toDate() : new Date(date);
+        return (
+          <Space direction="vertical" size={0}>
+            <span>{formatted}</span>
+            <small style={{ color: '#8c8c8c' }}>
+              {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+            </small>
+          </Space>
+        );
+      },
+      sorter: (a, b) => {
+        const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+        const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+        return dateA - dateB;
+      },
+      defaultSortOrder: 'descend', // This will show latest first by default
+    },
+    {
+      title: 'Due Date',
+      dataIndex: 'DateLimit',
+      key: 'dateLimit',
+      render: (date, record) => {
+        if (!date) return 'N/A';
+        const formattedDate = formatDate(date);
+        if (record.Status === InvoiceStatus.PENDING) {
+          if (isInvoiceOverdue(date)) {
+            return (
+              <span style={{ color: '#ff4d4f' }}>
+                {formattedDate} <ExclamationCircleOutlined />
               </span>
-            </Tooltip>
-          );
+            );
+          } else if (isInvoiceDueSoon(date)) {
+            const daysRemaining = getDaysRemaining(date);
+            return (
+              <Tooltip title={`Due in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`}>
+                <span style={{ color: '#faad14' }}>
+                  {formattedDate} <ExclamationOutlined />
+                </span>
+              </Tooltip>
+            );
+          }
         }
-      }
-      return formattedDate;
+        return formattedDate;
+      },
+      sorter: (a, b) => {
+        const dateA = a.DateLimit?.toDate?.() || new Date(a.DateLimit) || new Date(0);
+        const dateB = b.DateLimit?.toDate?.() || new Date(b.DateLimit) || new Date(0);
+        return dateA - dateB;
+      },
     },
-    sorter: (a, b) => {
-      const dateA = a.DateLimit?.toDate?.() || new Date(a.DateLimit) || new Date(0);
-      const dateB = b.DateLimit?.toDate?.() || new Date(b.DateLimit) || new Date(0);
-      return dateA - dateB;
+    {
+      title: 'Creator',
+      dataIndex: 'creator_id',
+      key: 'creator',
+      render: (creatorId) => getCreatorName(creatorId),
+      filters: users.map(user => ({
+        text: `${user.firstname || user.firstName || ''} ${user.lastname || user.lastName || ''}`.trim() || 'Unknown',
+        value: user.id,
+      })),
+      onFilter: (value, record) => record.creator_id === value,
     },
-  },
-  {
-    title: 'Creator',
-    dataIndex: 'creator_id',
-    key: 'creator',
-    render: (creatorId) => getCreatorName(creatorId),
-    filters: users.map(user => ({
-      text: `${user.firstname || user.firstName || ''} ${user.lastname || user.lastName || ''}`,
-      value: user.id,
-    })),
-    onFilter: (value, record) => record.creator_id === value,
-  },
-
     {
       title: 'Actions',
       key: 'actions',
@@ -320,7 +368,7 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
         }
         
         return (
-          <Space size="small">
+          <Space size="small" wrap>
             {record.Status === InvoiceStatus.PENDING && (
               <Button 
                 type="primary" 
@@ -379,11 +427,18 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
     },
   ];
 
+  // Sort invoices by creation date (latest first) before displaying
+  const sortedInvoices = [...invoices].sort((a, b) => {
+    const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+    const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+    return dateB - dateA; // Latest first
+  });
+
   return (
     <Card>
       <Table 
         columns={columns}
-        dataSource={invoices}
+        dataSource={sortedInvoices}
         rowKey="id"
         loading={loading}
         pagination={{
@@ -391,6 +446,7 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
           showSizeChanger: true,
           showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} invoices`
         }}
+        defaultSortOrder="descend"
       />
     </Card>
   );
