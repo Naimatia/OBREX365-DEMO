@@ -27,29 +27,36 @@ import { UserRoles } from 'models/UserModel';
  * Service for managing users with Firebase
  */
 class UserService {
-  /**
-   * Sign in with email and password
-   * @param {string} email 
-   * @param {string} password 
-   * @returns {Promise<Object>} Auth result with user data
-   */
-  static async signInWithEmail(email, password) {
-    try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      
-      // Update last login time
-      await updateDoc(doc(db, 'users', result.user.uid), {
-        lastLogin: serverTimestamp()
-      });
-      
-      // Get full user data
-      const userData = await this.getUserData(result.user.uid);
-      return { user: result.user, userData };
-    } catch (error) {
-      console.error('Login error:', error);
-      throw error;
+/**
+ * Sign in with email and password
+ * @param {string} email 
+ * @param {string} password 
+ * @returns {Promise<Object>} Auth result with user data
+ */
+static async signInWithEmail(email, password) {
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    
+    // ✅ Check if user is banned FIRST
+    const userData = await this.getUserData(result.user.uid);
+    
+    if (userData?.isBanned === true) {
+      // Sign out the user immediately
+      await signOut(auth);
+      throw new Error('Your account has been banned. Please contact your administrator.');
     }
+    
+    // Update last login time
+    await updateDoc(doc(db, 'users', result.user.uid), {
+      lastLogin: serverTimestamp()
+    });
+    
+    return { user: result.user, userData };
+  } catch (error) {
+    console.error('Login error:', error);
+    throw error;
   }
+}
 
   /**
    * Sign in with Google
@@ -451,6 +458,75 @@ static async createSellerDirectly(userData) {
     }
   }
 
+
+  // Add this method to UserService class
+
+/**
+ * Ban or unban a user with immediate effect (token revocation)
+ * @param {string} userId - User ID
+ * @param {boolean} isBanned - Whether the user is banned
+ * @returns {Promise<Object>} Result of the operation
+ */
+static async toggleUserBan(userId, isBanned) {
+  try {
+    console.log(`🔄 ${isBanned ? 'Banning' : 'Unbanning'} user:`, userId);
+    
+    // Get the current authenticated user
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('No authenticated user. Please sign in first.');
+    }
+
+    // Get a fresh ID token
+    const idToken = await currentUser.getIdToken(true);
+    
+    // Determine the API URL based on environment
+    const apiUrl = 'https://delete-user-demo.vercel.app/api/toggleUserBan'
+    
+    // Call the backend API to ban/unban user
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        userId: userId,
+        isBanned: isBanned,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Failed to ${isBanned ? 'ban' : 'unban'} user`);
+    }
+
+    const result = await response.json();
+    console.log(`✅ User ${isBanned ? 'banned' : 'unbanned'} successfully:`, result);
+    
+    // If banning, also update local state immediately
+    if (isBanned) {
+      // Update the user document locally to reflect ban
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        isBanned: true,
+        bannedAt: new Date(),
+      });
+    } else {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        isBanned: false,
+        unbannedAt: new Date(),
+      });
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error toggling user ban:', error);
+    throw error;
+  }
+}
+
   /**
    * Update user profile data
    * @param {string} userId - User ID
@@ -767,22 +843,6 @@ static async createSellerDirectly(userData) {
     } catch (error) {
       console.error('Error checking password reset required:', error);
       return false;
-    }
-  }
-
-  /**
-   * Ban or unban a user
-   * @param {string} userId User ID
-   * @param {boolean} isBanned Whether the user is banned
-   * @returns {Promise<void>}
-   */
-  static async toggleUserBan(userId, isBanned) {
-    try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, { isBanned });
-    } catch (error) {
-      console.error('Error toggling user ban:', error);
-      throw error;
     }
   }
 

@@ -2,13 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Drawer, Typography, Row, Col, Descriptions, Button, Space, 
-  Tag, Divider, Spin, Card, Tooltip, Empty, Avatar, Dropdown,Modal
+  Tag, Divider, Spin, Card, Tooltip, Empty, Avatar, Dropdown, Modal,
+  Alert, message  
 } from 'antd';
 import {
   UserOutlined, PhoneOutlined, MailOutlined, HomeOutlined,
   DollarOutlined, TagOutlined, CalendarOutlined, LinkOutlined,
   EditOutlined, DeleteOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  UserSwitchOutlined, GlobalOutlined, TeamOutlined
+  UserSwitchOutlined, GlobalOutlined, TeamOutlined, LockOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { DealStatus, DealStatusLabels, DealStatusColors, DealSourceEnum } from 'models/DealModel';
@@ -30,7 +31,8 @@ const DealDetails = ({
   onEdit, 
   onDelete, 
   onStatusChange,
-  onRefresh 
+  onRefresh,
+  isHR = false
 }) => {
   const [loading, setLoading] = useState(false);
 
@@ -92,11 +94,120 @@ const DealDetails = ({
     );
   };
 
-  // Handle status change
+  // Handle status change - Disabled for HR
   const handleStatusChange = (newStatus) => {
+    if (isHR) {
+      message.warning('HR users cannot change status');
+      return;
+    }
     onStatusChange(deal.id, newStatus);
   };
 
+  // HR View - Limited info
+  if (isHR) {
+    return (
+      <Drawer
+        title={
+          <Space>
+            <LockOutlined style={{ color: '#faad14' }} />
+            <span>Deal Details (Read-Only)</span>
+            <Tag color="orange">HR View</Tag>
+          </Space>
+        }
+        placement="right"
+        onClose={onClose}
+        open={visible}
+        width={480}
+      >
+        <Spin spinning={loading}>
+          {/* HR Warning */}
+          <Alert
+            message="Read-Only View"
+            description="HR users can only view basic deal information."
+            type="warning"
+            showIcon
+            icon={<LockOutlined />}
+            style={{ marginBottom: 16 }}
+          />
+
+          {/* Deal Header - Limited */}
+          <Card style={{ marginBottom: 16, borderRadius: 10 }}>
+            <Row gutter={16}>
+              <Col span={12}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Contact</Text>
+                  <div style={{ fontSize: 16, fontWeight: 600 }}>
+                    {deal.contact_name || 'Unknown'}
+                  </div>
+                </div>
+              </Col>
+              <Col span={12}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Amount</Text>
+                  <div style={{ fontSize: 18, fontWeight: 600, color: '#52c41a' }}>
+                    <DollarOutlined /> {formatCurrency(deal.Amount)}
+                  </div>
+                </div>
+              </Col>
+            </Row>
+          </Card>
+
+          {/* Limited Info */}
+          <Card title="Deal Information" style={{ marginBottom: 16, borderRadius: 10 }}>
+            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+              <div>
+                <Text type="secondary">Status:</Text>
+                <div style={{ marginTop: 2 }}>{renderStatus(deal.Status)}</div>
+              </div>
+              <div>
+                <Text type="secondary">Source:</Text>
+                <div style={{ marginTop: 2 }}>{renderSource(deal.Source)}</div>
+              </div>
+              <div>
+                <Text type="secondary">Assigned To:</Text>
+                <div style={{ marginTop: 2 }}>
+                  <Space>
+                    <UserOutlined />
+                    <Text>{deal.seller_name || 'Unassigned'}</Text>
+                  </Space>
+                </div>
+              </div>
+              <div>
+                <Text type="secondary">Created:</Text>
+                <div style={{ marginTop: 2 }}>{formatDate(deal.CreationDate)}</div>
+              </div>
+            </Space>
+          </Card>
+
+          {/* Contact Info - Limited */}
+          {deal.contact_name && (
+            <Card title={<><UserOutlined /> Contact</>} style={{ marginBottom: 16, borderRadius: 10 }}>
+              <Space direction="vertical" style={{ width: '100%' }} size={4}>
+                <div style={{ fontWeight: 500, fontSize: 15 }}>{deal.contact_name}</div>
+                {deal.contact_email && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    <MailOutlined /> {deal.contact_email}
+                  </Text>
+                )}
+                {deal.contact_phone && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    <PhoneOutlined /> {deal.contact_phone}
+                  </Text>
+                )}
+                {deal.region && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    <GlobalOutlined /> {deal.region}
+                  </Text>
+                )}
+              </Space>
+            </Card>
+          )}
+        </Spin>
+      </Drawer>
+    );
+  }
+
+  // Full View (Non-HR)
   return (
     <Drawer
       title={
@@ -179,6 +290,7 @@ const DealDetails = ({
           </Row>
         </Card>
 
+        {/* Rest of the full view - unchanged */}
         {/* Contact Info */}
         {deal.contact_name && (
           <Card title={<><UserOutlined /> Contact</>} style={{ marginBottom: 16, borderRadius: 10 }}>

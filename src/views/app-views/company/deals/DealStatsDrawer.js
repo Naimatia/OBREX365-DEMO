@@ -2,18 +2,19 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Drawer, Typography, Row, Col, Divider, Card, Empty, 
-  Statistic, Progress, Table
+  Statistic, Progress, Table, Alert, Space, Tag
 } from 'antd';
 import {
   DollarOutlined, CheckCircleOutlined, CloseCircleOutlined, 
-  BarChartOutlined, InfoCircleOutlined, StarOutlined
+  BarChartOutlined, InfoCircleOutlined, StarOutlined,
+  LockOutlined
 } from '@ant-design/icons';
 import { DealStatus } from 'models/DealModel';
 import { FileTextOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 
-const DealStatsDrawer = ({ visible, onClose, stats }) => {
+const DealStatsDrawer = ({ visible, onClose, stats, isHR = false }) => {
   const [countData, setCountData] = useState([]);
   const [valueData, setValueData] = useState([]);
   const [winRateData, setWinRateData] = useState(0);
@@ -95,7 +96,13 @@ const DealStatsDrawer = ({ visible, onClose, stats }) => {
 
   return (
     <Drawer
-      title={<Title level={4}>Deal Statistics</Title>}
+      title={
+        <Space>
+          <BarChartOutlined style={{ color: '#1890ff' }} />
+          <Title level={4} style={{ margin: 0 }}>Deal Statistics</Title>
+          {isHR && <Tag color="orange" icon={<LockOutlined />}>Read-Only</Tag>}
+        </Space>
+      }
       placement="right"
       onClose={onClose}
       open={visible}
@@ -103,6 +110,17 @@ const DealStatsDrawer = ({ visible, onClose, stats }) => {
     >
       {stats ? (
         <>
+          {isHR && (
+            <Alert
+              message="Read-Only View"
+              description="HR users can view statistics but cannot make any changes."
+              type="warning"
+              showIcon
+              icon={<LockOutlined />}
+              style={{ marginBottom: 16 }}
+            />
+          )}
+
           <Row gutter={[16, 16]}>
             <Col span={8}>
               <Card>
@@ -177,7 +195,5 @@ const DealStatsDrawer = ({ visible, onClose, stats }) => {
     </Drawer>
   );
 };
-
-// Add missing import
 
 export default DealStatsDrawer;

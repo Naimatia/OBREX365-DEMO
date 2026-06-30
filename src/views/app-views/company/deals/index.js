@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Card, Typography, Table, Input, Button, Row, Col, Tag, Drawer, Space, 
   Statistic, Tooltip, Modal, Spin, Badge, Divider, message, Popconfirm,
-  Select, Avatar, Dropdown
+  Select, Avatar, Dropdown, Alert
 } from 'antd';
 import { db, collection, query, where, getDocs, doc, getDoc } from 'configs/FirebaseConfig';
 import { 
@@ -11,7 +11,7 @@ import {
   EditOutlined, DeleteOutlined, EyeOutlined, DollarOutlined, 
   CheckCircleOutlined, CloseCircleOutlined, InfoCircleOutlined,
   UserOutlined, PhoneOutlined, MailOutlined, MoreOutlined,
-  TeamOutlined, TrophyOutlined
+  TeamOutlined, TrophyOutlined, LockOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import dealService from 'services/firebase/DealService';
@@ -27,6 +27,9 @@ import './deals.css';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+// HR Role
+const HR_ROLE = 'HR';
+
 // Status options with colors
 const statusOptions = [
   { value: DealStatus.OPENED, label: 'Opened', color: 'blue' },
@@ -38,6 +41,10 @@ const statusOptions = [
 const DealsPage = () => {
   const user = useSelector(state => state.auth.user);
   const companyId = user?.company_id || '';
+  const userRole = user?.Role || user?.role;
+
+  // Check if user is HR
+  const isHR = userRole === HR_ROLE;
 
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -190,7 +197,7 @@ const DealsPage = () => {
     }
   }, [companyId, fetchDeals, fetchSellers]);
 
-  // Handlers
+  // Handlers - Disabled for HR
   const handleSearch = (value) => {
     setSearchText(value);
     setTimeout(() => fetchDeals(), 300);
@@ -202,12 +209,20 @@ const DealsPage = () => {
   };
 
   const handleCreateDeal = () => {
+    if (isHR) {
+      message.warning('HR users cannot create deals');
+      return;
+    }
     setSelectedDeal(null);
     setIsEditing(false);
     setFormVisible(true);
   };
 
   const handleEditDeal = (deal) => {
+    if (isHR) {
+      message.warning('HR users cannot edit deals');
+      return;
+    }
     setSelectedDeal(deal);
     setIsEditing(true);
     setFormVisible(true);
@@ -219,6 +234,10 @@ const DealsPage = () => {
   };
 
   const handleDeleteDeal = async (dealId) => {
+    if (isHR) {
+      message.warning('HR users cannot delete deals');
+      return;
+    }
     try {
       await dealService.delete(dealId);
       message.success('Deal deleted');
@@ -229,6 +248,10 @@ const DealsPage = () => {
   };
 
   const handleStatusChange = async (dealId, newStatus) => {
+    if (isHR) {
+      message.warning('HR users cannot change status');
+      return;
+    }
     try {
       await dealService.update(dealId, { Status: newStatus });
       message.success(`Status updated to ${DealStatusLabels[newStatus] || newStatus}`);
@@ -239,6 +262,7 @@ const DealsPage = () => {
   };
 
   const handleFormSubmit = async (formData) => {
+    if (isHR) return;
     try {
       const cleanData = { ...formData };
       Object.keys(cleanData).forEach(key => {
@@ -311,8 +335,104 @@ const DealsPage = () => {
     }).format(amount || 0);
   };
 
-  // Table columns
-  const columns = [
+  // HR Columns (Read-only, limited info)
+  const hrColumns = [
+    {
+      title: 'Contact',
+      dataIndex: 'contact_name',
+      key: 'contact_name',
+      width: 180,
+      fixed: 'left',
+      render: (text, record) => (
+        <Space>
+          <Avatar size={32} style={{ backgroundColor: '#1890ff' }}>
+            {(text || 'U')[0].toUpperCase()}
+          </Avatar>
+          <div>
+            <div style={{ fontWeight: 500 }}>{text || 'Unknown'}</div>
+            {record.contact_email && (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                <MailOutlined style={{ marginRight: 2 }} />
+                {record.contact_email}
+              </Text>
+            )}
+          </div>
+        </Space>
+      ),
+      sorter: (a, b) => (a.contact_name || '').localeCompare(b.contact_name || '')
+    },
+    {
+      title: 'Amount',
+      dataIndex: 'Amount',
+      key: 'amount',
+      width: 130,
+      sorter: (a, b) => (a.Amount || 0) - (b.Amount || 0),
+      render: (amount) => (
+        <Text strong style={{ color: '#52c41a', fontSize: 14 }}>
+          <DollarOutlined /> {formatCurrency(amount)}
+        </Text>
+      )
+    },
+    {
+      title: 'Status',
+      dataIndex: 'Status',
+      key: 'status',
+      width: 110,
+      render: (status) => renderStatus(status),
+    },
+    {
+      title: 'Assigned To',
+      dataIndex: 'seller_name',
+      key: 'seller',
+      width: 140,
+      render: (name) => (
+        <Space>
+          <UserOutlined style={{ color: '#722ed1' }} />
+          <Text>{name || 'Unassigned'}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: 'Created',
+      dataIndex: 'CreationDate',
+      key: 'created',
+      width: 110,
+      render: (date) => {
+        if (!date) return '—';
+        try {
+          const d = date.toDate?.() || new Date(date);
+          return dayjs(d).format('DD MMM YY');
+        } catch {
+          return '—';
+        }
+      },
+      sorter: (a, b) => {
+        const da = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+        const db = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+        return da - db;
+      }
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 50,
+      fixed: 'right',
+      render: (_, record) => (
+        <Tooltip title="View Details">
+          <Button 
+            type="text" 
+            size="small" 
+            icon={<EyeOutlined />} 
+            onClick={() => handleViewDetails(record)}
+            style={{ color: '#1890ff' }}
+          />
+        </Tooltip>
+      )
+    }
+  ];
+
+  // Full Columns (with edit/delete for non-HR)
+  const fullColumns = [
     {
       title: 'Contact',
       dataIndex: 'contact_name',
@@ -483,6 +603,9 @@ const DealsPage = () => {
     }
   ];
 
+  // Choose columns based on HR status
+  const columns = isHR ? hrColumns : fullColumns;
+
   // Row class name
   const getRowClassName = (record) => {
     switch(record.Status) {
@@ -496,7 +619,23 @@ const DealsPage = () => {
 
   return (
     <div className="deals-page" style={{ padding: '24px' }}>
-      {/* Stats Summary */}
+      {/* HR Warning Banner */}
+      {isHR && (
+        <Alert
+          message={
+            <Space>
+              <LockOutlined style={{ color: '#faad14' }} />
+              <Text>HR View - Read Only</Text>
+            </Space>
+          }
+          description="You can view all deals but cannot create, edit, delete, or change any data."
+          type="warning"
+          showIcon={false}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      {/* Stats Summary - Simplified for HR */}
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} sm={8} md={4}>
           <Card size="small" style={{ textAlign: 'center' }}>
@@ -596,13 +735,15 @@ const DealsPage = () => {
               }}>
                 Reset
               </Button>
-              <Button 
-                type="primary" 
-                icon={<PlusOutlined />} 
-                onClick={handleCreateDeal}
-              >
-                Add Deal
-              </Button>
+              {!isHR && (
+                <Button 
+                  type="primary" 
+                  icon={<PlusOutlined />} 
+                  onClick={handleCreateDeal}
+                >
+                  Add Deal
+                </Button>
+              )}
             </Space>
           </Col>
         </Row>
@@ -621,7 +762,7 @@ const DealsPage = () => {
             showTotal: (total) => `${total} deals`
           }}
           rowClassName={getRowClassName}
-          scroll={{ x: 1100 }}
+          scroll={{ x: isHR ? 600 : 1100 }}
         />
       </Card>
       
@@ -637,6 +778,7 @@ const DealsPage = () => {
           handleDeleteDeal(dealId);
         }}
         onRefresh={fetchDeals}
+        isHR={isHR}
       />
       
       {/* Stats Drawer */}
@@ -644,18 +786,21 @@ const DealsPage = () => {
         visible={statsDrawerVisible}
         onClose={() => setStatsDrawerVisible(false)}
         stats={stats}
+        isHR={isHR}
       />
       
-      {/* Deal Form Modal */}
-      <DealForm
-        visible={formVisible}
-        onCancel={() => setFormVisible(false)}
-        onSubmit={handleFormSubmit}
-        isEditing={isEditing}
-        initialValues={selectedDeal}
-        companyId={companyId}
-        sellers={sellers}
-      />
+      {/* Deal Form Modal - Hidden for HR */}
+      {!isHR && (
+        <DealForm
+          visible={formVisible}
+          onCancel={() => setFormVisible(false)}
+          onSubmit={handleFormSubmit}
+          isEditing={isEditing}
+          initialValues={selectedDeal}
+          companyId={companyId}
+          sellers={sellers}
+        />
+      )}
     </div>
   );
 };

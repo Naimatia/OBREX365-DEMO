@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { connect, useSelector, useDispatch } from 'react-redux';
 import { Button, Form, Input, Alert } from 'antd';
-import { MailOutlined, LockOutlined } from '@ant-design/icons';
+import { MailOutlined, LockOutlined, StopOutlined } from '@ant-design/icons';
 import PropTypes from 'prop-types';
 import { signIn, showLoading, showAuthMessage, hideAuthMessage, forcePasswordReset } from 'store/slices/authSlice';
 import { useNavigate } from 'react-router-dom'
@@ -17,6 +17,7 @@ export const LoginForm = props => {
 
 	// Local state for force reset modal
 	const [resetError, setResetError] = useState(null);
+	const [loginError, setLoginError] = useState(null);
 
 	// Local state for reset password modal
 	const [resetModalVisible, setResetModalVisible] = useState(false);
@@ -41,7 +42,8 @@ export const LoginForm = props => {
 
 	const onLogin = values => {
 		showLoading()
-		setResetError(null); // Clear any previous errors
+		setLoginError(null); // Clear any previous errors
+		setResetError(null);
 		signIn(values);
 	};
 
@@ -69,18 +71,26 @@ export const LoginForm = props => {
 
 			console.log('✅ Force password reset successful:', result);
 
-			// Navigation will be handled by the useEffect when token is set
-
 		} catch (error) {
 			console.error('❌ Force password reset failed:', error);
 			setResetError(typeof error === 'string' ? error : 'An error occurred during password reset');
 		}
 	};
 
-
-
 	// Create navigation timer ref to prevent throttling
 	const navigationTimerRef = useRef(null);
+
+	// ✅ Check for ban error in the auth message
+	useEffect(() => {
+		if (showMessage && message) {
+			// Check if the error message indicates a banned account
+			if (message.toLowerCase().includes('banned') || message.toLowerCase().includes('ban')) {
+				setLoginError('⛔ Your account has been banned. Please contact your administrator.');
+			} else {
+				setLoginError(null);
+			}
+		}
+	}, [showMessage, message]);
 
 	useEffect(() => {
 		// Clear any pending navigation
@@ -127,14 +137,56 @@ export const LoginForm = props => {
 
 	return (
 		<>
-			<motion.div
-				initial={{ opacity: 0, marginBottom: 0 }}
-				animate={{
-					opacity: showMessage ? 1 : 0,
-					marginBottom: showMessage ? 20 : 0
-				}}>
-				<Alert type="error" showIcon message={message}></Alert>
-			</motion.div>
+			{/* ✅ Banned Account Alert - Shows prominently */}
+			{loginError && (
+				<motion.div
+					initial={{ opacity: 0, y: -20 }}
+					animate={{ opacity: 1, y: 0 }}
+					style={{ marginBottom: 20 }}
+				>
+					<Alert
+						type="error"
+						showIcon
+						icon={<StopOutlined />}
+						message={
+							<div>
+								<div style={{ fontSize: 16, fontWeight: 700, color: '#ff4d4f' }}>
+									⛔ Account Banned
+								</div>
+								<div style={{ fontSize: 14, marginTop: 4 }}>
+									{loginError}
+								</div>
+							</div>
+						}
+						description={
+							<div style={{ marginTop: 8 }}>
+								<p style={{ margin: 0, fontSize: 13, color: '#666' }}>
+									If you believe this is a mistake, please contact your HR department or system administrator.
+								</p>
+							</div>
+						}
+						style={{ 
+							borderRadius: 8,
+							border: '1px solid #ff4d4f',
+							background: '#fff1f0'
+						}}
+					/>
+				</motion.div>
+			)}
+
+			{/* Regular error message */}
+			{!loginError && (
+				<motion.div
+					initial={{ opacity: 0, marginBottom: 0 }}
+					animate={{
+						opacity: showMessage ? 1 : 0,
+						marginBottom: showMessage ? 20 : 0
+					}}
+				>
+					<Alert type="error" showIcon message={message}></Alert>
+				</motion.div>
+			)}
+
 			<Form
 				layout="vertical"
 				name="login-form"

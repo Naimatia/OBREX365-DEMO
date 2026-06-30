@@ -110,6 +110,8 @@ const mapMetaLeadToModel = (metaLead, companyId) => {
     assignedBy: null,
     convertedContactId: null,
     convertedAt: null,
+    source: 'facebook_meta',
+    // DO NOT set createdBy here - it will be set in the sync handler
   };
 };
 
@@ -458,51 +460,70 @@ const LeadsPage = () => {
 
   const openSyncModal = () => { setSyncResult(null); setSyncModalVisible(true); };
 
-  const handleMetaSync = async () => {
-    setSyncing(true);
-    setSyncResult(null);
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/facebook/leads?company_id=${companyId}&limit=200`);
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to fetch Meta leads');
-      }
-      const { leads: metaLeads = [] } = await res.json();
-      if (metaLeads.length === 0) { setSyncResult({ total: 0, saved: 0, skipped: 0, failed: 0 }); return; }
-
-      const existing = await LeadService.getLeadsByCompany(companyId);
-      const metaIds = new Set(existing.map(l => l.meta_lead_id).filter(Boolean));
-      const emails = new Set(existing.map(l => l.email?.toLowerCase().trim()).filter(Boolean));
-      const phones = new Set(existing.map(l => normalizePhone(l.phoneNumber)).filter(Boolean));
-
-      let saved = 0, skipped = 0, failed = 0;
-
-      for (const ml of metaLeads) {
-        const email = (ml.email || ml.raw_fields?.email || '').toLowerCase().trim();
-        const phone = normalizePhone(ml.phone_number || ml.raw_fields?.phone_number);
-
-        if (metaIds.has(ml.lead_id) || (email && emails.has(email)) || (phone && phones.has(phone))) {
-          skipped++; continue;
-        }
-        try {
-          await LeadService.create(mapMetaLeadToModel(ml, companyId));
-          if (email) emails.add(email);
-          if (phone) phones.add(phone);
-          metaIds.add(ml.lead_id);
-          saved++;
-        } catch { failed++; }
-      }
-
-      setSyncResult({ total: metaLeads.length, saved, skipped, failed });
-      if (saved > 0) { message.success(`${saved} new Meta lead${saved > 1 ? 's' : ''} imported!`); fetchLeads(); }
-      else if (skipped > 0) message.info(`All leads already exist (${skipped} skipped).`);
-    } catch (err) {
-      setSyncResult({ error: err.message });
-      message.error('Sync failed: ' + err.message);
-    } finally {
-      setSyncing(false);
+const handleMetaSync = async () => {
+  setSyncing(true);
+  setSyncResult(null);
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/facebook/leads?company_id=${companyId}&limit=200`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to fetch Meta leads');
     }
-  };
+    const { leads: metaLeads = [] } = await res.json();
+    if (metaLeads.length === 0) { 
+      setSyncResult({ total: 0, saved: 0, skipped: 0, failed: 0 }); 
+      return; 
+    }
+
+    const existing = await LeadService.getLeadsByCompany(companyId);
+    const metaIds = new Set(existing.map(l => l.meta_lead_id).filter(Boolean));
+    const emails = new Set(existing.map(l => l.email?.toLowerCase().trim()).filter(Boolean));
+    const phones = new Set(existing.map(l => normalizePhone(l.phoneNumber)).filter(Boolean));
+
+    let saved = 0, skipped = 0, failed = 0;
+
+    // Get the current user's ID
+    const currentUserId = user?.uid || user?.id;
+
+    for (const ml of metaLeads) {
+      const email = (ml.email || ml.raw_fields?.email || '').toLowerCase().trim();
+      const phone = normalizePhone(ml.phone_number || ml.raw_fields?.phone_number);
+
+      if (metaIds.has(ml.lead_id) || (email && emails.has(email)) || (phone && phones.has(phone))) {
+        skipped++; 
+        continue;
+      }
+      try {
+        const metaLeadData = mapMetaLeadToModel(ml, companyId);
+        // Set the current user as the creator
+        metaLeadData.createdBy = currentUserId || 'unknown_user';
+        metaLeadData.source = 'facebook_meta';
+        
+        await LeadService.create(metaLeadData);
+        if (email) emails.add(email);
+        if (phone) phones.add(phone);
+        metaIds.add(ml.lead_id);
+        saved++;
+      } catch (error) {
+        console.error('Error saving meta lead:', error);
+        failed++; 
+      }
+    }
+
+    setSyncResult({ total: metaLeads.length, saved, skipped, failed });
+    if (saved > 0) { 
+      message.success(`${saved} new Meta lead${saved > 1 ? 's' : ''} imported!`); 
+      fetchLeads(); 
+    } else if (skipped > 0) {
+      message.info(`All leads already exist (${skipped} skipped).`);
+    }
+  } catch (err) {
+    setSyncResult({ error: err.message });
+    message.error('Sync failed: ' + err.message);
+  } finally {
+    setSyncing(false);
+  }
+};
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────
   const handleAddLead = async (values) => {
