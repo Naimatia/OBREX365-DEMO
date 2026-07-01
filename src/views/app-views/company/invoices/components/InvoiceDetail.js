@@ -253,6 +253,11 @@ const InvoiceDetail = ({
                   {formatDate(invoice.CreationDate)}
                 </Space>
               </Descriptions.Item>
+
+              <Descriptions.Item label="Payment Date" span={1}>
+    {invoice.paymentDate ? formatDate(invoice.paymentDate) : 'N/A'}
+  </Descriptions.Item>
+  
               <Descriptions.Item label="Due Date" span={1}>
                 <Space>
                   <CalendarOutlined style={{ color: '#8c8c8c' }} />

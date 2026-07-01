@@ -14,6 +14,7 @@ export const InvoiceModel = {
   description: '',
   amount: 0,
   paymentUrl: '',
+  paymentDate: null, 
   department: 'general', // Department field
   invoiceNumber: '', // Invoice number
   subtotal: 0, // Subtotal before tax
@@ -53,6 +54,7 @@ export const InvoicePaymentMethod = {
   OTHER: 'Other'
 }
 
+// models/InvoiceModel.js
 /**
  * Convert Firestore document to invoice model
  * @param {Object} doc - Firestore document
@@ -78,11 +80,14 @@ export const convertToInvoiceModel = (doc) => {
     Notes: data.Notes || '',
     description: data.description || '',
     paymentUrl: data.paymentUrl || '',
+    paymentDate: data.paymentDate || null, // ⭐ ADDED paymentDate FIELD
     company_id: data.company_id || '',
     creator_id: data.creator_id || '',
-    department: data.department || 'general', // ⭐ ADDED DEPARTMENT FIELD
+    department: data.department || 'general',
     items: data.items || [],
     isDeleted: data.isDeleted || false,
+    paymentHistory: data.paymentHistory || [],
+    totalPaid: data.totalPaid || 0,
   };
 };
 

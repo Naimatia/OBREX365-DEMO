@@ -28,6 +28,8 @@ const InvoiceStats = ({ invoices, loading }) => {
         paidPercentage: 0,
         pendingPercentage: 0,
         missedPercentage: 0,
+        paidThisMonth: 0,
+      paidThisYear: 0,
       };
     }
 
@@ -48,6 +50,23 @@ const InvoiceStats = ({ invoices, loading }) => {
     const paidPercentage = total > 0 ? Math.round((paid / total) * 100) : 0;
     const pendingPercentage = total > 0 ? Math.round((pending / total) * 100) : 0;
     const missedPercentage = total > 0 ? Math.round((missed / total) * 100) : 0;
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  // Calculate paid invoices based on payment date
+  const paidThisMonth = invoices.filter(inv => {
+    if (inv.Status !== InvoiceStatus.PAID || !inv.paymentDate) return false;
+    const paymentDate = inv.paymentDate?.toDate?.() || new Date(inv.paymentDate);
+    return paymentDate.getMonth() === currentMonth && 
+           paymentDate.getFullYear() === currentYear;
+  }).length;
+
+  const paidThisYear = invoices.filter(inv => {
+    if (inv.Status !== InvoiceStatus.PAID || !inv.paymentDate) return false;
+    const paymentDate = inv.paymentDate?.toDate?.() || new Date(inv.paymentDate);
+    return paymentDate.getFullYear() === currentYear;
+  }).length;
 
     return {
       total,
@@ -60,6 +79,8 @@ const InvoiceStats = ({ invoices, loading }) => {
       paidPercentage,
       pendingPercentage,
       missedPercentage,
+       paidThisMonth,
+    paidThisYear,
     };
   }, [invoices]);
 

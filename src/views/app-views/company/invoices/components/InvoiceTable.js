@@ -1,5 +1,6 @@
+// components/InvoiceTable.js
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Card, Button, Space, Modal, Badge, Tooltip, message } from 'antd';
+import { Table, Tag, Card, Button, Space, Modal, Badge, Tooltip, message, DatePicker, Form, Input, Select } from 'antd';
 import {
   DollarOutlined,
   ExclamationCircleOutlined,
@@ -9,18 +10,20 @@ import {
   LinkOutlined,
   ExclamationOutlined,
   EditOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  CalendarOutlined
 } from '@ant-design/icons';
 import { InvoiceStatus } from 'models/InvoiceModel';
 import InvoiceService from 'services/firebase/InvoiceService';
 import UserService from 'services/firebase/UserService';
+import dayjs from 'dayjs';
 
-/**
- * Component for displaying invoices in a table
- */
 const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onViewDetails, onEdit, onDelete }) => {
   const [processingId, setProcessingId] = useState(null);
   const [creatorCache, setCreatorCache] = useState({});
+  const [markPaidModalVisible, setMarkPaidModalVisible] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [form] = Form.useForm();
 
   // Load creator information for invoices
   useEffect(() => {
@@ -29,14 +32,12 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
         .map(invoice => invoice.creator_id)
         .filter(id => id && !creatorCache[id] && !users.find(user => user.id === id));
       
-      // Remove duplicates
       const uniqueCreatorIds = Array.from(new Set(creatorsToFetch));
       
       if (uniqueCreatorIds.length === 0) return;
       
       const newCache = {...creatorCache};
       
-      // Fetch each creator in parallel
       await Promise.all(uniqueCreatorIds.map(async (creatorId) => {
         try {
           const userData = await UserService.getUserById(creatorId);
@@ -57,12 +58,30 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
   // Format date from Firestore timestamp
   const formatDate = (timestamp) => {
     if (!timestamp) return 'N/A';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    
+    try {
+      let date;
+      if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+        date = timestamp.toDate();
+      } else if (timestamp instanceof Date) {
+        date = timestamp;
+      } else if (typeof timestamp === 'string' || typeof timestamp === 'number') {
+        date = new Date(timestamp);
+      } else {
+        date = new Date(timestamp);
+      }
+      
+      if (isNaN(date.getTime())) return 'N/A';
+      
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'N/A';
+    }
   };
 
   // Format currency amount
@@ -77,19 +96,18 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
 
   // Get creator name from user ID
   const getCreatorName = (creatorId) => {
-    // First check the cache
+    if (!creatorId) return 'Unknown';
+    
     if (creatorCache[creatorId]) {
       const creator = creatorCache[creatorId];
       return `${creator.firstname || creator.firstName || ''} ${creator.lastname || creator.lastName || ''}`.trim() || 'Unknown';
     }
     
-    // Then check the users prop
     const creator = users.find(user => user.id === creatorId);
     if (creator) {
       return `${creator.firstname || creator.firstName || ''} ${creator.lastname || creator.lastName || ''}`.trim() || 'Unknown';
     }
     
-    // If we can't find the user yet, show loading text
     return creatorId ? 'Loading...' : 'Unknown';
   };
 
@@ -109,12 +127,15 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
   const getDaysRemaining = (dateLimit) => {
     if (!dateLimit) return null;
     
-    const dueDate = dateLimit.toDate ? dateLimit.toDate() : new Date(dateLimit);
-    const today = new Date();
-    const diffTime = dueDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    return diffDays;
+    try {
+      const dueDate = dateLimit.toDate ? dateLimit.toDate() : new Date(dateLimit);
+      const today = new Date();
+      const diffTime = dueDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays;
+    } catch (error) {
+      return null;
+    }
   };
 
   // Check if invoice is due soon (10 days or less)
@@ -129,31 +150,69 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
     return daysRemaining !== null && daysRemaining < 0;
   };
 
-  // Handle marking invoice as paid
-  const handleMarkAsPaid = async (invoice) => {
-    Modal.confirm({
-      title: 'Mark as Paid',
-      icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-      content: 'Are you sure you want to mark this invoice as paid?',
-      okText: 'Yes',
-      cancelText: 'No',
-      onOk: async () => {
-        try {
-          setProcessingId(invoice.id);
-          await InvoiceService.update(invoice.id, {
-            Status: InvoiceStatus.PAID,
-            LastUpdate: new Date()
-          });
-          message.success('Invoice marked as paid successfully');
-          fetchInvoices();
-        } catch (error) {
-          console.error('Error marking invoice as paid:', error);
-          message.error('Failed to mark invoice as paid');
-        } finally {
-          setProcessingId(null);
+  // Helper function to get payment date from invoice
+  const getDefaultPaymentDate = (invoice) => {
+    // If invoice has a paymentDate, use it
+    if (invoice.paymentDate) {
+      try {
+        let date;
+        if (invoice.paymentDate.toDate && typeof invoice.paymentDate.toDate === 'function') {
+          date = invoice.paymentDate.toDate();
+        } else if (invoice.paymentDate instanceof Date) {
+          date = invoice.paymentDate;
+        } else {
+          date = new Date(invoice.paymentDate);
         }
+        if (!isNaN(date.getTime())) {
+          return dayjs(date);
+        }
+      } catch (error) {
+        console.error('Error parsing payment date:', error);
       }
+    }
+    // Default to today
+    return dayjs();
+  };
+
+  // Open mark as paid modal
+  const showMarkAsPaidModal = (invoice) => {
+    setSelectedInvoice(invoice);
+    
+    // Get the default payment date
+    const defaultDate = getDefaultPaymentDate(invoice);
+    
+    form.setFieldsValue({
+      paymentDate: defaultDate,
+      paymentMethod: 'OTHER',
+      notes: '',
     });
+    setMarkPaidModalVisible(true);
+  };
+
+  // Handle marking invoice as paid with custom date
+  const handleMarkAsPaid = async () => {
+    try {
+      const values = await form.validateFields();
+      const date = values.paymentDate ? values.paymentDate.toDate() : new Date();
+      
+      setProcessingId(selectedInvoice.id);
+      await InvoiceService.markAsPaid(selectedInvoice.id, {
+        method: values.paymentMethod || 'OTHER',
+        paymentDate: date,
+        notes: values.notes || '',
+      });
+      
+      message.success('Invoice marked as paid successfully');
+      setMarkPaidModalVisible(false);
+      setSelectedInvoice(null);
+      form.resetFields();
+      fetchInvoices();
+    } catch (error) {
+      console.error('Error marking invoice as paid:', error);
+      message.error('Failed to mark invoice as paid: ' + error.message);
+    } finally {
+      setProcessingId(null);
+    }
   };
 
   // Handle marking invoice as missed
@@ -179,8 +238,6 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
       message.error('No payment URL provided');
       return;
     }
-    
-    // Open URL in a new tab
     window.open(url, '_blank');
   };
 
@@ -258,7 +315,6 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
             color = 'default';
         }
 
-        // Show warning indicator if due soon
         if (status === InvoiceStatus.PENDING && isInvoiceDueSoon(record.DateLimit)) {
           const daysRemaining = getDaysRemaining(record.DateLimit);
           return (
@@ -288,15 +344,16 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
       dataIndex: 'CreationDate',
       key: 'creationDate',
       render: (date) => {
-        if (!date) return 'N/A';
         const formatted = formatDate(date);
-        const time = date.toDate ? date.toDate() : new Date(date);
         return (
           <Space direction="vertical" size={0}>
             <span>{formatted}</span>
-            <small style={{ color: '#8c8c8c' }}>
-              {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-            </small>
+            {date && (
+              <small style={{ color: '#8c8c8c' }}>
+                <CalendarOutlined style={{ marginRight: 4 }} />
+                {new Date(date.toDate ? date.toDate() : date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+              </small>
+            )}
           </Space>
         );
       },
@@ -305,7 +362,70 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
         const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
         return dateA - dateB;
       },
-      defaultSortOrder: 'descend', // This will show latest first by default
+      defaultSortOrder: 'descend',
+    },
+    {
+      title: 'Payment Date',
+      dataIndex: 'paymentDate',
+      key: 'paymentDate',
+      render: (date) => {
+        if (!date) {
+          return (
+            <Tag color="default" icon={<ClockCircleOutlined />}>
+              Not Paid
+            </Tag>
+          );
+        }
+        
+        try {
+          let dateObj;
+          if (date.toDate && typeof date.toDate === 'function') {
+            dateObj = date.toDate();
+          } else if (date instanceof Date) {
+            dateObj = date;
+          } else if (typeof date === 'string' || typeof date === 'number') {
+            dateObj = new Date(date);
+          } else {
+            dateObj = new Date(date);
+          }
+          
+          if (isNaN(dateObj.getTime())) return 'N/A';
+          
+          const formattedDate = dateObj.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+          });
+          
+          const formattedTime = dateObj.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+          });
+          
+          return (
+            <Space direction="vertical" size={0}>
+              <span style={{ color: '#52c41a' }}>
+                <CheckCircleOutlined style={{ marginRight: 4 }} />
+                {formattedDate}
+              </span>
+              <small style={{ color: '#8c8c8c', fontSize: '11px' }}>
+                <ClockCircleOutlined style={{ marginRight: 4 }} />
+                {formattedTime}
+              </small>
+            </Space>
+          );
+        } catch (error) {
+          console.error('Error formatting payment date:', error);
+          return 'N/A';
+        }
+      },
+      sorter: (a, b) => {
+        const dateA = a.paymentDate?.toDate?.() || new Date(a.paymentDate) || new Date(0);
+        const dateB = b.paymentDate?.toDate?.() || new Date(b.paymentDate) || new Date(0);
+        return dateA - dateB;
+      },
     },
     {
       title: 'Due Date',
@@ -314,11 +434,13 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
       render: (date, record) => {
         if (!date) return 'N/A';
         const formattedDate = formatDate(date);
+        
         if (record.Status === InvoiceStatus.PENDING) {
           if (isInvoiceOverdue(date)) {
             return (
               <span style={{ color: '#ff4d4f' }}>
-                {formattedDate} <ExclamationCircleOutlined />
+                <ExclamationCircleOutlined style={{ marginRight: 4 }} />
+                {formattedDate}
               </span>
             );
           } else if (isInvoiceDueSoon(date)) {
@@ -326,7 +448,8 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
             return (
               <Tooltip title={`Due in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`}>
                 <span style={{ color: '#faad14' }}>
-                  {formattedDate} <ExclamationOutlined />
+                  <ExclamationOutlined style={{ marginRight: 4 }} />
+                  {formattedDate}
                 </span>
               </Tooltip>
             );
@@ -374,7 +497,7 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
                 type="primary" 
                 size="small" 
                 icon={<CheckCircleOutlined />}
-                onClick={() => handleMarkAsPaid(record)}
+                onClick={() => showMarkAsPaidModal(record)}
                 loading={isLoading}
               >
                 Mark Paid
@@ -431,24 +554,130 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
   const sortedInvoices = [...invoices].sort((a, b) => {
     const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
     const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-    return dateB - dateA; // Latest first
+    return dateB - dateA;
   });
 
   return (
-    <Card>
-      <Table 
-        columns={columns}
-        dataSource={sortedInvoices}
-        rowKey="id"
-        loading={loading}
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} invoices`
+    <>
+      <Card>
+        <Table 
+          columns={columns}
+          dataSource={sortedInvoices}
+          rowKey="id"
+          loading={loading}
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} invoices`
+          }}
+        />
+      </Card>
+
+      {/* Mark as Paid Modal with Date Picker - Allows any date */}
+      <Modal
+        title="Mark Invoice as Paid"
+        open={markPaidModalVisible}
+        onCancel={() => {
+          setMarkPaidModalVisible(false);
+          setSelectedInvoice(null);
+          form.resetFields();
         }}
-        defaultSortOrder="descend"
-      />
-    </Card>
+        onOk={handleMarkAsPaid}
+        okText="Mark as Paid"
+        cancelText="Cancel"
+        okButtonProps={{ loading: processingId === selectedInvoice?.id }}
+        width={500}
+        destroyOnClose
+      >
+        {selectedInvoice && (
+          <div style={{ 
+            marginBottom: 16, 
+            padding: '12px', 
+            background: '#f5f5f5', 
+            borderRadius: '8px',
+            border: '1px solid #e8e8e8'
+          }}>
+            <p style={{ marginBottom: 4 }}>
+              <strong>Invoice:</strong> {selectedInvoice.invoiceNumber || 'N/A'}
+            </p>
+            <p style={{ marginBottom: 4 }}>
+              <strong>Title:</strong> {selectedInvoice.Title || 'N/A'}
+            </p>
+            <p style={{ marginBottom: 0 }}>
+              <strong>Amount:</strong> {formatCurrency(selectedInvoice.amount || 0)}
+            </p>
+            {selectedInvoice.paymentDate && (
+              <p style={{ marginBottom: 0, marginTop: 4, fontSize: '12px', color: '#52c41a' }}>
+                <CheckCircleOutlined style={{ marginRight: 4 }} />
+                Current Payment Date: {formatDate(selectedInvoice.paymentDate)}
+              </p>
+            )}
+          </div>
+        )}
+        
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            paymentDate: dayjs(),
+            paymentMethod: 'OTHER',
+            notes: '',
+          }}
+        >
+          <Form.Item
+            name="paymentDate"
+            label={
+              <span>
+                <CalendarOutlined style={{ marginRight: 8 }} />
+                Select Payment Date
+              </span>
+            }
+            rules={[{ required: true, message: 'Please select payment date' }]}
+            extra="Select the date when the payment was received (can be past, present, or future)"
+          >
+            <DatePicker
+              style={{ width: '100%' }}
+              format="DD/MM/YYYY"
+              placeholder="Select payment date"
+              suffixIcon={<CalendarOutlined />}
+              // No disabledDate - allows any date (past, present, future)
+              allowClear={false}
+              size="large"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="paymentMethod"
+            label="Payment Method"
+            rules={[{ required: true, message: 'Please select payment method' }]}
+          >
+            <Select 
+              placeholder="Select payment method"
+              size="large"
+            >
+              <Select.Option value="CASH">Cash</Select.Option>
+              <Select.Option value="BANK_TRANSFER">Bank Transfer</Select.Option>
+              <Select.Option value="CREDIT_CARD">Credit Card</Select.Option>
+              <Select.Option value="DEBIT_CARD">Debit Card</Select.Option>
+              <Select.Option value="CHEQUE">Cheque</Select.Option>
+              <Select.Option value="ONLINE">Online Payment</Select.Option>
+              <Select.Option value="OTHER">Other</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="notes"
+            label="Payment Notes (Optional)"
+          >
+            <Input.TextArea 
+              placeholder="Add any notes about this payment..."
+              rows={3}
+              style={{ resize: 'vertical' }}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
   );
 };
 
