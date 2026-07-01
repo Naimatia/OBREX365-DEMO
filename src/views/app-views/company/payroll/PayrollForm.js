@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import { 
   UserOutlined, DollarOutlined, SaveOutlined, 
-  EditOutlined, CheckOutlined, CloseOutlined 
+  EditOutlined, CheckOutlined, CloseOutlined, ReloadOutlined 
 } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -19,7 +19,8 @@ const PayrollForm = ({
   isEditing, 
   initialValues,
   employees = [],
-  dateRange = null
+  dateRange = null,
+  onRefresh // ✅ New prop to trigger refresh
 }) => {
   const [form] = Form.useForm();
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -52,54 +53,54 @@ const PayrollForm = ({
     MARKETING_OFFICER: 'Marketing Officer',
   };
 
-const calculatePayroll = () => {
-  const salary = Number(monthlySalary || 0);
-  const days = Number(daysInMonth || 30);
-  const working = Number(workingDays || 0);
-  const overtime = Number(overtimeHours || 0);
-  const hpd = Number(hoursPerDay || 8);
-  const other = Number(otherDeduction || 0);
+  const calculatePayroll = () => {
+    const salary = Number(monthlySalary || 0);
+    const days = Number(daysInMonth || 30);
+    const working = Number(workingDays || 0);
+    const overtime = Number(overtimeHours || 0);
+    const hpd = Number(hoursPerDay || 8);
+    const other = Number(otherDeduction || 0);
 
-  if (salary <= 0 || days <= 0) {
+    if (salary <= 0 || days <= 0) {
+      return {
+        basicPay: 0,
+        absenceDeduction: 0,
+        overtimePay: 0,
+        grossPay: 0,
+        netPay: 0,
+        dailyRate: 0,
+        hourlyRate: 0,
+      };
+    }
+
+    const dailyRate = salary / days;
+    const hourlyRate = dailyRate / hpd;
+
+    // Salary earned from attendance
+    const basicPay = working * dailyRate;
+
+    // Overtime
+    const overtimePay = overtime * hourlyRate * 1.5;
+
+    // Gross
+    const grossPay = basicPay + overtimePay;
+
+    // No absence deduction (already accounted for)
+    const absenceDeduction = 0;
+
+    // Final salary
+    const netPay = grossPay - other;
+
     return {
-      basicPay: 0,
+      basicPay: Number(basicPay.toFixed(2)),
       absenceDeduction: 0,
-      overtimePay: 0,
-      grossPay: 0,
-      netPay: 0,
-      dailyRate: 0,
-      hourlyRate: 0,
+      overtimePay: Number(overtimePay.toFixed(2)),
+      grossPay: Number(grossPay.toFixed(2)),
+      netPay: Number(netPay.toFixed(2)),
+      dailyRate: Number(dailyRate.toFixed(2)),
+      hourlyRate: Number(hourlyRate.toFixed(2)),
     };
-  }
-
-  const dailyRate = salary / days;
-  const hourlyRate = dailyRate / hpd;
-
-  // Salary earned from attendance
-  const basicPay = working * dailyRate;
-
-  // Overtime
-  const overtimePay = overtime * hourlyRate * 1.5;
-
-  // Gross
-  const grossPay = basicPay + overtimePay;
-
-  // No absence deduction (already accounted for)
-  const absenceDeduction = 0;
-
-  // Final salary
-  const netPay = grossPay - other;
-
-  return {
-    basicPay: Number(basicPay.toFixed(2)),
-    absenceDeduction: 0,
-    overtimePay: Number(overtimePay.toFixed(2)),
-    grossPay: Number(grossPay.toFixed(2)),
-    netPay: Number(netPay.toFixed(2)),
-    dailyRate: Number(dailyRate.toFixed(2)),
-    hourlyRate: Number(hourlyRate.toFixed(2)),
   };
-};
 
   const calculatedValues = calculatePayroll();
 
@@ -129,11 +130,10 @@ const calculatePayroll = () => {
     }
   };
 
-  // ✅ FIX 2: Initialize form only when modal opens (transition from hidden → visible)
+  // Initialize form only when modal opens
   useEffect(() => {
     if (visible && !prevVisibleRef.current) {
       if (isEditing && initialValues) {
-        // Editing mode — load all saved values including calculated fields
         form.setFieldsValue({
           employee_id: initialValues.employee_id || '',
           employee_name: initialValues.employee_name || '',
@@ -155,7 +155,6 @@ const calculatePayroll = () => {
         }
         setUpdateEmployeeSalary(false);
       } else {
-        // Add mode — reset to defaults
         form.resetFields();
         form.setFieldsValue({
           employee_id: '',
@@ -177,7 +176,6 @@ const calculatePayroll = () => {
     prevVisibleRef.current = visible;
   }, [visible, isEditing, initialValues, form, employees]);
 
-  // ✅ FIX 3: handleSubmit sends form values + calculated summary; does NOT re-derive from scratch
   const handleSubmit = async () => {
     try {
       const values = form.getFieldsValue();
@@ -209,6 +207,12 @@ const calculatePayroll = () => {
       };
 
       await onSubmit(submitData);
+      
+      // ✅ After successful submit, refresh cache
+      if (onRefresh) {
+        onRefresh();
+      }
+      
       setLoading(false);
     } catch (error) {
       console.error('Form submission error:', error);

@@ -1,4 +1,4 @@
-// components/SellerAnalyticsDashboard.jsx - Show all sellers
+// components/SellerAnalyticsDashboard.jsx - Fixed version
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
@@ -37,15 +37,32 @@ import {
   TeamOutlined,
   TrophyOutlined,
   ArrowRightOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import SellerActivityService, { ActivityTypes } from 'services/firebase/SellerActivityService';
 import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';
+
+// Extend dayjs with isBetween plugin
+dayjs.extend(isBetween);
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 const { Search } = Input;
+
+// ─── Date Presets ──────────────────────────────────────────────────────────────
+const datePresets = [
+  { label: 'Today', value: 'today' },
+  { label: 'Yesterday', value: 'yesterday' },
+  { label: 'This Week', value: 'thisWeek' },
+  { label: 'This Month', value: 'thisMonth' },
+  { label: 'Last 7 Days', value: 'last7Days' },
+  { label: 'Last 30 Days', value: 'last30Days' },
+  { label: 'This Quarter', value: 'thisQuarter' },
+  { label: 'This Year', value: 'thisYear' },
+];
 
 const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
   const user = useSelector(state => state.auth.user);
@@ -64,37 +81,130 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
   const [filterActivityType, setFilterActivityType] = useState('all');
   const [filterSeller, setFilterSeller] = useState('all');
   const [dateRange, setDateRange] = useState(null);
+  const [datePreset, setDatePreset] = useState('today');
 
-  // Fetch data
-  const fetchData = useCallback(async () => {
+  // ─── Set default date range to TODAY ─────────────────────────────────────
+  useEffect(() => {
+    const today = dayjs();
+    setDateRange([today.startOf('day'), today.endOf('day')]);
+  }, []);
+
+  // ─── Handle date preset change ───────────────────────────────────────────
+  const handleDatePresetChange = (preset) => {
+    setDatePreset(preset);
+    let start, end;
+    const now = dayjs();
+
+    switch (preset) {
+      case 'today':
+        start = now.startOf('day');
+        end = now.endOf('day');
+        break;
+      case 'yesterday':
+        start = now.subtract(1, 'day').startOf('day');
+        end = now.subtract(1, 'day').endOf('day');
+        break;
+      case 'thisWeek':
+        start = now.startOf('week');
+        end = now.endOf('week');
+        break;
+      case 'thisMonth':
+        start = now.startOf('month');
+        end = now.endOf('month');
+        break;
+      case 'last7Days':
+        start = now.subtract(7, 'day').startOf('day');
+        end = now.endOf('day');
+        break;
+      case 'last30Days':
+        start = now.subtract(30, 'day').startOf('day');
+        end = now.endOf('day');
+        break;
+      case 'thisQuarter':
+        start = now.startOf('quarter');
+        end = now.endOf('quarter');
+        break;
+      case 'thisYear':
+        start = now.startOf('year');
+        end = now.endOf('year');
+        break;
+      default:
+        return;
+    }
+
+    setDateRange([start, end]);
+    fetchDataWithFilters(start, end);
+  };
+
+  // ─── Handle custom date range change ──────────────────────────────────────
+  const handleDateRangeChange = (dates) => {
+    if (dates && dates.length === 2) {
+      setDateRange(dates);
+      setDatePreset('custom');
+      fetchDataWithFilters(dates[0], dates[1]);
+    } else {
+      setDateRange(null);
+      setDatePreset(null);
+      fetchDataWithFilters(null, null);
+    }
+  };
+
+  // ─── Fetch data with filters ──────────────────────────────────────────────
+  const fetchDataWithFilters = useCallback(async (startDate, endDate) => {
     if (!companyId) {
-      console.log('No companyId available');
       setLoading(false);
       return;
     }
-    
-    console.log('Fetching all activities for company:', companyId);
+
     setLoading(true);
     setError(null);
-    
+
     try {
+      // Prepare filter options
+      const filterOptions = { limit: 500 };
+
+      // Date range filter
+      if (startDate && endDate) {
+        filterOptions.startDate = startDate.format('YYYY-MM-DD');
+        filterOptions.endDate = endDate.format('YYYY-MM-DD');
+      }
+
+      // Activity type filter
+      if (filterActivityType && filterActivityType !== 'all') {
+        filterOptions.activityType = filterActivityType;
+      }
+
+      // Entity type filter
+      if (filterEntityType && filterEntityType !== 'all') {
+        filterOptions.entityType = filterEntityType;
+      }
+
+      // Seller filter
+      if (filterSeller && filterSeller !== 'all') {
+        filterOptions.sellerId = filterSeller;
+      }
+
+      console.log('Fetching activities with filters:', filterOptions);
+
+      // If we have a date range, use it. Otherwise, fetch all.
       const [activitiesData, statsData, leaderboardData] = await Promise.all([
-        SellerActivityService.getAllActivitiesWithSellers(companyId, { limit: 500 }),
-        SellerActivityService.getAllActivityStats(companyId),
-        SellerActivityService.getSellerLeaderboard(companyId, 'month'),
+        SellerActivityService.getAllActivitiesWithSellers(companyId, filterOptions),
+        SellerActivityService.getAllActivityStats(companyId, filterOptions),
+        SellerActivityService.getSellerLeaderboard(companyId, { ...filterOptions, period: 'month' }),
       ]);
 
       console.log('Activities fetched:', activitiesData?.length || 0);
-      console.log('Stats fetched:', statsData);
-      console.log('Leaderboard fetched:', leaderboardData?.length || 0);
-      
+      console.log('Stats:', statsData);
+
       setActivities(activitiesData || []);
       setFilteredActivities(activitiesData || []);
       setStats(statsData);
       setLeaderboard(leaderboardData || []);
-      
+
       if (!activitiesData || activitiesData.length === 0) {
-        setError('No activities found. Start performing actions to see them here.');
+        setError('No activities found for the selected period.');
+      } else {
+        setError(null);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -102,54 +212,39 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, filterActivityType, filterEntityType, filterSeller]);
 
+  // ─── Initial data fetch ────────────────────────────────────────────────────
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    const today = dayjs();
+    fetchDataWithFilters(today.startOf('day'), today.endOf('day'));
+  }, []);
 
-  // Apply filters
+  // ─── Re-fetch when filters change ──────────────────────────────────────────
   useEffect(() => {
-    let filtered = [...activities];
-
-    // Search filter
-    if (searchText) {
-      const term = searchText.toLowerCase();
-      filtered = filtered.filter(a => 
-        a.entityName?.toLowerCase().includes(term) ||
-        a.activityType?.toLowerCase().includes(term) ||
-        a.entityType?.toLowerCase().includes(term) ||
-        a.details?.name?.toLowerCase().includes(term) ||
-        a.seller?.name?.toLowerCase().includes(term)
-      );
-    }
-
-    // Entity type filter
-    if (filterEntityType !== 'all') {
-      filtered = filtered.filter(a => a.entityType === filterEntityType);
-    }
-
-    // Activity type filter
-    if (filterActivityType !== 'all') {
-      filtered = filtered.filter(a => a.activityType === filterActivityType);
-    }
-
-    // Seller filter
-    if (filterSeller !== 'all') {
-      filtered = filtered.filter(a => a.sellerId === filterSeller);
-    }
-
-    // Date range filter
     if (dateRange && dateRange.length === 2) {
-      const [start, end] = dateRange;
-      filtered = filtered.filter(a => {
-        const date = a.timestamp?.toDate?.() || new Date(a.timestamp);
-        return dayjs(date).isBetween(start, end, 'day', '[]');
-      });
+      fetchDataWithFilters(dateRange[0], dateRange[1]);
+    }
+  }, [filterActivityType, filterEntityType, filterSeller]);
+
+  // ─── Apply search filter client-side ──────────────────────────────────────
+  useEffect(() => {
+    if (!searchText) {
+      setFilteredActivities(activities);
+      return;
     }
 
+    const term = searchText.toLowerCase();
+    const filtered = activities.filter(a => 
+      a.entityName?.toLowerCase().includes(term) ||
+      a.activityType?.toLowerCase().includes(term) ||
+      a.entityType?.toLowerCase().includes(term) ||
+      a.details?.name?.toLowerCase().includes(term) ||
+      a.seller?.name?.toLowerCase().includes(term) ||
+      a.metadata?.details?.toLowerCase().includes(term)
+    );
     setFilteredActivities(filtered);
-  }, [activities, searchText, filterEntityType, filterActivityType, filterSeller, dateRange]);
+  }, [searchText, activities]);
 
   // Helper functions
   const getActivityIcon = (type) => {
@@ -240,10 +335,21 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
     return dayjs(date).format('DD MMM YYYY HH:mm');
   };
 
-  // Get unique sellers for filter
+  // ─── Format currency ──────────────────────────────────────────────────────
+  const formatCurrency = (value) => {
+    if (!value || value === 0) return 'AED 0';
+    return new Intl.NumberFormat('en-AE', {
+      style: 'currency',
+      currency: 'AED',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  // ─── Get unique sellers for filter ──────────────────────────────────────
   const sellerOptions = [...new Set(activities.map(a => a.sellerId).filter(Boolean))];
   
-  // Get unique types for filters
+  // ─── Get unique types for filters ──────────────────────────────────────
   const activityTypes = [...new Set(activities.map(a => a.activityType).filter(Boolean))];
   const entityTypes = [...new Set(activities.map(a => a.entityType).filter(Boolean))];
 
@@ -252,10 +358,13 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
     setFilterEntityType('all');
     setFilterActivityType('all');
     setFilterSeller('all');
-    setDateRange(null);
+    setDatePreset('today');
+    const today = dayjs();
+    setDateRange([today.startOf('day'), today.endOf('day')]);
+    fetchDataWithFilters(today.startOf('day'), today.endOf('day'));
   };
 
-  // Table columns
+  // ─── Table columns ────────────────────────────────────────────────────────
   const columns = [
     {
       title: 'Seller',
@@ -319,7 +428,7 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
         if (record.metadata?.amount > 0) {
           details.push(
             <Tag key="amount" color="green">
-              AED {record.metadata.amount.toLocaleString()}
+              {formatCurrency(record.metadata.amount)}
             </Tag>
           );
         }
@@ -358,6 +467,16 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
     },
   ];
 
+  // ─── Get date range label ──────────────────────────────────────────────
+  const getDateRangeLabel = () => {
+    if (!dateRange || dateRange.length !== 2) return 'All Time';
+    const [start, end] = dateRange;
+    const startStr = start.format('DD MMM');
+    const endStr = end.format('DD MMM YYYY');
+    if (startStr === endStr) return startStr;
+    return `${startStr} - ${endStr}`;
+  };
+
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '60px' }}>
@@ -375,11 +494,17 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
           <Space>
             <TeamOutlined style={{ fontSize: 24, color: '#1890ff' }} />
             <Title level={3} style={{ margin: 0 }}>Team Activity Log</Title>
-            <Badge count={activities.length} showZero color="blue" />
+            <Badge count={filteredActivities.length} showZero color="blue" />
+            <Tag color="cyan">
+              <CalendarOutlined /> {getDateRangeLabel()}
+            </Tag>
           </Space>
         </Col>
         <Col>
-          <Button icon={<ReloadOutlined />} onClick={fetchData}>
+          <Button icon={<ReloadOutlined />} onClick={() => {
+            const today = dayjs();
+            fetchDataWithFilters(today.startOf('day'), today.endOf('day'));
+          }}>
             Refresh
           </Button>
         </Col>
@@ -393,7 +518,10 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
           showIcon
           style={{ marginBottom: 16 }}
           action={
-            <Button size="small" type="primary" onClick={fetchData}>
+            <Button size="small" type="primary" onClick={() => {
+              const today = dayjs();
+              fetchDataWithFilters(today.startOf('day'), today.endOf('day'));
+            }}>
               Refresh
             </Button>
           }
@@ -407,7 +535,7 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
             <Card size="small">
               <Statistic
                 title="Total Activities"
-                value={stats.total}
+                value={filteredActivities.length || stats.total}
                 prefix={<HistoryOutlined />}
                 valueStyle={{ color: '#1890ff' }}
               />
@@ -437,10 +565,9 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
             <Card size="small">
               <Statistic
                 title="Total Won Amount"
-                value={stats.wonAmount || 0}
+                value={formatCurrency(stats.wonAmount || 0)}
                 prefix={<TrophyOutlined />}
                 valueStyle={{ color: '#52c41a' }}
-                formatter={(value) => `AED ${value.toLocaleString()}`}
               />
             </Card>
           </Col>
@@ -463,7 +590,7 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
             <Select
               placeholder="Seller"
               value={filterSeller}
-              onChange={setFilterSeller}
+              onChange={(value) => setFilterSeller(value || 'all')}
               allowClear
               style={{ width: '100%' }}
             >
@@ -482,7 +609,7 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
             <Select
               placeholder="Entity Type"
               value={filterEntityType}
-              onChange={setFilterEntityType}
+              onChange={(value) => setFilterEntityType(value || 'all')}
               allowClear
               style={{ width: '100%' }}
             >
@@ -498,7 +625,7 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
             <Select
               placeholder="Activity Type"
               value={filterActivityType}
-              onChange={setFilterActivityType}
+              onChange={(value) => setFilterActivityType(value || 'all')}
               allowClear
               style={{ width: '100%' }}
               showSearch
@@ -513,24 +640,53 @@ const SellerAnalyticsDashboard = ({ companyId: propCompanyId }) => {
               ))}
             </Select>
           </Col>
-          <Col xs={24} md={6}>
-            <RangePicker
-              value={dateRange}
-              onChange={setDateRange}
-              placeholder={['Start Date', 'End Date']}
-              style={{ width: '100%' }}
-            />
+          <Col xs={12} md={6}>
+            <Space.Compact style={{ width: '100%' }}>
+              <Select
+                placeholder="Quick Date"
+                value={datePreset}
+                onChange={handleDatePresetChange}
+                style={{ width: '40%' }}
+              >
+                {datePresets.map(preset => (
+                  <Option key={preset.value} value={preset.value}>
+                    {preset.label}
+                  </Option>
+                ))}
+              </Select>
+              <RangePicker
+                value={dateRange}
+                onChange={handleDateRangeChange}
+                placeholder={['Start', 'End']}
+                style={{ width: '60%' }}
+                allowClear
+              />
+            </Space.Compact>
           </Col>
         </Row>
         <Row style={{ marginTop: 12 }}>
           <Col span={24}>
-            <Button 
-              onClick={clearFilters} 
-              icon={<FilterOutlined />}
-              size="small"
-            >
-              Clear All Filters
-            </Button>
+            <Space>
+              <Button 
+                onClick={clearFilters} 
+                icon={<FilterOutlined />}
+                size="small"
+              >
+                Reset to Today
+              </Button>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {dateRange && dateRange.length === 2 ? (
+                  <>
+                    Showing activities from <b>{dateRange[0].format('DD MMM YYYY')}</b> to <b>{dateRange[1].format('DD MMM YYYY')}</b>
+                    <span style={{ marginLeft: 8, color: '#1890ff' }}>
+                      ({filteredActivities.length} activities)
+                    </span>
+                  </>
+                ) : (
+                  `Showing all ${filteredActivities.length} activities`
+                )}
+              </Text>
+            </Space>
           </Col>
         </Row>
       </Card>

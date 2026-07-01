@@ -662,6 +662,28 @@ const PayrollPage = () => {
     return results;
   }, [mappedEmployees, attendanceRecords, dateRange, payrolls]);
 
+
+  // ─── Refresh Cache After Edit ──────────────────────────────────────────────
+const refreshCacheAfterEdit = useCallback(async () => {
+  // Clear all relevant caches
+  const cacheKey = `payrolls_${companyId}`;
+  cacheInstances.payrolls.delete(cacheKey);
+  
+  // Also clear attendance cache for the current date range
+  const startStr = dateRange[0].format('YYYY-MM-DD');
+  const endStr = dateRange[1].format('YYYY-MM-DD');
+  const attendanceCacheKey = `attendance_${companyId}_${startStr}_${endStr}`;
+  cacheInstances.attendance.delete(attendanceCacheKey);
+  
+  // Fetch fresh data
+  await fetchPayrolls(true);
+  await fetchAttendanceData(dateRange[0], dateRange[1], true);
+  
+  // Update local state
+  const updatedPayrolls = await fetchPayrolls(true);
+  setPayrolls(updatedPayrolls);
+}, [companyId, dateRange, fetchPayrolls, fetchAttendanceData]);
+
   // ─── Save Payroll to Database ──────────────────────────────────────────
   const savePayrollToDb = useCallback(async (payrollData) => {
     try {
@@ -804,89 +826,84 @@ const PayrollPage = () => {
     setPayrollFormVisible(true);
   };
 
-  // ─── ✅ FIX: Handle Payroll Form Submit — trust pre-calculated values from form ──
-  const handlePayrollFormSubmit = async (formData) => {
-    try {
-      const { update_employee_salary, ...restData } = formData;
+const handlePayrollFormSubmit = async (formData) => {
+  try {
+    const { update_employee_salary, ...restData } = formData;
 
-      // Update employee salary in users collection if requested
-      if (update_employee_salary && restData.employee_id && restData.monthly_salary > 0) {
-        try {
-          const userRef = doc(db, 'users', restData.employee_id);
-          await updateDoc(userRef, {
-            monthly_salary: restData.monthly_salary,
-            salary: restData.monthly_salary,
-            LastUpdate: serverTimestamp(),
-          });
-          message.success(`Updated salary for ${restData.employee_name}`);
-          
-          const cacheKey = `employees_${companyId}`;
-          cacheInstances.employees.delete(cacheKey);
-          await fetchEmployees(true);
-        } catch (error) {
-          console.error('Error updating employee salary:', error);
-          message.warning('Payroll saved but failed to update employee salary');
-        }
-      }
-
-      // ✅ FIXED: Use the pre-calculated values sent by the form (basic_pay, net_pay, etc.)
-      // instead of recalculating from scratch here. The form already computed these correctly.
-      const payrollData = {
-        ...restData,
-        company_id: companyId,
-        calculated_from_attendance: false,
-        period_start: restData.period_start || dayjs(dateRange[0]).format('YYYY-MM-DD'),
-        period_end: restData.period_end || dayjs(dateRange[1]).format('YYYY-MM-DD'),
-        sick_pay: restData.sick_pay ?? 0,
-        late_deduction: restData.late_deduction ?? 0,
-      };
-
-      if (isEditing && selectedPayroll && selectedPayroll.id && !selectedPayroll.id.startsWith('calc_')) {
-        // Update existing saved payroll
-        const payrollRef = doc(db, 'payroll', selectedPayroll.id);
-        await updateDoc(payrollRef, {
-          ...payrollData,
+    // Update employee salary in users collection if requested
+    if (update_employee_salary && restData.employee_id && restData.monthly_salary > 0) {
+      try {
+        const userRef = doc(db, 'users', restData.employee_id);
+        await updateDoc(userRef, {
+          monthly_salary: restData.monthly_salary,
+          salary: restData.monthly_salary,
           LastUpdate: serverTimestamp(),
         });
-        message.success('Payroll updated successfully');
-      } else {
-        // Add new payroll (or convert auto-calc to saved)
-        await addDoc(collection(db, 'payroll'), {
-          ...payrollData,
-          CreationDate: serverTimestamp(),
-          LastUpdate: serverTimestamp(),
-        });
-        message.success('Payroll saved successfully');
+        message.success(`Updated salary for ${restData.employee_name}`);
+        
+        const cacheKey = `employees_${companyId}`;
+        cacheInstances.employees.delete(cacheKey);
+        await fetchEmployees(true);
+      } catch (error) {
+        console.error('Error updating employee salary:', error);
+        message.warning('Payroll saved but failed to update employee salary');
       }
-
-      setPayrollFormVisible(false);
-      setIsEditing(false);
-      setSelectedPayroll(null);
-
-      // Invalidate cache and refresh
-      const cacheKey = `payrolls_${companyId}`;
-      cacheInstances.payrolls.delete(cacheKey);
-      await fetchPayrolls(true);
-    } catch (error) {
-      console.error('Error saving payroll:', error);
-      message.error('Failed to save payroll: ' + error.message);
     }
-  };
 
-  const handleDeletePayroll = async (payrollId) => {
-    try {
-      await deleteDoc(doc(db, 'payroll', payrollId));
-      message.success('Payroll deleted successfully');
-      
-      const cacheKey = `payrolls_${companyId}`;
-      cacheInstances.payrolls.delete(cacheKey);
-      const updatedPayrolls = await fetchPayrolls(true);
-      setPayrolls(updatedPayrolls);
-    } catch (error) {
-      console.error('Error deleting payroll:', error);
-      message.error('Failed to delete payroll');
+    const payrollData = {
+      ...restData,
+      company_id: companyId,
+      calculated_from_attendance: false,
+      period_start: restData.period_start || dayjs(dateRange[0]).format('YYYY-MM-DD'),
+      period_end: restData.period_end || dayjs(dateRange[1]).format('YYYY-MM-DD'),
+      sick_pay: restData.sick_pay ?? 0,
+      late_deduction: restData.late_deduction ?? 0,
+    };
+
+    if (isEditing && selectedPayroll && selectedPayroll.id && !selectedPayroll.id.startsWith('calc_')) {
+      // Update existing saved payroll
+      const payrollRef = doc(db, 'payroll', selectedPayroll.id);
+      await updateDoc(payrollRef, {
+        ...payrollData,
+        LastUpdate: serverTimestamp(),
+      });
+      message.success('Payroll updated successfully');
+    } else {
+      // Add new payroll (or convert auto-calc to saved)
+      await addDoc(collection(db, 'payroll'), {
+        ...payrollData,
+        CreationDate: serverTimestamp(),
+        LastUpdate: serverTimestamp(),
+      });
+      message.success('Payroll saved successfully');
     }
-  };
+
+    setPayrollFormVisible(false);
+    setIsEditing(false);
+    setSelectedPayroll(null);
+
+    // ✅ Refresh cache after edit
+    await refreshCacheAfterEdit();
+    
+  } catch (error) {
+    console.error('Error saving payroll:', error);
+    message.error('Failed to save payroll: ' + error.message);
+  }
+};
+
+ const handleDeletePayroll = async (payrollId) => {
+  try {
+    await deleteDoc(doc(db, 'payroll', payrollId));
+    message.success('Payroll deleted successfully');
+    
+    // ✅ Refresh cache after delete
+    await refreshCacheAfterEdit();
+    
+  } catch (error) {
+    console.error('Error deleting payroll:', error);
+    message.error('Failed to delete payroll');
+  }
+};
 
   const handleRefresh = async () => {
     setLoading(true);

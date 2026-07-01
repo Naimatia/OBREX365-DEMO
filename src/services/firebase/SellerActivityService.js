@@ -1,4 +1,4 @@
-// services/firebase/SellerActivityService.js - Complete fixed version
+// services/firebase/SellerActivityService.js - Fixed version with correct ordering
 import { db } from 'configs/FirebaseConfig';
 import { 
   collection, 
@@ -14,7 +14,9 @@ import {
   orderBy,
   limit,
   Timestamp,
-  writeBatch
+  writeBatch,
+  startAfter,
+  endAt
 } from 'firebase/firestore';
 
 /**
@@ -132,7 +134,7 @@ class SellerActivityService {
   }
 
   /**
-   * Get activities for a specific seller
+   * Get activities for a specific seller with Firebase filtering
    */
   async getSellerActivities(sellerId, options = {}) {
     try {
@@ -141,11 +143,46 @@ class SellerActivityService {
         return [];
       }
 
-      let q = query(
-        collection(db, this.collectionName),
-        where('sellerId', '==', sellerId),
-        orderBy('timestamp', 'desc')
-      );
+      let constraints = [
+        where('sellerId', '==', sellerId)
+      ];
+
+      // Date range filtering - FIXED: order by date first when using inequality
+      if (options.startDate) {
+        constraints.push(where('date', '>=', options.startDate));
+      }
+      if (options.endDate) {
+        constraints.push(where('date', '<=', options.endDate));
+      }
+
+      // Activity type filter
+      if (options.activityType) {
+        constraints.push(where('activityType', '==', options.activityType));
+      }
+
+      // Entity type filter
+      if (options.entityType) {
+        constraints.push(where('entityType', '==', options.entityType));
+      }
+
+      // FIXED: Order by date desc first when using date filters, then by timestamp
+      let q;
+      if (options.startDate || options.endDate) {
+        // When using date filters, order by date first (required by Firebase)
+        q = query(
+          collection(db, this.collectionName),
+          ...constraints,
+          orderBy('date', 'desc'),
+          orderBy('timestamp', 'desc')
+        );
+      } else {
+        // No date filters, order by timestamp
+        q = query(
+          collection(db, this.collectionName),
+          ...constraints,
+          orderBy('timestamp', 'desc')
+        );
+      }
 
       if (options.limit) {
         q = query(q, limit(options.limit));
@@ -169,31 +206,63 @@ class SellerActivityService {
   }
 
   /**
-   * Get ALL activities for a company (all sellers)
+   * Get ALL activities for a company with Firebase filtering
    */
   async getAllActivities(companyId, options = {}) {
     try {
       if (!companyId) {
         console.warn('No companyId provided');
-        return this.getMockAllActivities();
+        return [];
       }
 
-      let q = query(
-        collection(db, this.collectionName),
-        where('companyId', '==', companyId),
-        orderBy('timestamp', 'desc')
-      );
+      let constraints = [
+        where('companyId', '==', companyId)
+      ];
+
+      // Date range filtering
+      if (options.startDate) {
+        constraints.push(where('date', '>=', options.startDate));
+      }
+      if (options.endDate) {
+        constraints.push(where('date', '<=', options.endDate));
+      }
+
+      // Activity type filter
+      if (options.activityType && options.activityType !== 'all') {
+        constraints.push(where('activityType', '==', options.activityType));
+      }
+
+      // Entity type filter
+      if (options.entityType && options.entityType !== 'all') {
+        constraints.push(where('entityType', '==', options.entityType));
+      }
+
+      // Seller filter
+      if (options.sellerId && options.sellerId !== 'all') {
+        constraints.push(where('sellerId', '==', options.sellerId));
+      }
+
+      // FIXED: Order by date desc first when using date filters, then by timestamp
+      let q;
+      if (options.startDate || options.endDate) {
+        // When using date filters, order by date first (required by Firebase)
+        q = query(
+          collection(db, this.collectionName),
+          ...constraints,
+          orderBy('date', 'desc'),
+          orderBy('timestamp', 'desc')
+        );
+      } else {
+        // No date filters, order by timestamp
+        q = query(
+          collection(db, this.collectionName),
+          ...constraints,
+          orderBy('timestamp', 'desc')
+        );
+      }
 
       if (options.limit) {
         q = query(q, limit(options.limit));
-      }
-
-      if (options.activityType) {
-        q = query(q, where('activityType', '==', options.activityType));
-      }
-
-      if (options.entityType) {
-        q = query(q, where('entityType', '==', options.entityType));
       }
 
       const snapshot = await getDocs(q);
@@ -206,16 +275,10 @@ class SellerActivityService {
         });
       });
 
-      // If no activities found, return mock data
-      if (activities.length === 0) {
-        console.log('No activities found in Firebase, returning mock data');
-        return this.getMockAllActivities(companyId);
-      }
-
       return activities;
     } catch (error) {
       console.error('Error getting all activities:', error);
-      return this.getMockAllActivities(companyId);
+      return [];
     }
   }
 
@@ -227,7 +290,7 @@ class SellerActivityService {
       const activities = await this.getAllActivities(companyId, options);
       
       if (!activities || activities.length === 0) {
-        return this.getMockAllActivities(companyId);
+        return [];
       }
       
       // Get unique seller IDs
@@ -277,139 +340,17 @@ class SellerActivityService {
       }));
     } catch (error) {
       console.error('Error getting activities with sellers:', error);
-      return this.getMockAllActivities(companyId);
+      return [];
     }
   }
 
   /**
-   * Get mock activities for all sellers
+   * Get activity statistics for all sellers with date filtering
    */
-  getMockAllActivities(companyId = 'test_company') {
-    const now = new Date();
-    const mockActivities = [];
-
-    const activityTypes = [
-      ActivityTypes.LEAD_CREATED,
-      ActivityTypes.LEAD_VIEWED,
-      ActivityTypes.LEAD_REVEALED,
-      ActivityTypes.LEAD_STATUS_CHANGED,
-      ActivityTypes.LEAD_CONVERTED,
-      ActivityTypes.CONTACT_CREATED,
-      ActivityTypes.CONTACT_STATUS_CHANGED,
-      ActivityTypes.CONTACT_CONVERTED_TO_DEAL,
-      ActivityTypes.DEAL_CREATED,
-      ActivityTypes.DEAL_STATUS_CHANGED,
-      ActivityTypes.DEAL_WON,
-      ActivityTypes.DEAL_LOST,
-      ActivityTypes.CONTACT_NOTE_ADDED,
-    ];
-
-    const entityNames = [
-      'Ahmed Mohammed',
-      'Sarah Ali',
-      'Mohammed Al Maktoum',
-      'Fatima Al Habtoor',
-      'Khalid Al Nahyan',
-      'Noora Al Suwaidi',
-      'Rashid Al Maktoum',
-      'Mariam Al Ketbi',
-      'Hamdan Al Nahyan',
-      'Layla Al Falasi',
-      'Omar Al Maktoum',
-      'Aisha Al Suwaidi',
-      'Saeed Al Nahyan',
-      'Mona Al Falasi',
-      'Yusuf Al Habtoor',
-    ];
-
-    const sellerNames = [
-      'John Doe',
-      'Jane Smith',
-      'Mike Johnson',
-      'Sarah Williams',
-      'David Brown',
-      'Emily Davis',
-      'Chris Wilson',
-      'Amanda Taylor',
-      'Robert Martinez',
-      'Lisa Anderson',
-    ];
-
-    const statuses = ['New', 'Contacted', 'Interested', 'Not Interested', 'Converted', 'Active', 'Pending', 'Deal', 'Loss', 'Proposal', 'Won'];
-    const entityTypes = ['lead', 'contact', 'deal'];
-
-    // Generate 30-50 mock activities
-    const count = 30 + Math.floor(Math.random() * 20);
-    
-    for (let i = 0; i < count; i++) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - Math.floor(Math.random() * 30));
-      date.setHours(Math.floor(Math.random() * 24), Math.floor(Math.random() * 60), 0);
-
-      const activityType = activityTypes[Math.floor(Math.random() * activityTypes.length)];
-      const entityType = entityTypes[Math.floor(Math.random() * entityTypes.length)];
-      const entityName = entityNames[Math.floor(Math.random() * entityNames.length)];
-      const sellerName = sellerNames[Math.floor(Math.random() * sellerNames.length)];
-      const sellerId = `seller_${String(Math.floor(Math.random() * 100)).padStart(3, '0')}`;
-      
-      const oldStatus = statuses[Math.floor(Math.random() * statuses.length)];
-      let newStatus = statuses[Math.floor(Math.random() * statuses.length)];
-      while (newStatus === oldStatus) {
-        newStatus = statuses[Math.floor(Math.random() * statuses.length)];
-      }
-
-      const hasAmount = Math.random() > 0.4;
-      const hasNote = Math.random() > 0.6;
-
-      const activity = {
-        id: `mock_${i}`,
-        sellerId: sellerId,
-        companyId: companyId || 'test_company',
-        activityType,
-        entityType,
-        entityId: `entity_${i}`,
-        entityName,
-        timestamp: date,
-        date: date.toISOString().split('T')[0],
-        time: date.toTimeString().split(' ')[0],
-        month: date.toISOString().slice(0, 7),
-        week: Math.floor(Math.random() * 52) + 1,
-        year: date.getFullYear(),
-        dayOfWeek: date.getDay(),
-        hour: date.getHours(),
-        details: {
-          name: entityName,
-          ...(hasNote && { note: `This is a test note for ${entityName}` }),
-        },
-        metadata: {
-          oldStatus: activityType.includes('status') ? oldStatus : null,
-          newStatus: activityType.includes('status') ? newStatus : null,
-          amount: hasAmount ? Math.floor(Math.random() * 100000) + 5000 : null,
-        },
-        statusChange: activityType.includes('status'),
-        hasAmount,
-        hasNote,
-        seller: {
-          id: sellerId,
-          name: sellerName,
-          email: `${sellerName.toLowerCase().replace(' ', '.')}@example.com`,
-          phone: '+971 50 000 0000',
-        }
-      };
-
-      mockActivities.push(activity);
-    }
-
-    // Sort by date descending
-    return mockActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  }
-
-  /**
-   * Get activity statistics for all sellers
-   */
-  async getAllActivityStats(companyId) {
+  async getAllActivityStats(companyId, options = {}) {
     try {
-      const activities = await this.getAllActivities(companyId);
+      // Get activities with filters
+      const activities = await this.getAllActivities(companyId, options);
       
       const stats = {
         total: activities.length,
@@ -490,29 +431,35 @@ class SellerActivityService {
   }
 
   /**
-   * Get seller leaderboard (all sellers)
+   * Get seller leaderboard with date filtering
    */
-  async getSellerLeaderboard(companyId, period = 'month') {
+  async getSellerLeaderboard(companyId, options = {}) {
     try {
-      const activities = await this.getAllActivities(companyId);
-      
+      const period = options.period || 'month';
       const now = new Date();
       const startDate = new Date();
+      
       if (period === 'week') {
         startDate.setDate(startDate.getDate() - 7);
       } else if (period === 'month') {
         startDate.setMonth(startDate.getMonth() - 1);
       } else if (period === 'quarter') {
         startDate.setMonth(startDate.getMonth() - 3);
+      } else if (period === 'year') {
+        startDate.setFullYear(startDate.getFullYear() - 1);
       }
 
-      const filtered = activities.filter(a => {
-        const date = a.timestamp?.toDate?.() || new Date(a.timestamp);
-        return date >= startDate;
-      });
+      // Add date filter to options
+      const filterOptions = {
+        ...options,
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: now.toISOString().split('T')[0],
+      };
+
+      const activities = await this.getAllActivities(companyId, filterOptions);
 
       const leaderboard = {};
-      filtered.forEach(a => {
+      activities.forEach(a => {
         if (!leaderboard[a.sellerId]) {
           leaderboard[a.sellerId] = {
             sellerId: a.sellerId,
@@ -565,42 +512,16 @@ class SellerActivityService {
       return result;
     } catch (error) {
       console.error('Error getting leaderboard:', error);
-      return this.getMockLeaderboard();
+      return [];
     }
   }
 
   /**
-   * Get mock leaderboard data
+   * Get activity statistics for a seller with filtering
    */
-  getMockLeaderboard() {
-    const sellers = [
-      { id: 'seller_001', name: 'John Doe' },
-      { id: 'seller_002', name: 'Jane Smith' },
-      { id: 'seller_003', name: 'Mike Johnson' },
-      { id: 'seller_004', name: 'Sarah Williams' },
-      { id: 'seller_005', name: 'David Brown' },
-    ];
-
-    return sellers.map((seller, index) => ({
-      sellerId: seller.id,
-      sellerName: seller.name,
-      rank: index + 1,
-      total: 45 - (index * 8),
-      conversions: {
-        leadsToContacts: 12 - (index * 2),
-        contactsToDeals: 8 - (index * 1.5),
-        dealsWon: 5 - index,
-      },
-      wonAmount: 450000 - (index * 70000),
-    }));
-  }
-
-  /**
-   * Get activity statistics for a seller
-   */
-  async getSellerActivityStats(sellerId, period = 'month') {
+  async getSellerActivityStats(sellerId, options = {}) {
     try {
-      const activities = await this.getSellerActivities(sellerId);
+      const activities = await this.getSellerActivities(sellerId, options);
       
       const stats = {
         total: activities.length,
