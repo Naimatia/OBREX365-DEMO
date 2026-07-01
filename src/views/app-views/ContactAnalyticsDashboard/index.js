@@ -1,9 +1,10 @@
-// pages/LeadAnalyticsDashboard/index.js
+// pages/ContactAnalyticsDashboard/index.js
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Row, Col, Card, Typography, Space, Button, Select, DatePicker, Radio,
   Table, Tag, Avatar, Tooltip, Empty, Spin, Statistic, Segmented, Progress, Badge,
   Timeline, Divider, Collapse, List, Tabs, Drawer, Descriptions, Alert,
+  Modal, Form, Input, message,
 } from 'antd';
 import {
   TeamOutlined, UserAddOutlined, PhoneOutlined, StarOutlined, CheckCircleOutlined,
@@ -12,7 +13,10 @@ import {
   FacebookOutlined, GlobalOutlined, InstagramOutlined, GoogleOutlined, LinkOutlined,
   HistoryOutlined, CalendarOutlined, UserSwitchOutlined, BarChartOutlined,
   LineChartOutlined, PieChartOutlined, FileTextOutlined, ExportOutlined,
-  ArrowLeftOutlined, ArrowRightOutlined, InfoCircleOutlined,
+  ArrowLeftOutlined, ArrowRightOutlined, InfoCircleOutlined, DollarOutlined,
+  ShoppingOutlined, HeartOutlined, MailOutlined, WhatsAppOutlined,
+  AudioOutlined, VideoCameraOutlined, FileDoneOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import {
   ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar,
@@ -25,10 +29,12 @@ import isBetween from 'dayjs/plugin/isBetween';
 import quarterOfYear from 'dayjs/plugin/quarterOfYear';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
-import { db, collection, getDocs, query, where, orderBy, limit } from 'configs/FirebaseConfig';
-import { LeadStatus, LeadStatusLabels } from 'models/LeadModel';
+import { db, collection, getDocs, query, where, orderBy, limit, doc, getDoc } from 'configs/FirebaseConfig';
+import ContactService from 'services/firebase/ContactService';
+import ContactHistoryService from 'services/firebase/ContactHistoryService';
+import { ContactStatus, ContactStatusLabels, ContactStatusColors } from 'models/ContactModel';
+import { LeadInterestLevel } from 'models/LeadModel';
 import { UserRoles } from 'models/UserModel';
-import LeadHistoryService from 'services/firebase/LeadHistoryService';
 import sellerActivityService from 'services/firebase/SellerActivityService';
 
 dayjs.extend(isBetween);
@@ -37,31 +43,46 @@ dayjs.extend(relativeTime);
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
-const { Panel } = Collapse;
+const { Option } = Select;
 const { TabPane } = Tabs;
+const { TextArea } = Input;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Constants / palette
 // ─────────────────────────────────────────────────────────────────────────
 const STATUS_COLORS = {
-  [LeadStatus.NEW]: '#1677ff',
-  [LeadStatus.CONTACTED]: '#2f54eb',
-  [LeadStatus.INTERESTED]: '#13c2c2',
-  [LeadStatus.NOT_INTERESTED]: '#fa541c',
-  [LeadStatus.CONVERTED]: '#52c41a',
-  [LeadStatus.JUNK_LEAD]: '#8c8c8c',
+  [ContactStatus.ACTIVE]: '#52c41a',
+  [ContactStatus.HOT]: '#f5222d',
+  [ContactStatus.COLD]: '#1890ff',
+  [ContactStatus.PENDING]: '#faad14',
+  [ContactStatus.CONTACTED]: '#2f54eb',
+  [ContactStatus.INTERESTED]: '#13c2c2',
+  [ContactStatus.NOT_INTERESTED]: '#fa541c',
+  [ContactStatus.CONVERTED]: '#722ed1',
+  [ContactStatus.DEAL]: '#fa8c16',
+  [ContactStatus.LOSS]: '#ff4d4f',
+  [ContactStatus.NO_RESPONSE]: '#8c8c8c',
+  [ContactStatus.JUNK_LEAD]: '#595959',
+  [ContactStatus.PROPOSAL]: '#13c2c2',
 };
 
 const STATUS_ICONS = {
-  [LeadStatus.NEW]: <ClockCircleOutlined />,
-  [LeadStatus.CONTACTED]: <PhoneOutlined />,
-  [LeadStatus.INTERESTED]: <StarOutlined />,
-  [LeadStatus.NOT_INTERESTED]: <CloseCircleOutlined />,
-  [LeadStatus.CONVERTED]: <TrophyOutlined />,
-  [LeadStatus.JUNK_LEAD]: <DeleteOutlined />,
+  [ContactStatus.ACTIVE]: <CheckCircleOutlined />,
+  [ContactStatus.HOT]: <HeartOutlined />,
+  [ContactStatus.COLD]: <StarOutlined />,
+  [ContactStatus.PENDING]: <ClockCircleOutlined />,
+  [ContactStatus.CONTACTED]: <PhoneOutlined />,
+  [ContactStatus.INTERESTED]: <StarOutlined />,
+  [ContactStatus.NOT_INTERESTED]: <CloseCircleOutlined />,
+  [ContactStatus.CONVERTED]: <TrophyOutlined />,
+  [ContactStatus.DEAL]: <DollarOutlined />,
+  [ContactStatus.LOSS]: <DeleteOutlined />,
+  [ContactStatus.NO_RESPONSE]: <ClockCircleOutlined />,
+  [ContactStatus.JUNK_LEAD]: <DeleteOutlined />,
+  [ContactStatus.PROPOSAL]: <FileDoneOutlined />,
 };
 
-const STATUS_LABELS = LeadStatusLabels;
+const STATUS_LABELS = ContactStatusLabels;
 
 const salesRoles = [
   UserRoles.SELLER, UserRoles.SALES_EXECUTIVE, UserRoles.AGENT,
@@ -89,18 +110,18 @@ const getPeriodRange = (preset, custom) => {
   }
 };
 
-const getLeadDate = (lead) => {
-  const d = lead.createdAt?.toDate?.() || lead.CreationDate?.toDate?.() || lead.CreationDate || lead.createdAt;
+const getContactDate = (contact) => {
+  const d = contact.createdAt?.toDate?.() || contact.CreationDate?.toDate?.() || contact.CreationDate || contact.createdAt;
   return d ? dayjs(d) : null;
 };
 
-const getAssignedDate = (lead) => {
-  const d = lead.assignedAt?.toDate?.() || lead.assignedAt;
+const getAssignedDate = (contact) => {
+  const d = contact.assignedAt?.toDate?.() || contact.assignedAt || contact.AffectingDate?.toDate?.() || contact.AffectingDate;
   return d ? dayjs(d) : null;
 };
 
-const getViewedDate = (lead) => {
-  const d = lead.lastViewedAt?.toDate?.() || lead.lastViewedAt || lead.firstViewedAt?.toDate?.() || lead.firstViewedAt;
+const getLastActivityDate = (contact) => {
+  const d = contact.lastActivity?.toDate?.() || contact.lastActivity;
   return d ? dayjs(d) : null;
 };
 
@@ -114,11 +135,12 @@ const fmtDateKey = (d, granularity) => {
 // ─────────────────────────────────────────────────────────────────────────
 // Components
 // ─────────────────────────────────────────────────────────────────────────
-const KpiCard = ({ title, value, icon, color, active, onClick, suffix, trend, subtitle }) => (
+const KpiCard = ({ title, value, icon, color, active, onClick, suffix, trend, subtitle, loading = false }) => (
   <Card
     hoverable
     onClick={onClick}
     bordered={false}
+    loading={loading}
     style={{
       borderRadius: 14,
       cursor: 'pointer',
@@ -155,9 +177,10 @@ const KpiCard = ({ title, value, icon, color, active, onClick, suffix, trend, su
   </Card>
 );
 
-const ChartCard = ({ title, extra, children, height = 300 }) => (
+const ChartCard = ({ title, extra, children, height = 300, loading = false }) => (
   <Card
     bordered={false}
+    loading={loading}
     style={{ borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', height: '100%' }}
     title={<span style={{ fontWeight: 600, fontSize: 14 }}>{title}</span>}
     extra={extra}
@@ -170,21 +193,25 @@ const ChartCard = ({ title, extra, children, height = 300 }) => (
 // ─────────────────────────────────────────────────────────────────────────
 // Main Dashboard
 // ─────────────────────────────────────────────────────────────────────────
-const LeadAnalyticsDashboard = () => {
+const ContactAnalyticsDashboard = () => {
   const user = useSelector((state) => state.auth.user);
   const companyId = user?.company_id;
+  const userRole = user?.Role;
+  const sellerId = user?.id;
+
+  const isAdmin = [UserRoles.CEO, UserRoles.SUPER_ADMIN, UserRoles.MANAGER, UserRoles.ADMIN].includes(userRole);
 
   const [loading, setLoading] = useState(false);
-  const [leads, setLeads] = useState([]);
+  const [contacts, setContacts] = useState([]);
   const [sellers, setSellers] = useState([]);
-  const [leadHistory, setLeadHistory] = useState({});
+  const [contactHistory, setContactHistory] = useState({});
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const [periodPreset, setPeriodPreset] = useState('This Month');
   const [customRange, setCustomRange] = useState(null);
   const [activeFilter, setActiveFilter] = useState(null);
   const [historyDrawerVisible, setHistoryDrawerVisible] = useState(false);
-  const [selectedLeadForHistory, setSelectedLeadForHistory] = useState(null);
+  const [selectedContactForHistory, setSelectedContactForHistory] = useState(null);
   const [selectedSellerForComparison, setSelectedSellerForComparison] = useState(null);
 
   // ── Fetch data ──────────────────────────────────────────────────────
@@ -192,10 +219,26 @@ const LeadAnalyticsDashboard = () => {
     if (!companyId) return;
     setLoading(true);
     try {
-      const leadsSnap = await getDocs(query(collection(db, 'leads'), where('company_id', '==', companyId)));
-      const leadsData = leadsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setLeads(leadsData);
+      // Fetch all contacts for the company
+      const contactsSnap = await getDocs(query(collection(db, 'contacts'), where('company_id', '==', companyId)));
+      let contactsData = contactsSnap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+        _createdAt: d.data().createdAt?.toDate?.() || d.data().CreationDate?.toDate?.() || null,
+        _updatedAt: d.data().updatedAt?.toDate?.() || d.data().LastUpdateDate?.toDate?.() || null,
+        _lastActivity: d.data().lastActivity?.toDate?.() || null,
+      }));
 
+      // If not admin, filter to show only contacts the seller has access to
+      if (!isAdmin) {
+        contactsData = contactsData.filter(c => 
+          c.seller_id === sellerId || c.createdBy === sellerId
+        );
+      }
+
+      setContacts(contactsData);
+
+      // Fetch sellers
       const usersSnap = await getDocs(query(collection(db, 'users'), where('company_id', '==', companyId)));
       const usersData = usersSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
@@ -205,34 +248,36 @@ const LeadAnalyticsDashboard = () => {
           name: `${u.firstname || ''} ${u.lastname || ''}`.trim() || u.email || 'Unknown',
           email: u.email,
           phone: u.phoneNumber || u.phone,
+          role: u.Role,
         }));
       setSellers(usersData);
 
-      // Fetch lead history for recent leads
-      await fetchLeadHistory(leadsData.slice(0, 20));
+      // Fetch history for recent contacts
+      await fetchContactHistory(contactsData.slice(0, 20));
     } catch (err) {
       console.error('Error loading dashboard data:', err);
+      message.error('Failed to load analytics data');
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, isAdmin, sellerId]);
 
-  const fetchLeadHistory = async (recentLeads) => {
+  const fetchContactHistory = async (recentContacts) => {
     setHistoryLoading(true);
     try {
       const historyMap = {};
-      for (const lead of recentLeads) {
+      for (const contact of recentContacts) {
         try {
-          const history = await LeadHistoryService.getLeadHistory(lead.id, { limit: 50 });
-          historyMap[lead.id] = history;
+          const history = await ContactHistoryService.getHistoryByContact(contact.id, { limit: 50 });
+          historyMap[contact.id] = history;
         } catch (err) {
-          console.warn(`Failed to fetch history for lead ${lead.id}:`, err);
-          historyMap[lead.id] = [];
+          console.warn(`Failed to fetch history for contact ${contact.id}:`, err);
+          historyMap[contact.id] = [];
         }
       }
-      setLeadHistory(historyMap);
+      setContactHistory(historyMap);
     } catch (err) {
-      console.error('Error fetching lead history:', err);
+      console.error('Error fetching contact history:', err);
     } finally {
       setHistoryLoading(false);
     }
@@ -243,32 +288,32 @@ const LeadAnalyticsDashboard = () => {
   // ── Period filtering ────────────────────────────────────────────────
   const range = useMemo(() => getPeriodRange(periodPreset, customRange), [periodPreset, customRange]);
 
-  const periodLeads = useMemo(() => {
-    if (!range) return leads;
+  const periodContacts = useMemo(() => {
+    if (!range) return contacts;
     const [start, end] = range;
-    return leads.filter((l) => {
-      const d = getLeadDate(l);
+    return contacts.filter((c) => {
+      const d = getContactDate(c);
       return d && d.isBetween(start, end, 'day', '[]');
     });
-  }, [leads, range]);
+  }, [contacts, range]);
 
   // Previous period for comparison
-  const previousPeriodLeads = useMemo(() => {
+  const previousPeriodContacts = useMemo(() => {
     if (!range) return [];
     const [start, end] = range;
     const lengthDays = end.diff(start, 'day') + 1;
     const priorStart = start.subtract(lengthDays, 'day');
     const priorEnd = start.subtract(1, 'day').endOf('day');
-    return leads.filter((l) => {
-      const d = getLeadDate(l);
+    return contacts.filter((c) => {
+      const d = getContactDate(c);
       return d && d.isBetween(priorStart, priorEnd, 'day', '[]');
     });
-  }, [leads, range]);
+  }, [contacts, range]);
 
   const trendFor = (currentCount, key) => {
     const priorCount = key
-      ? previousPeriodLeads.filter((l) => (l.status || LeadStatus.NEW) === key).length
-      : previousPeriodLeads.length;
+      ? previousPeriodContacts.filter((c) => (c.status || ContactStatus.ACTIVE) === key).length
+      : previousPeriodContacts.length;
     if (!priorCount) return currentCount > 0 ? 100 : null;
     return ((currentCount - priorCount) / priorCount) * 100;
   };
@@ -276,44 +321,68 @@ const LeadAnalyticsDashboard = () => {
   // ── KPI aggregates ──────────────────────────────────────────────────
   const statusCounts = useMemo(() => {
     const counts = {};
-    Object.values(LeadStatus).forEach((s) => { counts[s] = 0; });
-    periodLeads.forEach((l) => {
-      const s = l.status || LeadStatus.NEW;
+    Object.values(ContactStatus).forEach((s) => { counts[s] = 0; });
+    periodContacts.forEach((c) => {
+      const s = c.status || ContactStatus.ACTIVE;
       counts[s] = (counts[s] || 0) + 1;
     });
     return counts;
-  }, [periodLeads]);
+  }, [periodContacts]);
 
-  const totalCount = periodLeads.length;
-  const convertedCount = periodLeads.filter((l) => l.convertedContactId || l.status === LeadStatus.CONVERTED).length;
-  const conversionRate = totalCount ? (convertedCount / totalCount) * 100 : 0;
+  const totalCount = periodContacts.length;
+  const dealCount = periodContacts.filter(c => 
+    c.status === ContactStatus.DEAL || c.status === ContactStatus.PROPOSAL || c.dealId
+  ).length;
+  const convertedFromLeadCount = periodContacts.filter(c => c.leadId || c.convertedFromLeadId).length;
+  const dealRate = totalCount ? (dealCount / totalCount) * 100 : 0;
 
-  // ── Lead history timeline for selected lead ────────────────────────
-  const selectedLeadHistory = useMemo(() => {
-    if (!selectedLeadForHistory) return [];
-    return leadHistory[selectedLeadForHistory.id] || [];
-  }, [selectedLeadForHistory, leadHistory]);
+  // Interaction stats
+  const interactionStats = useMemo(() => {
+    const stats = {
+      totalCalls: 0,
+      totalWhatsApp: 0,
+      totalEmails: 0,
+      totalNotes: 0,
+      contactedRecently: 0,
+    };
+
+    periodContacts.forEach(c => {
+      const history = contactHistory[c.id] || [];
+      stats.totalCalls += history.filter(h => h.type === 'call').length;
+      stats.totalWhatsApp += history.filter(h => h.type === 'whatsapp').length;
+      stats.totalEmails += history.filter(h => h.type === 'email').length;
+      stats.totalNotes += history.filter(h => h.type === 'note' || h.type === 'note_added').length;
+      
+      // Check if contacted in last 7 days
+      const lastActivity = getLastActivityDate(c);
+      if (lastActivity && lastActivity.isAfter(dayjs().subtract(7, 'day'))) {
+        stats.contactedRecently++;
+      }
+    });
+
+    return stats;
+  }, [periodContacts, contactHistory]);
 
   // ── Trend chart data ────────────────────────────────────────────────
   const trendData = useMemo(() => {
-    if (!periodLeads.length) return [];
+    if (!periodContacts.length) return [];
     let granularity = 'day';
     if (periodPreset === 'Today') granularity = 'hour';
     else if (periodPreset === 'This Year' || periodPreset === 'All Time') granularity = 'month';
 
     const buckets = new Map();
-    periodLeads.forEach((l) => {
-      const d = getLeadDate(l);
+    periodContacts.forEach((c) => {
+      const d = getContactDate(c);
       if (!d) return;
       const key = fmtDateKey(d, granularity);
-      if (!buckets.has(key)) buckets.set(key, { name: key, total: 0, converted: 0, contacted: 0, sortKey: d.valueOf() });
+      if (!buckets.has(key)) buckets.set(key, { name: key, total: 0, deals: 0, contacted: 0, sortKey: d.valueOf() });
       const bucket = buckets.get(key);
       bucket.total += 1;
-      if (l.convertedContactId || l.status === LeadStatus.CONVERTED) bucket.converted += 1;
-      if ([LeadStatus.CONTACTED, LeadStatus.INTERESTED].includes(l.status)) bucket.contacted += 1;
+      if (c.status === ContactStatus.DEAL || c.status === ContactStatus.PROPOSAL || c.dealId) bucket.deals += 1;
+      if (c.status === ContactStatus.CONTACTED || c.status === ContactStatus.INTERESTED) bucket.contacted += 1;
     });
     return Array.from(buckets.values()).sort((a, b) => a.sortKey - b.sortKey);
-  }, [periodLeads, periodPreset]);
+  }, [periodContacts, periodPreset]);
 
   // ── Status distribution ──────────────────────────────────────────────
   const statusPieData = useMemo(() => (
@@ -322,66 +391,56 @@ const LeadAnalyticsDashboard = () => {
       .map(([status, value]) => ({ name: STATUS_LABELS[status] || status, status, value }))
   ), [statusCounts]);
 
-  // ── Interest level ───────────────────────────────────────────────────
-  const interestData = useMemo(() => {
-    const counts = { Low: 0, Medium: 0, High: 0 };
-    periodLeads.forEach((l) => {
-      const lvl = l.InterestLevel || 'Medium';
-      if (counts[lvl] !== undefined) counts[lvl] += 1;
-    });
-    return [
-      { name: 'Low', value: counts.Low, fill: '#fa8c16' },
-      { name: 'Medium', value: counts.Medium, fill: '#1677ff' },
-      { name: 'High', value: counts.High, fill: '#52c41a' },
-    ];
-  }, [periodLeads]);
-
   // ── Source breakdown ────────────────────────────────────────────────
   const sourceData = useMemo(() => {
     const counts = {};
-    periodLeads.forEach((l) => {
-      const src = l.RedirectedFrom || l.source || l.meta_platform || 'Other';
+    periodContacts.forEach((c) => {
+      const src = c.source || c.RedirectedFrom || 'Other';
       counts[src] = (counts[src] || 0) + 1;
     });
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [periodLeads]);
+  }, [periodContacts]);
 
   // ── Conversion funnel ────────────────────────────────────────────────
   const funnelData = useMemo(() => {
-    const newC = periodLeads.length;
-    const contactedC = periodLeads.filter((l) =>
-      [LeadStatus.CONTACTED, LeadStatus.INTERESTED, LeadStatus.CONVERTED].includes(l.status)).length;
-    const interestedC = periodLeads.filter((l) =>
-      [LeadStatus.INTERESTED, LeadStatus.CONVERTED].includes(l.status)).length;
-    const convertedC = periodLeads.filter((l) => l.convertedContactId || l.status === LeadStatus.CONVERTED).length;
+    const total = periodContacts.length;
+    const contacted = periodContacts.filter((c) =>
+      [ContactStatus.CONTACTED, ContactStatus.INTERESTED, ContactStatus.DEAL, ContactStatus.PROPOSAL, ContactStatus.CONVERTED].includes(c.status)
+    ).length;
+    const interested = periodContacts.filter((c) =>
+      [ContactStatus.INTERESTED, ContactStatus.DEAL, ContactStatus.PROPOSAL].includes(c.status)
+    ).length;
+    const deals = periodContacts.filter((c) =>
+      c.status === ContactStatus.DEAL || c.status === ContactStatus.PROPOSAL || c.dealId
+    ).length;
     return [
-      { name: 'New Leads', value: newC, fill: '#1677ff' },
-      { name: 'Contacted', value: contactedC, fill: '#2f54eb' },
-      { name: 'Interested', value: interestedC, fill: '#13c2c2' },
-      { name: 'Converted', value: convertedC, fill: '#52c41a' },
+      { name: 'Total Contacts', value: total, fill: '#1677ff' },
+      { name: 'Contacted', value: contacted, fill: '#2f54eb' },
+      { name: 'Interested', value: interested, fill: '#13c2c2' },
+      { name: 'Deals', value: deals, fill: '#fa8c16' },
     ];
-  }, [periodLeads]);
+  }, [periodContacts]);
 
   // ── Seller performance ──────────────────────────────────────────────
   const sellerPerf = useMemo(() => {
     return sellers.map((seller) => {
-      const assigned = periodLeads.filter((l) => l.seller_id === seller.id);
-      const created = periodLeads.filter((l) => l.createdBy === seller.id);
-      const viewed = assigned.filter((l) => (l.viewCount || 0) > 0 || l.isRevealed || l.lastViewedAt);
-      const contacted = assigned.filter((l) => l.status && l.status !== LeadStatus.NEW);
-      const converted = assigned.filter((l) => l.convertedContactId || l.status === LeadStatus.CONVERTED);
-      const notInterested = assigned.filter((l) =>
-        [LeadStatus.NOT_INTERESTED, LeadStatus.JUNK_LEAD].includes(l.status));
+      const assigned = periodContacts.filter((c) => c.seller_id === seller.id);
+      const created = periodContacts.filter((c) => c.createdBy === seller.id);
+      const dealt = assigned.filter((c) => c.status === ContactStatus.DEAL || c.status === ContactStatus.PROPOSAL || c.dealId);
+      const contacted = assigned.filter((c) => c.status && c.status !== ContactStatus.ACTIVE && c.status !== ContactStatus.PENDING);
+      const notInterested = assigned.filter((c) =>
+        [ContactStatus.NOT_INTERESTED, ContactStatus.LOSS, ContactStatus.JUNK_LEAD].includes(c.status)
+      );
 
-      // Response time: assignedAt -> firstViewedAt
+      // Response time: assignedAt -> lastActivity
       const responseTimes = assigned
-        .map((l) => {
-          const assignedAt = getAssignedDate(l);
-          const viewedAt = getViewedDate(l);
-          if (!assignedAt || !viewedAt) return null;
-          const hrs = viewedAt.diff(assignedAt, 'hour', true);
+        .map((c) => {
+          const assignedAt = getAssignedDate(c);
+          const lastActivity = getLastActivityDate(c);
+          if (!assignedAt || !lastActivity) return null;
+          const hrs = lastActivity.diff(assignedAt, 'hour', true);
           return hrs >= 0 ? hrs : null;
         })
         .filter((v) => v !== null);
@@ -389,19 +448,19 @@ const LeadAnalyticsDashboard = () => {
         ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
         : null;
 
-      // Time to conversion: createdAt -> convertedAt
-      const conversionTimes = assigned
-        .filter((l) => l.convertedAt)
-        .map((l) => {
-          const created = getLeadDate(l);
-          const converted = l.convertedAt?.toDate?.() || l.convertedAt;
-          if (!created || !converted) return null;
-          const days = dayjs(converted).diff(created, 'day', true);
+      // Time to deal: createdAt -> deal status
+      const dealTimes = assigned
+        .filter((c) => c.status === ContactStatus.DEAL || c.dealId)
+        .map((c) => {
+          const created = getContactDate(c);
+          const dealDate = c.dealCreatedAt?.toDate?.() || c.dealCreatedAt;
+          if (!created || !dealDate) return null;
+          const days = dayjs(dealDate).diff(created, 'day', true);
           return days >= 0 ? days : null;
         })
         .filter((v) => v !== null);
-      const avgConversionDays = conversionTimes.length
-        ? conversionTimes.reduce((a, b) => a + b, 0) / conversionTimes.length
+      const avgDealDays = dealTimes.length
+        ? dealTimes.reduce((a, b) => a + b, 0) / dealTimes.length
         : null;
 
       return {
@@ -411,19 +470,18 @@ const LeadAnalyticsDashboard = () => {
         phone: seller.phone,
         assignedCount: assigned.length,
         createdCount: created.length,
-        viewedCount: viewed.length,
         contactedCount: contacted.length,
-        convertedCount: converted.length,
+        dealCount: dealt.length,
         notInterestedCount: notInterested.length,
-        revealRate: assigned.length ? (viewed.length / assigned.length) * 100 : 0,
-        conversionRate: assigned.length ? (converted.length / assigned.length) * 100 : 0,
+        contactRate: assigned.length ? (contacted.length / assigned.length) * 100 : 0,
+        dealRate: assigned.length ? (dealt.length / assigned.length) * 100 : 0,
         avgResponseHrs,
-        avgConversionDays,
+        avgDealDays,
       };
     })
     .filter((s) => s.assignedCount > 0 || s.createdCount > 0)
-    .sort((a, b) => b.convertedCount - a.convertedCount || b.assignedCount - a.assignedCount);
-  }, [sellers, periodLeads]);
+    .sort((a, b) => b.dealCount - a.dealCount || b.assignedCount - a.assignedCount);
+  }, [sellers, periodContacts]);
 
   // ── Month-over-month comparison ──────────────────────────────────────
   const monthOverMonth = useMemo(() => {
@@ -433,59 +491,63 @@ const LeadAnalyticsDashboard = () => {
       const month = now.subtract(i, 'month');
       const start = month.startOf('month');
       const end = month.endOf('month');
-      const monthLeads = leads.filter((l) => {
-        const d = getLeadDate(l);
+      const monthContacts = contacts.filter((c) => {
+        const d = getContactDate(c);
         return d && d.isBetween(start, end, 'day', '[]');
       });
-      const monthConverted = monthLeads.filter((l) => l.convertedContactId || l.status === LeadStatus.CONVERTED).length;
+      const monthDeals = monthContacts.filter((c) => c.status === ContactStatus.DEAL || c.status === ContactStatus.PROPOSAL || c.dealId).length;
       months.push({
         month: month.format('MMM YYYY'),
-        total: monthLeads.length,
-        converted: monthConverted,
-        rate: monthLeads.length ? (monthConverted / monthLeads.length) * 100 : 0,
+        total: monthContacts.length,
+        deals: monthDeals,
+        rate: monthContacts.length ? (monthDeals / monthContacts.length) * 100 : 0,
       });
     }
     return months;
-  }, [leads]);
+  }, [contacts]);
+
+  // ── Activity timeline for selected contact ─────────────────────────
+  const selectedContactHistory = useMemo(() => {
+    if (!selectedContactForHistory) return [];
+    return contactHistory[selectedContactForHistory.id] || [];
+  }, [selectedContactForHistory, contactHistory]);
 
   // ── Filtered table ───────────────────────────────────────────────────
-  const filteredTableLeads = useMemo(() => {
-    if (!activeFilter) return periodLeads;
+  const filteredTableContacts = useMemo(() => {
+    if (!activeFilter) return periodContacts;
     const { type, value } = activeFilter;
-    if (type === 'status') return periodLeads.filter((l) => (l.status || LeadStatus.NEW) === value);
-    if (type === 'interest') return periodLeads.filter((l) => (l.InterestLevel || 'Medium') === value);
-    if (type === 'source') return periodLeads.filter((l) => (l.RedirectedFrom || l.source || 'Other') === value);
-    if (type === 'seller') return periodLeads.filter((l) => l.seller_id === value);
-    if (type === 'all') return periodLeads;
-    return periodLeads;
-  }, [periodLeads, activeFilter]);
+    if (type === 'status') return periodContacts.filter((c) => (c.status || ContactStatus.ACTIVE) === value);
+    if (type === 'source') return periodContacts.filter((c) => (c.source || c.RedirectedFrom || 'Other') === value);
+    if (type === 'seller') return periodContacts.filter((c) => c.seller_id === value);
+    if (type === 'all') return periodContacts;
+    return periodContacts;
+  }, [periodContacts, activeFilter]);
 
   const toggleFilter = (type, value, label) => {
     setActiveFilter((prev) => (prev && prev.type === type && prev.value === value ? null : { type, value, label }));
   };
 
-  const showLeadHistory = (lead) => {
-    setSelectedLeadForHistory(lead);
+  const showContactHistory = (contact) => {
+    setSelectedContactForHistory(contact);
     setHistoryDrawerVisible(true);
-    // Fetch more history if needed
-    if (!leadHistory[lead.id] || leadHistory[lead.id].length < 20) {
-      fetchLeadHistory([lead]);
+    if (!contactHistory[contact.id] || contactHistory[contact.id].length < 20) {
+      fetchContactHistory([contact]);
     }
   };
 
   const kpis = [
-    { key: 'all', title: 'Total Leads', value: totalCount, icon: <TeamOutlined />, color: '#1677ff', trend: trendFor(totalCount) },
-    { key: LeadStatus.NEW, title: 'New', value: statusCounts[LeadStatus.NEW], icon: STATUS_ICONS[LeadStatus.NEW], color: STATUS_COLORS[LeadStatus.NEW], trend: trendFor(statusCounts[LeadStatus.NEW], LeadStatus.NEW) },
-    { key: LeadStatus.CONTACTED, title: 'Contacted', value: statusCounts[LeadStatus.CONTACTED], icon: STATUS_ICONS[LeadStatus.CONTACTED], color: STATUS_COLORS[LeadStatus.CONTACTED], trend: trendFor(statusCounts[LeadStatus.CONTACTED], LeadStatus.CONTACTED) },
-    { key: LeadStatus.INTERESTED, title: 'Interested', value: statusCounts[LeadStatus.INTERESTED], icon: STATUS_ICONS[LeadStatus.INTERESTED], color: STATUS_COLORS[LeadStatus.INTERESTED], trend: trendFor(statusCounts[LeadStatus.INTERESTED], LeadStatus.INTERESTED) },
-    { key: LeadStatus.CONVERTED, title: 'Converted', value: statusCounts[LeadStatus.CONVERTED], icon: STATUS_ICONS[LeadStatus.CONVERTED], color: STATUS_COLORS[LeadStatus.CONVERTED], suffix: `${conversionRate.toFixed(0)}% rate`, trend: trendFor(statusCounts[LeadStatus.CONVERTED], LeadStatus.CONVERTED) },
-    { key: LeadStatus.NOT_INTERESTED, title: 'Not Interested', value: statusCounts[LeadStatus.NOT_INTERESTED], icon: STATUS_ICONS[LeadStatus.NOT_INTERESTED], color: STATUS_COLORS[LeadStatus.NOT_INTERESTED], trend: trendFor(statusCounts[LeadStatus.NOT_INTERESTED], LeadStatus.NOT_INTERESTED) },
+    { key: 'all', title: 'Total Contacts', value: totalCount, icon: <TeamOutlined />, color: '#1677ff', trend: trendFor(totalCount) },
+    { key: ContactStatus.ACTIVE, title: 'Active', value: statusCounts[ContactStatus.ACTIVE], icon: STATUS_ICONS[ContactStatus.ACTIVE], color: STATUS_COLORS[ContactStatus.ACTIVE], trend: trendFor(statusCounts[ContactStatus.ACTIVE], ContactStatus.ACTIVE) },
+    { key: ContactStatus.HOT, title: 'Hot', value: statusCounts[ContactStatus.HOT], icon: STATUS_ICONS[ContactStatus.HOT], color: STATUS_COLORS[ContactStatus.HOT], trend: trendFor(statusCounts[ContactStatus.HOT], ContactStatus.HOT) },
+    { key: ContactStatus.PENDING, title: 'Pending', value: statusCounts[ContactStatus.PENDING], icon: STATUS_ICONS[ContactStatus.PENDING], color: STATUS_COLORS[ContactStatus.PENDING], trend: trendFor(statusCounts[ContactStatus.PENDING], ContactStatus.PENDING) },
+    { key: ContactStatus.DEAL, title: 'Deals', value: statusCounts[ContactStatus.DEAL], icon: STATUS_ICONS[ContactStatus.DEAL], color: STATUS_COLORS[ContactStatus.DEAL], suffix: `${dealRate.toFixed(0)}% rate`, trend: trendFor(statusCounts[ContactStatus.DEAL], ContactStatus.DEAL) },
+    { key: ContactStatus.LOSS, title: 'Loss', value: statusCounts[ContactStatus.LOSS], icon: STATUS_ICONS[ContactStatus.LOSS], color: STATUS_COLORS[ContactStatus.LOSS], trend: trendFor(statusCounts[ContactStatus.LOSS], ContactStatus.LOSS) },
   ];
 
-  // ── Lead table columns ──────────────────────────────────────────────
-  const leadColumns = [
+  // ── Contact table columns ───────────────────────────────────────────
+  const contactColumns = [
     {
-      title: 'Lead', dataIndex: 'name', key: 'name', width: 200,
+      title: 'Contact', dataIndex: 'name', key: 'name', width: 200,
       render: (text, r) => (
         <Space>
           <Avatar size={28} style={{ background: STATUS_COLORS[r.status] || '#1677ff', fontSize: 12 }}>
@@ -500,27 +562,29 @@ const LeadAnalyticsDashboard = () => {
     },
     {
       title: 'Status', dataIndex: 'status', key: 'status', width: 130,
-      render: (s) => <Tag color={STATUS_COLORS[s] || 'default'} style={{ borderRadius: 12 }}>{STATUS_LABELS[s] || s || 'New'}</Tag>,
+      render: (s) => <Tag color={STATUS_COLORS[s] || 'default'} style={{ borderRadius: 12 }}>{STATUS_LABELS[s] || s || 'Active'}</Tag>,
     },
-    { title: 'Interest', dataIndex: 'InterestLevel', key: 'InterestLevel', width: 100 },
-    { title: 'Source', dataIndex: 'RedirectedFrom', key: 'RedirectedFrom', width: 110, render: (s) => s || '—' },
+    {
+      title: 'Source', dataIndex: 'source', key: 'source', width: 110,
+      render: (s) => s || <Text type="secondary">—</Text>,
+    },
     {
       title: 'Assigned To', dataIndex: 'seller_id', key: 'seller_id', width: 150,
       render: (id) => sellers.find((s) => s.id === id)?.name || <Text type="secondary">Unassigned</Text>,
     },
     {
       title: 'Created', key: 'created', width: 130,
-      render: (_, r) => { const d = getLeadDate(r); return d ? d.format('DD MMM YYYY') : '—'; },
+      render: (_, r) => { const d = getContactDate(r); return d ? d.format('DD MMM YYYY') : '—'; },
     },
     {
       title: 'History', key: 'history', width: 80,
       render: (_, r) => (
-        <Tooltip title="View lead history">
+        <Tooltip title="View contact history">
           <Button
             type="text"
             size="small"
             icon={<HistoryOutlined />}
-            onClick={(e) => { e.stopPropagation(); showLeadHistory(r); }}
+            onClick={(e) => { e.stopPropagation(); showContactHistory(r); }}
           />
         </Tooltip>
       ),
@@ -528,30 +592,34 @@ const LeadAnalyticsDashboard = () => {
   ];
 
   // ── History drawer content ──────────────────────────────────────────
-  const HistoryDrawerContent = ({ lead, history }) => {
-    if (!lead) return <Empty description="No lead selected" />;
+  const HistoryDrawerContent = ({ contact, history }) => {
+    if (!contact) return <Empty description="No contact selected" />;
 
-    const statusHistory = history.filter(h => h.type === 'status_change' || h.type === 'status_changed');
-    const viewHistory = history.filter(h => h.type === 'view' || h.type === 'reveal');
-    const noteHistory = history.filter(h => h.type === 'note' || h.type === 'note_added');
+    const calls = history.filter(h => h.type === 'call');
+    const whatsapps = history.filter(h => h.type === 'whatsapp');
+    const emails = history.filter(h => h.type === 'email');
+    const notes = history.filter(h => h.type === 'note' || h.type === 'note_added');
+    const statusChanges = history.filter(h => h.type === 'status');
 
     return (
       <div>
         <Descriptions bordered size="small" column={1} style={{ marginBottom: 16 }}>
-          <Descriptions.Item label="Name">{lead.name || 'Unknown'}</Descriptions.Item>
-          <Descriptions.Item label="Email">{lead.email || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Phone">{lead.phoneNumber || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Name">{contact.name || 'Unknown'}</Descriptions.Item>
+          <Descriptions.Item label="Email">{contact.email || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Phone">{contact.phoneNumber || '—'}</Descriptions.Item>
           <Descriptions.Item label="Status">
-            <Tag color={STATUS_COLORS[lead.status] || 'default'}>{STATUS_LABELS[lead.status] || lead.status || 'New'}</Tag>
+            <Tag color={STATUS_COLORS[contact.status] || 'default'}>
+              {STATUS_LABELS[contact.status] || contact.status || 'Active'}
+            </Tag>
           </Descriptions.Item>
           <Descriptions.Item label="Assigned To">
-            {sellers.find(s => s.id === lead.seller_id)?.name || 'Unassigned'}
+            {sellers.find(s => s.id === contact.seller_id)?.name || 'Unassigned'}
           </Descriptions.Item>
           <Descriptions.Item label="Created">
-            {getLeadDate(lead)?.format('DD MMM YYYY HH:mm') || '—'}
+            {getContactDate(contact)?.format('DD MMM YYYY HH:mm') || '—'}
           </Descriptions.Item>
-          <Descriptions.Item label="Last Viewed">
-            {getViewedDate(lead)?.fromNow() || 'Never'}
+          <Descriptions.Item label="Last Activity">
+            {getLastActivityDate(contact)?.fromNow() || 'Never'}
           </Descriptions.Item>
         </Descriptions>
 
@@ -562,61 +630,131 @@ const LeadAnalyticsDashboard = () => {
                 {history.slice(0, 30).map((item, idx) => (
                   <Timeline.Item
                     key={idx}
-                    color={item.type === 'status_change' ? '#1677ff' : item.type === 'view' ? '#52c41a' : '#faad14'}
+                    color={item.type === 'status' ? '#1677ff' : 
+                           item.type === 'call' ? '#52c41a' :
+                           item.type === 'whatsapp' ? '#25D366' :
+                           item.type === 'email' ? '#1677ff' :
+                           item.type === 'note' ? '#faad14' : '#8c8c8c'}
                     label={item.createdAt ? dayjs(item.createdAt).format('DD MMM HH:mm') : '—'}
                   >
                     <Card size="small" style={{ borderRadius: 8 }}>
-                      <Text strong>{item.type || 'Activity'}</Text>
-                      {item.details && (
+                      <Space>
+                        {item.type === 'call' && <PhoneOutlined style={{ color: '#52c41a' }} />}
+                        {item.type === 'whatsapp' && <WhatsAppOutlined style={{ color: '#25D366' }} />}
+                        {item.type === 'email' && <MailOutlined style={{ color: '#1677ff' }} />}
+                        {item.type === 'note' && <FileTextOutlined style={{ color: '#faad14' }} />}
+                        {item.type === 'status' && <UserSwitchOutlined style={{ color: '#1677ff' }} />}
+                        <Text strong>{item.type || 'Activity'}</Text>
+                      </Space>
+                      {item.message && <div style={{ marginTop: 4 }}><Text>{item.message}</Text></div>}
+                      {item.metadata && Object.keys(item.metadata).length > 0 && (
                         <div style={{ marginTop: 4 }}>
-                          {Object.entries(item.details).map(([k, v]) => (
-                            v && <Text key={k} type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                          {Object.entries(item.metadata).map(([k, v]) => (
+                            v && <Text key={k} type="secondary" style={{ fontSize: 11, display: 'block' }}>
                               <strong>{k}:</strong> {typeof v === 'string' ? v : JSON.stringify(v)}
                             </Text>
                           ))}
                         </div>
                       )}
-                      {item.note && (
-                        <div style={{ marginTop: 4, padding: 8, background: '#f5f5f5', borderRadius: 4 }}>
-                          <Text style={{ fontSize: 12 }}>{item.note}</Text>
-                        </div>
+                      {item.sellerId && (
+                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                          <UserOutlined /> {sellers.find(s => s.id === item.sellerId)?.name || 'Unknown'}
+                        </Text>
                       )}
                     </Card>
                   </Timeline.Item>
                 ))}
               </Timeline>
             ) : (
-              <Empty description="No history found for this lead" />
+              <Empty description="No history found for this contact" />
             )}
           </TabPane>
 
-          <TabPane tab={<span><EyeOutlined /> Views ({viewHistory.length})</span>} key="views">
+          <TabPane tab={<span><PhoneOutlined /> Calls ({calls.length})</span>} key="calls">
             <List
-              dataSource={viewHistory}
+              dataSource={calls}
               renderItem={(item) => (
                 <List.Item>
                   <List.Item.Meta
-                    avatar={<EyeOutlined style={{ color: '#52c41a' }} />}
-                    title={item.sellerId ? sellers.find(s => s.id === item.sellerId)?.name || 'Unknown seller' : 'Unknown'}
-                    description={item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
+                    avatar={<PhoneOutlined style={{ color: '#52c41a' }} />}
+                    title={item.message || 'Call logged'}
+                    description={
+                      <Space>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
+                        </Text>
+                        {item.metadata?.duration && (
+                          <Tag color="blue">{item.metadata.duration} min</Tag>
+                        )}
+                        {item.metadata?.outcome && (
+                          <Tag color={item.metadata.outcome === 'answered' ? 'green' : 'orange'}>
+                            {item.metadata.outcome}
+                          </Tag>
+                        )}
+                      </Space>
+                    }
                   />
                 </List.Item>
               )}
-              locale={{ emptyText: 'No view history' }}
+              locale={{ emptyText: 'No calls logged' }}
             />
           </TabPane>
 
-          <TabPane tab={<span><FileTextOutlined /> Notes ({noteHistory.length})</span>} key="notes">
+          <TabPane tab={<span><WhatsAppOutlined /> WhatsApp ({whatsapps.length})</span>} key="whatsapp">
             <List
-              dataSource={noteHistory}
+              dataSource={whatsapps}
+              renderItem={(item) => (
+                <List.Item>
+                  <List.Item.Meta
+                    avatar={<WhatsAppOutlined style={{ color: '#25D366' }} />}
+                    title={item.message || 'WhatsApp message'}
+                    description={
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
+                      </Text>
+                    }
+                  />
+                </List.Item>
+              )}
+              locale={{ emptyText: 'No WhatsApp messages' }}
+            />
+          </TabPane>
+
+          <TabPane tab={<span><MailOutlined /> Emails ({emails.length})</span>} key="emails">
+            <List
+              dataSource={emails}
+              renderItem={(item) => (
+                <List.Item>
+                  <List.Item.Meta
+                    avatar={<MailOutlined style={{ color: '#1677ff' }} />}
+                    title={item.metadata?.subject || 'Email sent'}
+                    description={
+                      <div>
+                        <Text>{item.message}</Text>
+                        <br />
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
+                        </Text>
+                      </div>
+                    }
+                  />
+                </List.Item>
+              )}
+              locale={{ emptyText: 'No emails sent' }}
+            />
+          </TabPane>
+
+          <TabPane tab={<span><FileTextOutlined /> Notes ({notes.length})</span>} key="notes">
+            <List
+              dataSource={notes}
               renderItem={(item) => (
                 <List.Item>
                   <List.Item.Meta
                     avatar={<FileTextOutlined style={{ color: '#faad14' }} />}
-                    title={item.sellerId ? sellers.find(s => s.id === item.sellerId)?.name || 'Unknown seller' : 'Unknown'}
+                    title={item.sellerId ? sellers.find(s => s.id === item.sellerId)?.name || 'Unknown' : 'Unknown'}
                     description={
                       <div>
-                        <Text>{item.note || item.details?.note || '—'}</Text>
+                        <Text>{item.message || item.note || '—'}</Text>
                         <br />
                         <Text type="secondary" style={{ fontSize: 11 }}>
                           {item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
@@ -630,19 +768,19 @@ const LeadAnalyticsDashboard = () => {
             />
           </TabPane>
 
-          <TabPane tab={<span><UserSwitchOutlined /> Status Changes ({statusHistory.length})</span>} key="status">
+          <TabPane tab={<span><UserSwitchOutlined /> Status Changes ({statusChanges.length})</span>} key="status">
             <List
-              dataSource={statusHistory}
+              dataSource={statusChanges}
               renderItem={(item) => (
                 <List.Item>
                   <List.Item.Meta
                     avatar={<UserSwitchOutlined style={{ color: '#1677ff' }} />}
-                    title={item.details?.newStatus || item.newStatus || 'Status changed'}
+                    title={item.metadata?.newStatus || item.newStatus || 'Status changed'}
                     description={
                       <Space>
-                        <Tag>{item.details?.oldStatus || item.oldStatus || '—'}</Tag>
+                        <Tag>{item.metadata?.oldStatus || item.oldStatus || '—'}</Tag>
                         <ArrowRightOutlined style={{ fontSize: 11 }} />
-                        <Tag color="green">{item.details?.newStatus || item.newStatus || '—'}</Tag>
+                        <Tag color="green">{item.metadata?.newStatus || item.newStatus || '—'}</Tag>
                         <Text type="secondary" style={{ fontSize: 11 }}>
                           {item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
                         </Text>
@@ -659,7 +797,8 @@ const LeadAnalyticsDashboard = () => {
     );
   };
 
-  const activeLabel = activeFilter?.label || (activeFilter?.type === 'status' ? (STATUS_LABELS[activeFilter.value] || activeFilter.value) : activeFilter?.value);
+  const activeLabel = activeFilter?.label || 
+    (activeFilter?.type === 'status' ? (STATUS_LABELS[activeFilter.value] || activeFilter.value) : activeFilter?.value);
 
   if (!companyId) {
     return <Empty description="No company context found" style={{ marginTop: 80 }} />;
@@ -678,8 +817,8 @@ const LeadAnalyticsDashboard = () => {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
                 <div>
-                  <Title level={3} style={{ margin: 0, fontWeight: 600 }}>📈 Leads Analytics</Title>
-                  <Text type="secondary">Performance overview, trends, and seller interaction tracking</Text>
+                  <Title level={3} style={{ margin: 0, fontWeight: 600 }}>📊 Contact Analytics</Title>
+                  <Text type="secondary">Contact performance, interaction tracking, and deal conversion insights</Text>
                 </div>
                 <Space wrap size={10}>
                   <Segmented
@@ -713,21 +852,21 @@ const LeadAnalyticsDashboard = () => {
                     suffix={k.suffix}
                     trend={k.trend}
                     active={k.key === 'all' ? activeFilter?.type === 'all' : activeFilter?.type === 'status' && activeFilter.value === k.key}
-                    onClick={() => (k.key === 'all' ? toggleFilter('all', 'all', 'All Leads') : toggleFilter('status', k.key, STATUS_LABELS[k.key] || k.key))}
+                    onClick={() => (k.key === 'all' ? toggleFilter('all', 'all', 'All Contacts') : toggleFilter('status', k.key, STATUS_LABELS[k.key] || k.key))}
                   />
                 </Col>
               ))}
             </Row>
           </Col>
 
-          {/* TREND + STATUS PIE */}
+          {/* TREND CHART */}
           <Col xs={24} lg={16}>
             <ChartCard
-              title="Leads Over Time"
+              title="Contacts Over Time"
               extra={
                 <Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>New vs Converted</Text>
-                  <Tooltip title="Shows lead creation and conversion trends over the selected period">
+                  <Text type="secondary" style={{ fontSize: 12 }}>Total vs Deals</Text>
+                  <Tooltip title="Shows contact creation and deal conversion trends over the selected period">
                     <InfoCircleOutlined style={{ color: '#8c8c8c' }} />
                   </Tooltip>
                 </Space>
@@ -741,9 +880,9 @@ const LeadAnalyticsDashboard = () => {
                         <stop offset="5%" stopColor="#1677ff" stopOpacity={0.35} />
                         <stop offset="95%" stopColor="#1677ff" stopOpacity={0} />
                       </linearGradient>
-                      <linearGradient id="convGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#52c41a" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#52c41a" stopOpacity={0} />
+                      <linearGradient id="dealGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#fa8c16" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#fa8c16" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
@@ -751,15 +890,16 @@ const LeadAnalyticsDashboard = () => {
                     <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                     <RTooltip />
                     <Legend />
-                    <Area type="monotone" dataKey="total" name="New Leads" stroke="#1677ff" fill="url(#totalGrad)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="converted" name="Converted" stroke="#52c41a" fill="url(#convGrad)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="contacted" name="Contacted" stroke="#faad14" fill="rgba(250, 173, 20, 0.1)" strokeWidth={1.5} />
+                    <Area type="monotone" dataKey="total" name="New Contacts" stroke="#1677ff" fill="url(#totalGrad)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="deals" name="Deals" stroke="#fa8c16" fill="url(#dealGrad)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="contacted" name="Contacted" stroke="#2f54eb" fill="rgba(47, 84, 235, 0.1)" strokeWidth={1.5} />
                   </AreaChart>
                 </ResponsiveContainer>
-              ) : <Empty description="No leads in this period" style={{ marginTop: 60 }} />}
+              ) : <Empty description="No contacts in this period" style={{ marginTop: 60 }} />}
             </ChartCard>
           </Col>
 
+          {/* STATUS PIE */}
           <Col xs={24} lg={8}>
             <ChartCard title="Status Distribution">
               {statusPieData.length ? (
@@ -791,38 +931,9 @@ const LeadAnalyticsDashboard = () => {
             </ChartCard>
           </Col>
 
-          {/* INTEREST + SOURCE */}
+          {/* SOURCE BREAKDOWN */}
           <Col xs={24} lg={8}>
-            <ChartCard title="Interest Level" height={260}>
-              {periodLeads.length ? (
-                <ResponsiveContainer>
-                  <BarChart data={interestData} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <RTooltip />
-                    <Bar
-                      dataKey="value"
-                      radius={[8, 8, 0, 0]}
-                      onClick={(d) => toggleFilter('interest', d.name, `${d.name} Interest`)}
-                      cursor="pointer"
-                    >
-                      {interestData.map((entry) => (
-                        <Cell
-                          key={entry.name}
-                          fill={entry.fill}
-                          opacity={activeFilter?.type === 'interest' && activeFilter.value !== entry.name ? 0.35 : 1}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <Empty description="No data" style={{ marginTop: 40 }} />}
-            </ChartCard>
-          </Col>
-
-          <Col xs={24} lg={8}>
-            <ChartCard title="Lead Source" height={260}>
+            <ChartCard title="Contact Source" height={260}>
               {sourceData.length ? (
                 <ResponsiveContainer>
                   <BarChart data={sourceData} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 0 }}>
@@ -851,6 +962,7 @@ const LeadAnalyticsDashboard = () => {
             </ChartCard>
           </Col>
 
+          {/* CONVERSION FUNNEL */}
           <Col xs={24} lg={8}>
             <ChartCard title="Conversion Funnel" height={260}>
               {funnelData[0]?.value ? (
@@ -867,7 +979,65 @@ const LeadAnalyticsDashboard = () => {
             </ChartCard>
           </Col>
 
-          {/* MONTH OVER MONTH COMPARISON */}
+          {/* INTERACTION STATS */}
+          <Col xs={24} lg={8}>
+            <Card
+              bordered={false}
+              style={{ borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', height: '100%' }}
+              title={<span style={{ fontWeight: 600, fontSize: 14 }}><PhoneOutlined style={{ color: '#52c41a', marginRight: 6 }} />Interaction Overview</span>}
+            >
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <Statistic
+                    title="Total Interactions"
+                    value={interactionStats.totalCalls + interactionStats.totalWhatsApp + interactionStats.totalEmails + interactionStats.totalNotes}
+                    prefix={<PhoneOutlined style={{ color: '#52c41a' }} />}
+                  />
+                </Col>
+                <Col span={12}>
+                  <Statistic
+                    title="Contacted Recently"
+                    value={interactionStats.contactedRecently}
+                    suffix={`/ ${totalCount}`}
+                    prefix={<ClockCircleOutlined style={{ color: '#faad14' }} />}
+                  />
+                </Col>
+              </Row>
+              <Divider style={{ margin: '12px 0' }} />
+              <Row gutter={[16, 8]}>
+                <Col span={6}>
+                  <div style={{ textAlign: 'center' }}>
+                    <PhoneOutlined style={{ color: '#52c41a', fontSize: 18 }} />
+                    <div><Text strong>{interactionStats.totalCalls}</Text></div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Calls</Text>
+                  </div>
+                </Col>
+                <Col span={6}>
+                  <div style={{ textAlign: 'center' }}>
+                    <WhatsAppOutlined style={{ color: '#25D366', fontSize: 18 }} />
+                    <div><Text strong>{interactionStats.totalWhatsApp}</Text></div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>WhatsApp</Text>
+                  </div>
+                </Col>
+                <Col span={6}>
+                  <div style={{ textAlign: 'center' }}>
+                    <MailOutlined style={{ color: '#1677ff', fontSize: 18 }} />
+                    <div><Text strong>{interactionStats.totalEmails}</Text></div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Emails</Text>
+                  </div>
+                </Col>
+                <Col span={6}>
+                  <div style={{ textAlign: 'center' }}>
+                    <FileTextOutlined style={{ color: '#faad14', fontSize: 18 }} />
+                    <div><Text strong>{interactionStats.totalNotes}</Text></div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Notes</Text>
+                  </div>
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+
+          {/* MONTH OVER MONTH */}
           <Col span={24}>
             <Card
               bordered={false}
@@ -883,9 +1053,9 @@ const LeadAnalyticsDashboard = () => {
                     <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} domain={[0, 100]} />
                     <RTooltip />
                     <Legend />
-                    <Bar yAxisId="left" dataKey="total" name="Total Leads" fill="#1677ff" radius={[4, 4, 0, 0]} />
-                    <Bar yAxisId="left" dataKey="converted" name="Converted" fill="#52c41a" radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="rate" name="Conversion Rate %" stroke="#faad14" strokeWidth={2} dot={{ r: 4 }} />
+                    <Bar yAxisId="left" dataKey="total" name="Total Contacts" fill="#1677ff" radius={[4, 4, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="deals" name="Deals" fill="#fa8c16" radius={[4, 4, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="rate" name="Deal Rate %" stroke="#52c41a" strokeWidth={2} dot={{ r: 4 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -900,7 +1070,7 @@ const LeadAnalyticsDashboard = () => {
               title={<span style={{ fontWeight: 600, fontSize: 14 }}><ThunderboltOutlined style={{ color: '#faad14', marginRight: 6 }} />Seller Performance & Interaction Tracking</span>}
               extra={
                 <Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Click a row to filter leads below</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Click a row to filter contacts below</Text>
                   {selectedSellerForComparison && (
                     <Button size="small" onClick={() => setSelectedSellerForComparison(null)}>Clear</Button>
                   )}
@@ -913,7 +1083,7 @@ const LeadAnalyticsDashboard = () => {
                 rowKey="id"
                 size="middle"
                 pagination={false}
-                scroll={{ x: 1100 }}
+                scroll={{ x: 1200 }}
                 onRow={(record) => ({
                   onClick: () => {
                     toggleFilter('seller', record.id, record.name);
@@ -937,24 +1107,23 @@ const LeadAnalyticsDashboard = () => {
                   { title: 'Assigned', dataIndex: 'assignedCount', key: 'assignedCount', width: 90, sorter: (a, b) => a.assignedCount - b.assignedCount },
                   { title: 'Created', dataIndex: 'createdCount', key: 'createdCount', width: 90, sorter: (a, b) => a.createdCount - b.createdCount },
                   {
-                    title: 'Viewed / Revealed', dataIndex: 'viewedCount', key: 'viewedCount', width: 150,
+                    title: 'Contacted', dataIndex: 'contactedCount', key: 'contactedCount', width: 120,
                     render: (v, r) => (
                       <Space direction="vertical" size={0} style={{ width: '100%' }}>
-                        <Text style={{ fontSize: 12 }}><EyeOutlined style={{ marginRight: 4, color: '#1677ff' }} />{v} / {r.assignedCount}</Text>
-                        <Progress percent={Math.round(r.revealRate)} size="small" strokeColor="#1677ff" showInfo={false} />
+                        <Text style={{ fontSize: 12 }}><PhoneOutlined style={{ marginRight: 4, color: '#52c41a' }} />{v} / {r.assignedCount}</Text>
+                        <Progress percent={Math.round(r.contactRate)} size="small" strokeColor="#52c41a" showInfo={false} />
                       </Space>
                     ),
-                    sorter: (a, b) => a.revealRate - b.revealRate,
+                    sorter: (a, b) => a.contactRate - b.contactRate,
                   },
-                  { title: 'Contacted', dataIndex: 'contactedCount', key: 'contactedCount', width: 100, sorter: (a, b) => a.contactedCount - b.contactedCount },
                   {
-                    title: 'Converted', dataIndex: 'convertedCount', key: 'convertedCount', width: 110,
-                    render: (v) => <Tag color="green" style={{ borderRadius: 10 }}>{v}</Tag>,
-                    sorter: (a, b) => a.convertedCount - b.convertedCount,
+                    title: 'Deals', dataIndex: 'dealCount', key: 'dealCount', width: 110,
+                    render: (v) => <Tag color="#fa8c16" style={{ borderRadius: 10 }}>{v}</Tag>,
+                    sorter: (a, b) => a.dealCount - b.dealCount,
                     defaultSortOrder: 'descend',
                   },
                   {
-                    title: 'Conversion Rate', dataIndex: 'conversionRate', key: 'conversionRate', width: 160,
+                    title: 'Deal Rate', dataIndex: 'dealRate', key: 'dealRate', width: 160,
                     render: (v) => (
                       <Space>
                         <Progress
@@ -966,7 +1135,7 @@ const LeadAnalyticsDashboard = () => {
                         <Text style={{ fontSize: 12 }}>{v.toFixed(0)}%</Text>
                       </Space>
                     ),
-                    sorter: (a, b) => a.conversionRate - b.conversionRate,
+                    sorter: (a, b) => a.dealRate - b.dealRate,
                   },
                   {
                     title: 'Avg Response', dataIndex: 'avgResponseHrs', key: 'avgResponseHrs', width: 130,
@@ -976,14 +1145,14 @@ const LeadAnalyticsDashboard = () => {
                     sorter: (a, b) => (a.avgResponseHrs ?? 9999) - (b.avgResponseHrs ?? 9999),
                   },
                   {
-                    title: 'Avg Conversion', dataIndex: 'avgConversionDays', key: 'avgConversionDays', width: 130,
+                    title: 'Avg Deal Time', dataIndex: 'avgDealDays', key: 'avgDealDays', width: 130,
                     render: (v) => v === null || v === undefined
                       ? <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
                       : <Text style={{ fontSize: 12 }}>{v.toFixed(1)} days</Text>,
-                    sorter: (a, b) => (a.avgConversionDays ?? 9999) - (b.avgConversionDays ?? 9999),
+                    sorter: (a, b) => (a.avgDealDays ?? 9999) - (b.avgDealDays ?? 9999),
                   },
                   {
-                    title: 'Not Interested', dataIndex: 'notInterestedCount', key: 'notInterestedCount', width: 120,
+                    title: 'Loss', dataIndex: 'notInterestedCount', key: 'notInterestedCount', width: 90,
                     render: (v) => <Text type="secondary" style={{ fontSize: 12 }}>{v}</Text>,
                   },
                 ]}
@@ -992,7 +1161,7 @@ const LeadAnalyticsDashboard = () => {
             </Card>
           </Col>
 
-          {/* FILTERED LEADS TABLE */}
+          {/* FILTERED CONTACTS TABLE */}
           <Col span={24}>
             <Card
               bordered={false}
@@ -1003,9 +1172,9 @@ const LeadAnalyticsDashboard = () => {
                 <Space>
                   <FilterOutlined style={{ color: '#1677ff' }} />
                   <Title level={5} style={{ margin: 0 }}>
-                    {activeFilter && activeFilter.type !== 'all' ? `Leads · ${activeLabel}` : 'All Leads (Period)'}
+                    {activeFilter && activeFilter.type !== 'all' ? `Contacts · ${activeLabel}` : 'All Contacts (Period)'}
                   </Title>
-                  <Badge count={filteredTableLeads.length} showZero style={{ backgroundColor: '#1677ff' }} />
+                  <Badge count={filteredTableContacts.length} showZero style={{ backgroundColor: '#1677ff' }} />
                 </Space>
                 <Space>
                   {activeFilter && (
@@ -1017,14 +1186,14 @@ const LeadAnalyticsDashboard = () => {
                 </Space>
               </div>
               <Table
-                dataSource={filteredTableLeads}
-                columns={leadColumns}
+                dataSource={filteredTableContacts}
+                columns={contactColumns}
                 rowKey="id"
                 size="middle"
                 scroll={{ x: 1000 }}
                 pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
                 onRow={(record) => ({
-                  onClick: () => showLeadHistory(record),
+                  onClick: () => showContactHistory(record),
                   style: { cursor: 'pointer' },
                 })}
               />
@@ -1033,14 +1202,14 @@ const LeadAnalyticsDashboard = () => {
         </Row>
       </Spin>
 
-      {/* LEAD HISTORY DRAWER */}
+      {/* CONTACT HISTORY DRAWER */}
       <Drawer
         title={
           <Space>
             <HistoryOutlined />
-            <span>Lead History</span>
-            {selectedLeadForHistory && (
-              <Tag color="blue">{selectedLeadForHistory.name || 'Unknown'}</Tag>
+            <span>Contact History</span>
+            {selectedContactForHistory && (
+              <Tag color="blue">{selectedContactForHistory.name || 'Unknown'}</Tag>
             )}
           </Space>
         }
@@ -1052,22 +1221,22 @@ const LeadAnalyticsDashboard = () => {
           <Button
             size="small"
             icon={<ReloadOutlined spin={historyLoading} />}
-            onClick={() => selectedLeadForHistory && fetchLeadHistory([selectedLeadForHistory])}
+            onClick={() => selectedContactForHistory && fetchContactHistory([selectedContactForHistory])}
           >
             Refresh
           </Button>
         }
       >
-        {historyLoading && !selectedLeadHistory.length ? (
+        {historyLoading && !selectedContactHistory.length ? (
           <div style={{ textAlign: 'center', padding: 60 }}>
             <Spin tip="Loading history..." />
           </div>
         ) : (
-          <HistoryDrawerContent lead={selectedLeadForHistory} history={selectedLeadHistory} />
+          <HistoryDrawerContent contact={selectedContactForHistory} history={selectedContactHistory} />
         )}
       </Drawer>
     </div>
   );
 };
 
-export default LeadAnalyticsDashboard;
+export default ContactAnalyticsDashboard;

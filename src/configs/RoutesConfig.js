@@ -68,13 +68,25 @@ export const protectedRoutes = [
     },
       {
         key: 'leads-performance',
-        path: `${APP_PREFIX_PATH}/analytics`,
+        path: `${APP_PREFIX_PATH}/leads-performance`,
         component: React.lazy(() => import('views/app-views/analytics/index')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
+    },
+      {
+        key: 'contact-performance',
+        path: `${APP_PREFIX_PATH}/contact-performance`,
+        component: React.lazy(() => import('views/app-views/ContactAnalyticsDashboard/index')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
+    },
+       {
+        key: 'deals-performance',
+        path: `${APP_PREFIX_PATH}/deals-performance`,
+        component: React.lazy(() => import('views/app-views/DealAnalyticsDashboard/index')),
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
     },
         {
         key: 'seller-performance',
-        path: `${APP_PREFIX_PATH}/sales-dashboard`,
+        path: `${APP_PREFIX_PATH}/team-activity`,
         component: React.lazy(() => import('views/app-views/sales-dashboard/index')),
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
     },

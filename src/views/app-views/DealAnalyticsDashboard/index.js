@@ -1,9 +1,10 @@
-// pages/LeadAnalyticsDashboard/index.js
+// pages/DealAnalyticsDashboard/index.js
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Row, Col, Card, Typography, Space, Button, Select, DatePicker, Radio,
   Table, Tag, Avatar, Tooltip, Empty, Spin, Statistic, Segmented, Progress, Badge,
   Timeline, Divider, Collapse, List, Tabs, Drawer, Descriptions, Alert,
+  Modal, Form, Input, message,
 } from 'antd';
 import {
   TeamOutlined, UserAddOutlined, PhoneOutlined, StarOutlined, CheckCircleOutlined,
@@ -12,7 +13,11 @@ import {
   FacebookOutlined, GlobalOutlined, InstagramOutlined, GoogleOutlined, LinkOutlined,
   HistoryOutlined, CalendarOutlined, UserSwitchOutlined, BarChartOutlined,
   LineChartOutlined, PieChartOutlined, FileTextOutlined, ExportOutlined,
-  ArrowLeftOutlined, ArrowRightOutlined, InfoCircleOutlined,
+  ArrowLeftOutlined, ArrowRightOutlined, InfoCircleOutlined, DollarOutlined,
+  ShoppingOutlined, HeartOutlined, MailOutlined, WhatsAppOutlined,
+  AudioOutlined, VideoCameraOutlined, FileDoneOutlined, RiseOutlined as RiseIcon,
+  FallOutlined as FallIcon, WalletOutlined, PercentageOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import {
   ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar,
@@ -25,11 +30,11 @@ import isBetween from 'dayjs/plugin/isBetween';
 import quarterOfYear from 'dayjs/plugin/quarterOfYear';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
-import { db, collection, getDocs, query, where, orderBy, limit } from 'configs/FirebaseConfig';
-import { LeadStatus, LeadStatusLabels } from 'models/LeadModel';
+import { db, collection, getDocs, query, where, orderBy, limit, doc, getDoc } from 'configs/FirebaseConfig';
+import dealService from 'services/firebase/DealService';
+import { DealStatus, DealStatusLabels, DealStatusColors, DealSourceEnum, DealPriority } from 'models/DealModel';
 import { UserRoles } from 'models/UserModel';
-import LeadHistoryService from 'services/firebase/LeadHistoryService';
-import sellerActivityService from 'services/firebase/SellerActivityService';
+import sellerActivityService, { ActivityTypes, EntityTypes } from 'services/firebase/SellerActivityService';
 
 dayjs.extend(isBetween);
 dayjs.extend(quarterOfYear);
@@ -37,31 +42,54 @@ dayjs.extend(relativeTime);
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
-const { Panel } = Collapse;
+const { Option } = Select;
 const { TabPane } = Tabs;
+const { TextArea } = Input;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Constants / palette
 // ─────────────────────────────────────────────────────────────────────────
 const STATUS_COLORS = {
-  [LeadStatus.NEW]: '#1677ff',
-  [LeadStatus.CONTACTED]: '#2f54eb',
-  [LeadStatus.INTERESTED]: '#13c2c2',
-  [LeadStatus.NOT_INTERESTED]: '#fa541c',
-  [LeadStatus.CONVERTED]: '#52c41a',
-  [LeadStatus.JUNK_LEAD]: '#8c8c8c',
+  [DealStatus.OPENED]: '#1890ff',
+  [DealStatus.PROPOSAL]: '#722ed1',
+  [DealStatus.WON]: '#faad14',
+  [DealStatus.LOST]: '#ff4d4f',
+  [DealStatus.GAIN]: '#52c41a',
+  [DealStatus.LOSS]: '#ff4d4f',
 };
 
 const STATUS_ICONS = {
-  [LeadStatus.NEW]: <ClockCircleOutlined />,
-  [LeadStatus.CONTACTED]: <PhoneOutlined />,
-  [LeadStatus.INTERESTED]: <StarOutlined />,
-  [LeadStatus.NOT_INTERESTED]: <CloseCircleOutlined />,
-  [LeadStatus.CONVERTED]: <TrophyOutlined />,
-  [LeadStatus.JUNK_LEAD]: <DeleteOutlined />,
+  [DealStatus.OPENED]: <ClockCircleOutlined />,
+  [DealStatus.PROPOSAL]: <FileDoneOutlined />,
+  [DealStatus.WON]: <TrophyOutlined />,
+  [DealStatus.LOST]: <CloseCircleOutlined />,
+  [DealStatus.GAIN]: <CheckCircleOutlined />,
+  [DealStatus.LOSS]: <DeleteOutlined />,
 };
 
-const STATUS_LABELS = LeadStatusLabels;
+const STATUS_LABELS = DealStatusLabels;
+
+const SOURCE_ICONS = {
+  [DealSourceEnum.LEADS]: <TeamOutlined />,
+  [DealSourceEnum.CONTACTS]: <UserAddOutlined />,
+  [DealSourceEnum.FACEBOOK]: <FacebookOutlined />,
+  [DealSourceEnum.INSTAGRAM]: <InstagramOutlined />,
+  [DealSourceEnum.WEBSITE]: <GlobalOutlined />,
+  [DealSourceEnum.LINKEDIN]: <LinkOutlined />,
+  [DealSourceEnum.TIKTOK]: <span>🎵</span>,
+  [DealSourceEnum.FREELANCE]: <UserOutlined />,
+};
+
+const SOURCE_COLORS = {
+  [DealSourceEnum.LEADS]: '#1890ff',
+  [DealSourceEnum.CONTACTS]: '#52c41a',
+  [DealSourceEnum.FACEBOOK]: '#1877F2',
+  [DealSourceEnum.INSTAGRAM]: '#E4405F',
+  [DealSourceEnum.WEBSITE]: '#13c2c2',
+  [DealSourceEnum.LINKEDIN]: '#0A66C2',
+  [DealSourceEnum.TIKTOK]: '#ff0050',
+  [DealSourceEnum.FREELANCE]: '#fa8c16',
+};
 
 const salesRoles = [
   UserRoles.SELLER, UserRoles.SALES_EXECUTIVE, UserRoles.AGENT,
@@ -89,18 +117,13 @@ const getPeriodRange = (preset, custom) => {
   }
 };
 
-const getLeadDate = (lead) => {
-  const d = lead.createdAt?.toDate?.() || lead.CreationDate?.toDate?.() || lead.CreationDate || lead.createdAt;
+const getDealDate = (deal) => {
+  const d = deal.CreationDate?.toDate?.() || deal.CreationDate || deal.createdAt?.toDate?.() || deal.createdAt;
   return d ? dayjs(d) : null;
 };
 
-const getAssignedDate = (lead) => {
-  const d = lead.assignedAt?.toDate?.() || lead.assignedAt;
-  return d ? dayjs(d) : null;
-};
-
-const getViewedDate = (lead) => {
-  const d = lead.lastViewedAt?.toDate?.() || lead.lastViewedAt || lead.firstViewedAt?.toDate?.() || lead.firstViewedAt;
+const getLastUpdateDate = (deal) => {
+  const d = deal.LastUpdateDate?.toDate?.() || deal.LastUpdateDate || deal.updatedAt?.toDate?.() || deal.updatedAt;
   return d ? dayjs(d) : null;
 };
 
@@ -114,11 +137,12 @@ const fmtDateKey = (d, granularity) => {
 // ─────────────────────────────────────────────────────────────────────────
 // Components
 // ─────────────────────────────────────────────────────────────────────────
-const KpiCard = ({ title, value, icon, color, active, onClick, suffix, trend, subtitle }) => (
+const KpiCard = ({ title, value, icon, color, active, onClick, suffix, trend, subtitle, loading = false }) => (
   <Card
     hoverable
     onClick={onClick}
     bordered={false}
+    loading={loading}
     style={{
       borderRadius: 14,
       cursor: 'pointer',
@@ -141,7 +165,7 @@ const KpiCard = ({ title, value, icon, color, active, onClick, suffix, trend, su
         {subtitle && <Text type="secondary" style={{ fontSize: 11 }}>{subtitle}</Text>}
         {trend !== undefined && trend !== null && (
           <Text style={{ fontSize: 11, color: trend >= 0 ? '#52c41a' : '#f5222d', fontWeight: 600 }}>
-            {trend >= 0 ? <RiseOutlined /> : <FallOutlined />} {Math.abs(trend).toFixed(0)}% vs prior period
+            {trend >= 0 ? <RiseIcon /> : <FallIcon />} {Math.abs(trend).toFixed(0)}% vs prior period
           </Text>
         )}
       </div>
@@ -155,9 +179,10 @@ const KpiCard = ({ title, value, icon, color, active, onClick, suffix, trend, su
   </Card>
 );
 
-const ChartCard = ({ title, extra, children, height = 300 }) => (
+const ChartCard = ({ title, extra, children, height = 300, loading = false }) => (
   <Card
     bordered={false}
+    loading={loading}
     style={{ borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', height: '100%' }}
     title={<span style={{ fontWeight: 600, fontSize: 14 }}>{title}</span>}
     extra={extra}
@@ -170,21 +195,25 @@ const ChartCard = ({ title, extra, children, height = 300 }) => (
 // ─────────────────────────────────────────────────────────────────────────
 // Main Dashboard
 // ─────────────────────────────────────────────────────────────────────────
-const LeadAnalyticsDashboard = () => {
+const DealAnalyticsDashboard = () => {
   const user = useSelector((state) => state.auth.user);
   const companyId = user?.company_id;
+  const userRole = user?.Role;
+  const sellerId = user?.id;
+
+  const isAdmin = [UserRoles.CEO, UserRoles.SUPER_ADMIN, UserRoles.MANAGER, UserRoles.ADMIN].includes(userRole);
 
   const [loading, setLoading] = useState(false);
-  const [leads, setLeads] = useState([]);
+  const [deals, setDeals] = useState([]);
   const [sellers, setSellers] = useState([]);
-  const [leadHistory, setLeadHistory] = useState({});
+  const [dealHistory, setDealHistory] = useState({});
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const [periodPreset, setPeriodPreset] = useState('This Month');
   const [customRange, setCustomRange] = useState(null);
   const [activeFilter, setActiveFilter] = useState(null);
   const [historyDrawerVisible, setHistoryDrawerVisible] = useState(false);
-  const [selectedLeadForHistory, setSelectedLeadForHistory] = useState(null);
+  const [selectedDealForHistory, setSelectedDealForHistory] = useState(null);
   const [selectedSellerForComparison, setSelectedSellerForComparison] = useState(null);
 
   // ── Fetch data ──────────────────────────────────────────────────────
@@ -192,10 +221,23 @@ const LeadAnalyticsDashboard = () => {
     if (!companyId) return;
     setLoading(true);
     try {
-      const leadsSnap = await getDocs(query(collection(db, 'leads'), where('company_id', '==', companyId)));
-      const leadsData = leadsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setLeads(leadsData);
+      // Fetch all deals for the company
+      const dealsSnap = await getDocs(query(collection(db, 'deals'), where('company_id', '==', companyId)));
+      let dealsData = dealsSnap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+        _createdAt: d.data().CreationDate?.toDate?.() || d.data().createdAt?.toDate?.() || null,
+        _updatedAt: d.data().LastUpdateDate?.toDate?.() || d.data().updatedAt?.toDate?.() || null,
+      }));
 
+      // If not admin, filter to show only deals the seller has access to
+      if (!isAdmin) {
+        dealsData = dealsData.filter(d => d.seller_id === sellerId || d.createdBy === sellerId);
+      }
+
+      setDeals(dealsData);
+
+      // Fetch sellers
       const usersSnap = await getDocs(query(collection(db, 'users'), where('company_id', '==', companyId)));
       const usersData = usersSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
@@ -205,34 +247,37 @@ const LeadAnalyticsDashboard = () => {
           name: `${u.firstname || ''} ${u.lastname || ''}`.trim() || u.email || 'Unknown',
           email: u.email,
           phone: u.phoneNumber || u.phone,
+          role: u.Role,
         }));
       setSellers(usersData);
 
-      // Fetch lead history for recent leads
-      await fetchLeadHistory(leadsData.slice(0, 20));
+      // Fetch history for recent deals
+      await fetchDealHistory(dealsData.slice(0, 20));
     } catch (err) {
       console.error('Error loading dashboard data:', err);
+      message.error('Failed to load analytics data');
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, isAdmin, sellerId]);
 
-  const fetchLeadHistory = async (recentLeads) => {
+  const fetchDealHistory = async (recentDeals) => {
     setHistoryLoading(true);
     try {
       const historyMap = {};
-      for (const lead of recentLeads) {
+      for (const deal of recentDeals) {
         try {
-          const history = await LeadHistoryService.getLeadHistory(lead.id, { limit: 50 });
-          historyMap[lead.id] = history;
+          // Use sellerActivityService to get history for this deal
+          const history = await sellerActivityService.getEntityHistory('deal', deal.id);
+          historyMap[deal.id] = history || [];
         } catch (err) {
-          console.warn(`Failed to fetch history for lead ${lead.id}:`, err);
-          historyMap[lead.id] = [];
+          console.warn(`Failed to fetch history for deal ${deal.id}:`, err);
+          historyMap[deal.id] = [];
         }
       }
-      setLeadHistory(historyMap);
+      setDealHistory(historyMap);
     } catch (err) {
-      console.error('Error fetching lead history:', err);
+      console.error('Error fetching deal history:', err);
     } finally {
       setHistoryLoading(false);
     }
@@ -243,32 +288,32 @@ const LeadAnalyticsDashboard = () => {
   // ── Period filtering ────────────────────────────────────────────────
   const range = useMemo(() => getPeriodRange(periodPreset, customRange), [periodPreset, customRange]);
 
-  const periodLeads = useMemo(() => {
-    if (!range) return leads;
+  const periodDeals = useMemo(() => {
+    if (!range) return deals;
     const [start, end] = range;
-    return leads.filter((l) => {
-      const d = getLeadDate(l);
-      return d && d.isBetween(start, end, 'day', '[]');
+    return deals.filter((d) => {
+      const dt = getDealDate(d);
+      return dt && dt.isBetween(start, end, 'day', '[]');
     });
-  }, [leads, range]);
+  }, [deals, range]);
 
   // Previous period for comparison
-  const previousPeriodLeads = useMemo(() => {
+  const previousPeriodDeals = useMemo(() => {
     if (!range) return [];
     const [start, end] = range;
     const lengthDays = end.diff(start, 'day') + 1;
     const priorStart = start.subtract(lengthDays, 'day');
     const priorEnd = start.subtract(1, 'day').endOf('day');
-    return leads.filter((l) => {
-      const d = getLeadDate(l);
-      return d && d.isBetween(priorStart, priorEnd, 'day', '[]');
+    return deals.filter((d) => {
+      const dt = getDealDate(d);
+      return dt && dt.isBetween(priorStart, priorEnd, 'day', '[]');
     });
-  }, [leads, range]);
+  }, [deals, range]);
 
   const trendFor = (currentCount, key) => {
     const priorCount = key
-      ? previousPeriodLeads.filter((l) => (l.status || LeadStatus.NEW) === key).length
-      : previousPeriodLeads.length;
+      ? previousPeriodDeals.filter((d) => (d.Status || DealStatus.OPENED) === key).length
+      : previousPeriodDeals.length;
     if (!priorCount) return currentCount > 0 ? 100 : null;
     return ((currentCount - priorCount) / priorCount) * 100;
   };
@@ -276,44 +321,53 @@ const LeadAnalyticsDashboard = () => {
   // ── KPI aggregates ──────────────────────────────────────────────────
   const statusCounts = useMemo(() => {
     const counts = {};
-    Object.values(LeadStatus).forEach((s) => { counts[s] = 0; });
-    periodLeads.forEach((l) => {
-      const s = l.status || LeadStatus.NEW;
+    Object.values(DealStatus).forEach((s) => { counts[s] = 0; });
+    periodDeals.forEach((d) => {
+      const s = d.Status || DealStatus.OPENED;
       counts[s] = (counts[s] || 0) + 1;
     });
     return counts;
-  }, [periodLeads]);
+  }, [periodDeals]);
 
-  const totalCount = periodLeads.length;
-  const convertedCount = periodLeads.filter((l) => l.convertedContactId || l.status === LeadStatus.CONVERTED).length;
-  const conversionRate = totalCount ? (convertedCount / totalCount) * 100 : 0;
-
-  // ── Lead history timeline for selected lead ────────────────────────
-  const selectedLeadHistory = useMemo(() => {
-    if (!selectedLeadForHistory) return [];
-    return leadHistory[selectedLeadForHistory.id] || [];
-  }, [selectedLeadForHistory, leadHistory]);
+  const totalCount = periodDeals.length;
+  const wonCount = periodDeals.filter(d => d.Status === DealStatus.WON || d.Status === 'Won').length;
+  const lostCount = periodDeals.filter(d => d.Status === DealStatus.LOST || d.Status === 'Lost').length;
+  const proposalCount = periodDeals.filter(d => d.Status === DealStatus.PROPOSAL || d.Status === 'Proposal').length;
+  const openedCount = periodDeals.filter(d => d.Status === DealStatus.OPENED || d.Status === 'Opened').length;
+  
+  // Win rate
+  const winRate = (wonCount + lostCount) > 0 ? (wonCount / (wonCount + lostCount)) * 100 : 0;
+  
+  // Total value
+  const totalValue = periodDeals.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0);
+  const avgDealValue = totalCount > 0 ? totalValue / totalCount : 0;
+  
+  // Won value
+  const wonValue = periodDeals
+    .filter(d => d.Status === DealStatus.WON || d.Status === 'Won')
+    .reduce((sum, d) => sum + (Number(d.Amount) || 0), 0);
 
   // ── Trend chart data ────────────────────────────────────────────────
   const trendData = useMemo(() => {
-    if (!periodLeads.length) return [];
+    if (!periodDeals.length) return [];
     let granularity = 'day';
     if (periodPreset === 'Today') granularity = 'hour';
     else if (periodPreset === 'This Year' || periodPreset === 'All Time') granularity = 'month';
 
     const buckets = new Map();
-    periodLeads.forEach((l) => {
-      const d = getLeadDate(l);
-      if (!d) return;
-      const key = fmtDateKey(d, granularity);
-      if (!buckets.has(key)) buckets.set(key, { name: key, total: 0, converted: 0, contacted: 0, sortKey: d.valueOf() });
+    periodDeals.forEach((d) => {
+      const dt = getDealDate(d);
+      if (!dt) return;
+      const key = fmtDateKey(dt, granularity);
+      if (!buckets.has(key)) buckets.set(key, { name: key, total: 0, won: 0, proposal: 0, lost: 0, sortKey: dt.valueOf() });
       const bucket = buckets.get(key);
       bucket.total += 1;
-      if (l.convertedContactId || l.status === LeadStatus.CONVERTED) bucket.converted += 1;
-      if ([LeadStatus.CONTACTED, LeadStatus.INTERESTED].includes(l.status)) bucket.contacted += 1;
+      if (d.Status === DealStatus.WON || d.Status === 'Won') bucket.won += 1;
+      if (d.Status === DealStatus.PROPOSAL || d.Status === 'Proposal') bucket.proposal += 1;
+      if (d.Status === DealStatus.LOST || d.Status === 'Lost') bucket.lost += 1;
     });
     return Array.from(buckets.values()).sort((a, b) => a.sortKey - b.sortKey);
-  }, [periodLeads, periodPreset]);
+  }, [periodDeals, periodPreset]);
 
   // ── Status distribution ──────────────────────────────────────────────
   const statusPieData = useMemo(() => (
@@ -322,87 +376,46 @@ const LeadAnalyticsDashboard = () => {
       .map(([status, value]) => ({ name: STATUS_LABELS[status] || status, status, value }))
   ), [statusCounts]);
 
-  // ── Interest level ───────────────────────────────────────────────────
-  const interestData = useMemo(() => {
-    const counts = { Low: 0, Medium: 0, High: 0 };
-    periodLeads.forEach((l) => {
-      const lvl = l.InterestLevel || 'Medium';
-      if (counts[lvl] !== undefined) counts[lvl] += 1;
-    });
-    return [
-      { name: 'Low', value: counts.Low, fill: '#fa8c16' },
-      { name: 'Medium', value: counts.Medium, fill: '#1677ff' },
-      { name: 'High', value: counts.High, fill: '#52c41a' },
-    ];
-  }, [periodLeads]);
-
   // ── Source breakdown ────────────────────────────────────────────────
   const sourceData = useMemo(() => {
     const counts = {};
-    periodLeads.forEach((l) => {
-      const src = l.RedirectedFrom || l.source || l.meta_platform || 'Other';
+    periodDeals.forEach((d) => {
+      const src = d.Source || 'Other';
       counts[src] = (counts[src] || 0) + 1;
     });
     return Object.entries(counts)
-      .map(([name, value]) => ({ name, value }))
+      .map(([name, value]) => ({ name, value, color: SOURCE_COLORS[name] || '#8c8c8c' }))
       .sort((a, b) => b.value - a.value);
-  }, [periodLeads]);
+  }, [periodDeals]);
 
   // ── Conversion funnel ────────────────────────────────────────────────
   const funnelData = useMemo(() => {
-    const newC = periodLeads.length;
-    const contactedC = periodLeads.filter((l) =>
-      [LeadStatus.CONTACTED, LeadStatus.INTERESTED, LeadStatus.CONVERTED].includes(l.status)).length;
-    const interestedC = periodLeads.filter((l) =>
-      [LeadStatus.INTERESTED, LeadStatus.CONVERTED].includes(l.status)).length;
-    const convertedC = periodLeads.filter((l) => l.convertedContactId || l.status === LeadStatus.CONVERTED).length;
+    const total = periodDeals.length;
+    const opened = periodDeals.filter(d => d.Status === DealStatus.OPENED || d.Status === 'Opened').length;
+    const proposal = periodDeals.filter(d => d.Status === DealStatus.PROPOSAL || d.Status === 'Proposal').length;
+    const won = periodDeals.filter(d => d.Status === DealStatus.WON || d.Status === 'Won').length;
     return [
-      { name: 'New Leads', value: newC, fill: '#1677ff' },
-      { name: 'Contacted', value: contactedC, fill: '#2f54eb' },
-      { name: 'Interested', value: interestedC, fill: '#13c2c2' },
-      { name: 'Converted', value: convertedC, fill: '#52c41a' },
+      { name: 'Total Deals', value: total, fill: '#1677ff' },
+      { name: 'Opened', value: opened, fill: '#2f54eb' },
+      { name: 'Proposal', value: proposal, fill: '#722ed1' },
+      { name: 'Won', value: won, fill: '#faad14' },
     ];
-  }, [periodLeads]);
+  }, [periodDeals]);
 
   // ── Seller performance ──────────────────────────────────────────────
   const sellerPerf = useMemo(() => {
     return sellers.map((seller) => {
-      const assigned = periodLeads.filter((l) => l.seller_id === seller.id);
-      const created = periodLeads.filter((l) => l.createdBy === seller.id);
-      const viewed = assigned.filter((l) => (l.viewCount || 0) > 0 || l.isRevealed || l.lastViewedAt);
-      const contacted = assigned.filter((l) => l.status && l.status !== LeadStatus.NEW);
-      const converted = assigned.filter((l) => l.convertedContactId || l.status === LeadStatus.CONVERTED);
-      const notInterested = assigned.filter((l) =>
-        [LeadStatus.NOT_INTERESTED, LeadStatus.JUNK_LEAD].includes(l.status));
-
-      // Response time: assignedAt -> firstViewedAt
-      const responseTimes = assigned
-        .map((l) => {
-          const assignedAt = getAssignedDate(l);
-          const viewedAt = getViewedDate(l);
-          if (!assignedAt || !viewedAt) return null;
-          const hrs = viewedAt.diff(assignedAt, 'hour', true);
-          return hrs >= 0 ? hrs : null;
-        })
-        .filter((v) => v !== null);
-      const avgResponseHrs = responseTimes.length
-        ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
-        : null;
-
-      // Time to conversion: createdAt -> convertedAt
-      const conversionTimes = assigned
-        .filter((l) => l.convertedAt)
-        .map((l) => {
-          const created = getLeadDate(l);
-          const converted = l.convertedAt?.toDate?.() || l.convertedAt;
-          if (!created || !converted) return null;
-          const days = dayjs(converted).diff(created, 'day', true);
-          return days >= 0 ? days : null;
-        })
-        .filter((v) => v !== null);
-      const avgConversionDays = conversionTimes.length
-        ? conversionTimes.reduce((a, b) => a + b, 0) / conversionTimes.length
-        : null;
+      const assigned = periodDeals.filter((d) => d.seller_id === seller.id);
+      const created = periodDeals.filter((d) => d.createdBy === seller.id);
+      const won = assigned.filter((d) => d.Status === DealStatus.WON || d.Status === 'Won');
+      const lost = assigned.filter((d) => d.Status === DealStatus.LOST || d.Status === 'Lost');
+      const proposal = assigned.filter((d) => d.Status === DealStatus.PROPOSAL || d.Status === 'Proposal');
+      const opened = assigned.filter((d) => d.Status === DealStatus.OPENED || d.Status === 'Opened');
+      
+      const totalValue = assigned.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0);
+      const wonValue = won.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0);
+      
+      const conversionRate = (won.length + lost.length) > 0 ? (won.length / (won.length + lost.length)) * 100 : 0;
 
       return {
         id: seller.id,
@@ -411,19 +424,19 @@ const LeadAnalyticsDashboard = () => {
         phone: seller.phone,
         assignedCount: assigned.length,
         createdCount: created.length,
-        viewedCount: viewed.length,
-        contactedCount: contacted.length,
-        convertedCount: converted.length,
-        notInterestedCount: notInterested.length,
-        revealRate: assigned.length ? (viewed.length / assigned.length) * 100 : 0,
-        conversionRate: assigned.length ? (converted.length / assigned.length) * 100 : 0,
-        avgResponseHrs,
-        avgConversionDays,
+        openedCount: opened.length,
+        proposalCount: proposal.length,
+        wonCount: won.length,
+        lostCount: lost.length,
+        totalValue: totalValue,
+        wonValue: wonValue,
+        conversionRate: conversionRate,
+        avgDealValue: assigned.length > 0 ? totalValue / assigned.length : 0,
       };
     })
     .filter((s) => s.assignedCount > 0 || s.createdCount > 0)
-    .sort((a, b) => b.convertedCount - a.convertedCount || b.assignedCount - a.assignedCount);
-  }, [sellers, periodLeads]);
+    .sort((a, b) => b.wonCount - a.wonCount || b.assignedCount - a.assignedCount);
+  }, [sellers, periodDeals]);
 
   // ── Month-over-month comparison ──────────────────────────────────────
   const monthOverMonth = useMemo(() => {
@@ -433,94 +446,112 @@ const LeadAnalyticsDashboard = () => {
       const month = now.subtract(i, 'month');
       const start = month.startOf('month');
       const end = month.endOf('month');
-      const monthLeads = leads.filter((l) => {
-        const d = getLeadDate(l);
-        return d && d.isBetween(start, end, 'day', '[]');
+      const monthDeals = deals.filter((d) => {
+        const dt = getDealDate(d);
+        return dt && dt.isBetween(start, end, 'day', '[]');
       });
-      const monthConverted = monthLeads.filter((l) => l.convertedContactId || l.status === LeadStatus.CONVERTED).length;
+      const monthWon = monthDeals.filter(d => d.Status === DealStatus.WON || d.Status === 'Won').length;
+      const monthValue = monthDeals.reduce((sum, d) => sum + (Number(d.Amount) || 0), 0);
       months.push({
         month: month.format('MMM YYYY'),
-        total: monthLeads.length,
-        converted: monthConverted,
-        rate: monthLeads.length ? (monthConverted / monthLeads.length) * 100 : 0,
+        total: monthDeals.length,
+        won: monthWon,
+        value: monthValue,
+        rate: monthDeals.length > 0 ? (monthWon / monthDeals.length) * 100 : 0,
       });
     }
     return months;
-  }, [leads]);
+  }, [deals]);
 
   // ── Filtered table ───────────────────────────────────────────────────
-  const filteredTableLeads = useMemo(() => {
-    if (!activeFilter) return periodLeads;
+  const filteredTableDeals = useMemo(() => {
+    if (!activeFilter) return periodDeals;
     const { type, value } = activeFilter;
-    if (type === 'status') return periodLeads.filter((l) => (l.status || LeadStatus.NEW) === value);
-    if (type === 'interest') return periodLeads.filter((l) => (l.InterestLevel || 'Medium') === value);
-    if (type === 'source') return periodLeads.filter((l) => (l.RedirectedFrom || l.source || 'Other') === value);
-    if (type === 'seller') return periodLeads.filter((l) => l.seller_id === value);
-    if (type === 'all') return periodLeads;
-    return periodLeads;
-  }, [periodLeads, activeFilter]);
+    if (type === 'status') return periodDeals.filter((d) => (d.Status || DealStatus.OPENED) === value);
+    if (type === 'source') return periodDeals.filter((d) => (d.Source || 'Other') === value);
+    if (type === 'seller') return periodDeals.filter((d) => d.seller_id === value);
+    if (type === 'all') return periodDeals;
+    return periodDeals;
+  }, [periodDeals, activeFilter]);
 
   const toggleFilter = (type, value, label) => {
     setActiveFilter((prev) => (prev && prev.type === type && prev.value === value ? null : { type, value, label }));
   };
 
-  const showLeadHistory = (lead) => {
-    setSelectedLeadForHistory(lead);
+  const showDealHistory = (deal) => {
+    setSelectedDealForHistory(deal);
     setHistoryDrawerVisible(true);
-    // Fetch more history if needed
-    if (!leadHistory[lead.id] || leadHistory[lead.id].length < 20) {
-      fetchLeadHistory([lead]);
+    if (!dealHistory[deal.id] || dealHistory[deal.id].length < 20) {
+      fetchDealHistory([deal]);
     }
   };
 
   const kpis = [
-    { key: 'all', title: 'Total Leads', value: totalCount, icon: <TeamOutlined />, color: '#1677ff', trend: trendFor(totalCount) },
-    { key: LeadStatus.NEW, title: 'New', value: statusCounts[LeadStatus.NEW], icon: STATUS_ICONS[LeadStatus.NEW], color: STATUS_COLORS[LeadStatus.NEW], trend: trendFor(statusCounts[LeadStatus.NEW], LeadStatus.NEW) },
-    { key: LeadStatus.CONTACTED, title: 'Contacted', value: statusCounts[LeadStatus.CONTACTED], icon: STATUS_ICONS[LeadStatus.CONTACTED], color: STATUS_COLORS[LeadStatus.CONTACTED], trend: trendFor(statusCounts[LeadStatus.CONTACTED], LeadStatus.CONTACTED) },
-    { key: LeadStatus.INTERESTED, title: 'Interested', value: statusCounts[LeadStatus.INTERESTED], icon: STATUS_ICONS[LeadStatus.INTERESTED], color: STATUS_COLORS[LeadStatus.INTERESTED], trend: trendFor(statusCounts[LeadStatus.INTERESTED], LeadStatus.INTERESTED) },
-    { key: LeadStatus.CONVERTED, title: 'Converted', value: statusCounts[LeadStatus.CONVERTED], icon: STATUS_ICONS[LeadStatus.CONVERTED], color: STATUS_COLORS[LeadStatus.CONVERTED], suffix: `${conversionRate.toFixed(0)}% rate`, trend: trendFor(statusCounts[LeadStatus.CONVERTED], LeadStatus.CONVERTED) },
-    { key: LeadStatus.NOT_INTERESTED, title: 'Not Interested', value: statusCounts[LeadStatus.NOT_INTERESTED], icon: STATUS_ICONS[LeadStatus.NOT_INTERESTED], color: STATUS_COLORS[LeadStatus.NOT_INTERESTED], trend: trendFor(statusCounts[LeadStatus.NOT_INTERESTED], LeadStatus.NOT_INTERESTED) },
+    { key: 'all', title: 'Total Deals', value: totalCount, icon: <TeamOutlined />, color: '#1677ff', trend: trendFor(totalCount) },
+    { key: DealStatus.OPENED, title: 'Opened', value: statusCounts[DealStatus.OPENED], icon: STATUS_ICONS[DealStatus.OPENED], color: STATUS_COLORS[DealStatus.OPENED], trend: trendFor(statusCounts[DealStatus.OPENED], DealStatus.OPENED) },
+    { key: DealStatus.PROPOSAL, title: 'Proposal', value: statusCounts[DealStatus.PROPOSAL], icon: STATUS_ICONS[DealStatus.PROPOSAL], color: STATUS_COLORS[DealStatus.PROPOSAL], trend: trendFor(statusCounts[DealStatus.PROPOSAL], DealStatus.PROPOSAL) },
+    { key: DealStatus.WON, title: 'Won', value: statusCounts[DealStatus.WON], icon: STATUS_ICONS[DealStatus.WON], color: STATUS_COLORS[DealStatus.WON], suffix: `${winRate.toFixed(0)}% rate`, trend: trendFor(statusCounts[DealStatus.WON], DealStatus.WON) },
+    { key: DealStatus.LOST, title: 'Lost', value: statusCounts[DealStatus.LOST], icon: STATUS_ICONS[DealStatus.LOST], color: STATUS_COLORS[DealStatus.LOST], trend: trendFor(statusCounts[DealStatus.LOST], DealStatus.LOST) },
+    { key: 'value', title: 'Total Value', value: `AED ${(totalValue / 1000).toFixed(1)}K`, icon: <DollarOutlined />, color: '#52c41a', subtitle: `${totalCount} deals, avg ${avgDealValue.toFixed(0)}` },
   ];
 
-  // ── Lead table columns ──────────────────────────────────────────────
-  const leadColumns = [
+  // ── Deal table columns ──────────────────────────────────────────────
+  const dealColumns = [
     {
-      title: 'Lead', dataIndex: 'name', key: 'name', width: 200,
+      title: 'Contact', dataIndex: 'contact_name', key: 'contact_name', width: 180,
       render: (text, r) => (
         <Space>
-          <Avatar size={28} style={{ background: STATUS_COLORS[r.status] || '#1677ff', fontSize: 12 }}>
+          <Avatar size={28} style={{ background: '#1890ff', fontSize: 12 }}>
             {(text || 'U')[0]?.toUpperCase()}
           </Avatar>
           <div>
             <Text strong style={{ fontSize: 13 }}>{text || 'Unknown'}</Text>
-            <div><Text type="secondary" style={{ fontSize: 11 }}>{r.email || r.phoneNumber || '—'}</Text></div>
+            <div><Text type="secondary" style={{ fontSize: 11 }}>{r.contact_email || r.contact_phone || '—'}</Text></div>
           </div>
         </Space>
       ),
     },
     {
-      title: 'Status', dataIndex: 'status', key: 'status', width: 130,
-      render: (s) => <Tag color={STATUS_COLORS[s] || 'default'} style={{ borderRadius: 12 }}>{STATUS_LABELS[s] || s || 'New'}</Tag>,
+      title: 'Description', dataIndex: 'Description', key: 'description', width: 150,
+      render: (text) => <Tooltip title={text}><Text>{text || '—'}</Text></Tooltip>,
     },
-    { title: 'Interest', dataIndex: 'InterestLevel', key: 'InterestLevel', width: 100 },
-    { title: 'Source', dataIndex: 'RedirectedFrom', key: 'RedirectedFrom', width: 110, render: (s) => s || '—' },
     {
-      title: 'Assigned To', dataIndex: 'seller_id', key: 'seller_id', width: 150,
+      title: 'Amount', dataIndex: 'Amount', key: 'amount', width: 120,
+      render: (amount) => (
+        <Text strong style={{ color: '#52c41a' }}>
+          <DollarOutlined /> AED {Number(amount || 0).toLocaleString()}
+        </Text>
+      ),
+      sorter: (a, b) => (a.Amount || 0) - (b.Amount || 0),
+    },
+    {
+      title: 'Status', dataIndex: 'Status', key: 'status', width: 120,
+      render: (s) => <Tag color={STATUS_COLORS[s] || 'default'} style={{ borderRadius: 12 }}>{STATUS_LABELS[s] || s || 'Opened'}</Tag>,
+    },
+    {
+      title: 'Source', dataIndex: 'Source', key: 'source', width: 110,
+      render: (s) => {
+        const icon = SOURCE_ICONS[s];
+        return <Space>{icon} <Text>{s || 'Other'}</Text></Space>;
+      },
+    },
+    {
+      title: 'Seller', dataIndex: 'seller_id', key: 'seller_id', width: 140,
       render: (id) => sellers.find((s) => s.id === id)?.name || <Text type="secondary">Unassigned</Text>,
     },
     {
-      title: 'Created', key: 'created', width: 130,
-      render: (_, r) => { const d = getLeadDate(r); return d ? d.format('DD MMM YYYY') : '—'; },
+      title: 'Created', key: 'created', width: 120,
+      render: (_, r) => { const d = getDealDate(r); return d ? d.format('DD MMM YYYY') : '—'; },
     },
     {
       title: 'History', key: 'history', width: 80,
       render: (_, r) => (
-        <Tooltip title="View lead history">
+        <Tooltip title="View deal history">
           <Button
             type="text"
             size="small"
             icon={<HistoryOutlined />}
-            onClick={(e) => { e.stopPropagation(); showLeadHistory(r); }}
+            onClick={(e) => { e.stopPropagation(); showDealHistory(r); }}
           />
         </Tooltip>
       ),
@@ -528,30 +559,37 @@ const LeadAnalyticsDashboard = () => {
   ];
 
   // ── History drawer content ──────────────────────────────────────────
-  const HistoryDrawerContent = ({ lead, history }) => {
-    if (!lead) return <Empty description="No lead selected" />;
+  const HistoryDrawerContent = ({ deal, history }) => {
+    if (!deal) return <Empty description="No deal selected" />;
 
-    const statusHistory = history.filter(h => h.type === 'status_change' || h.type === 'status_changed');
-    const viewHistory = history.filter(h => h.type === 'view' || h.type === 'reveal');
-    const noteHistory = history.filter(h => h.type === 'note' || h.type === 'note_added');
+    const statusChanges = history.filter(h => h.activityType === ActivityTypes?.DEAL_STATUS_CHANGED || h.type === 'status_change');
+    const views = history.filter(h => h.activityType === ActivityTypes?.DEAL_VIEWED || h.type === 'view');
+    const notes = history.filter(h => h.activityType === ActivityTypes?.DEAL_NOTE_ADDED || h.type === 'note');
 
     return (
       <div>
         <Descriptions bordered size="small" column={1} style={{ marginBottom: 16 }}>
-          <Descriptions.Item label="Name">{lead.name || 'Unknown'}</Descriptions.Item>
-          <Descriptions.Item label="Email">{lead.email || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Phone">{lead.phoneNumber || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Status">
-            <Tag color={STATUS_COLORS[lead.status] || 'default'}>{STATUS_LABELS[lead.status] || lead.status || 'New'}</Tag>
+          <Descriptions.Item label="Contact">{deal.contact_name || 'Unknown'}</Descriptions.Item>
+          <Descriptions.Item label="Description">{deal.Description || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Amount">
+            <Text strong style={{ color: '#52c41a' }}>
+              <DollarOutlined /> AED {Number(deal.Amount || 0).toLocaleString()}
+            </Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Assigned To">
-            {sellers.find(s => s.id === lead.seller_id)?.name || 'Unassigned'}
+          <Descriptions.Item label="Status">
+            <Tag color={STATUS_COLORS[deal.Status] || 'default'}>{STATUS_LABELS[deal.Status] || deal.Status || 'Opened'}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="Source">
+            <Space>{SOURCE_ICONS[deal.Source]} {deal.Source || 'Other'}</Space>
+          </Descriptions.Item>
+          <Descriptions.Item label="Seller">
+            {sellers.find(s => s.id === deal.seller_id)?.name || 'Unassigned'}
           </Descriptions.Item>
           <Descriptions.Item label="Created">
-            {getLeadDate(lead)?.format('DD MMM YYYY HH:mm') || '—'}
+            {getDealDate(deal)?.format('DD MMM YYYY HH:mm') || '—'}
           </Descriptions.Item>
-          <Descriptions.Item label="Last Viewed">
-            {getViewedDate(lead)?.fromNow() || 'Never'}
+          <Descriptions.Item label="Last Updated">
+            {getLastUpdateDate(deal)?.fromNow() || 'Never'}
           </Descriptions.Item>
         </Descriptions>
 
@@ -562,15 +600,22 @@ const LeadAnalyticsDashboard = () => {
                 {history.slice(0, 30).map((item, idx) => (
                   <Timeline.Item
                     key={idx}
-                    color={item.type === 'status_change' ? '#1677ff' : item.type === 'view' ? '#52c41a' : '#faad14'}
+                    color={item.activityType === 'deal_status_changed' ? '#1677ff' : 
+                           item.activityType === 'deal_viewed' ? '#52c41a' :
+                           item.activityType === 'deal_note_added' ? '#faad14' : '#8c8c8c'}
                     label={item.createdAt ? dayjs(item.createdAt).format('DD MMM HH:mm') : '—'}
                   >
                     <Card size="small" style={{ borderRadius: 8 }}>
-                      <Text strong>{item.type || 'Activity'}</Text>
-                      {item.details && (
+                      <Space>
+                        {item.activityType === 'deal_status_changed' && <UserSwitchOutlined style={{ color: '#1677ff' }} />}
+                        {item.activityType === 'deal_viewed' && <EyeOutlined style={{ color: '#52c41a' }} />}
+                        {item.activityType === 'deal_note_added' && <FileTextOutlined style={{ color: '#faad14' }} />}
+                        <Text strong>{item.activityType || item.type || 'Activity'}</Text>
+                      </Space>
+                      {item.details && Object.keys(item.details).length > 0 && (
                         <div style={{ marginTop: 4 }}>
                           {Object.entries(item.details).map(([k, v]) => (
-                            v && <Text key={k} type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                            v && <Text key={k} type="secondary" style={{ fontSize: 11, display: 'block' }}>
                               <strong>{k}:</strong> {typeof v === 'string' ? v : JSON.stringify(v)}
                             </Text>
                           ))}
@@ -581,58 +626,23 @@ const LeadAnalyticsDashboard = () => {
                           <Text style={{ fontSize: 12 }}>{item.note}</Text>
                         </div>
                       )}
+                      {item.sellerId && (
+                        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                          <UserOutlined /> {sellers.find(s => s.id === item.sellerId)?.name || 'Unknown'}
+                        </Text>
+                      )}
                     </Card>
                   </Timeline.Item>
                 ))}
               </Timeline>
             ) : (
-              <Empty description="No history found for this lead" />
+              <Empty description="No history found for this deal" />
             )}
           </TabPane>
 
-          <TabPane tab={<span><EyeOutlined /> Views ({viewHistory.length})</span>} key="views">
+          <TabPane tab={<span><UserSwitchOutlined /> Status Changes ({statusChanges.length})</span>} key="status">
             <List
-              dataSource={viewHistory}
-              renderItem={(item) => (
-                <List.Item>
-                  <List.Item.Meta
-                    avatar={<EyeOutlined style={{ color: '#52c41a' }} />}
-                    title={item.sellerId ? sellers.find(s => s.id === item.sellerId)?.name || 'Unknown seller' : 'Unknown'}
-                    description={item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
-                  />
-                </List.Item>
-              )}
-              locale={{ emptyText: 'No view history' }}
-            />
-          </TabPane>
-
-          <TabPane tab={<span><FileTextOutlined /> Notes ({noteHistory.length})</span>} key="notes">
-            <List
-              dataSource={noteHistory}
-              renderItem={(item) => (
-                <List.Item>
-                  <List.Item.Meta
-                    avatar={<FileTextOutlined style={{ color: '#faad14' }} />}
-                    title={item.sellerId ? sellers.find(s => s.id === item.sellerId)?.name || 'Unknown seller' : 'Unknown'}
-                    description={
-                      <div>
-                        <Text>{item.note || item.details?.note || '—'}</Text>
-                        <br />
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                          {item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
-                        </Text>
-                      </div>
-                    }
-                  />
-                </List.Item>
-              )}
-              locale={{ emptyText: 'No notes' }}
-            />
-          </TabPane>
-
-          <TabPane tab={<span><UserSwitchOutlined /> Status Changes ({statusHistory.length})</span>} key="status">
-            <List
-              dataSource={statusHistory}
+              dataSource={statusChanges}
               renderItem={(item) => (
                 <List.Item>
                   <List.Item.Meta
@@ -654,12 +664,53 @@ const LeadAnalyticsDashboard = () => {
               locale={{ emptyText: 'No status changes' }}
             />
           </TabPane>
+
+          <TabPane tab={<span><EyeOutlined /> Views ({views.length})</span>} key="views">
+            <List
+              dataSource={views}
+              renderItem={(item) => (
+                <List.Item>
+                  <List.Item.Meta
+                    avatar={<EyeOutlined style={{ color: '#52c41a' }} />}
+                    title={item.sellerId ? sellers.find(s => s.id === item.sellerId)?.name || 'Unknown seller' : 'Unknown'}
+                    description={item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
+                  />
+                </List.Item>
+              )}
+              locale={{ emptyText: 'No view history' }}
+            />
+          </TabPane>
+
+          <TabPane tab={<span><FileTextOutlined /> Notes ({notes.length})</span>} key="notes">
+            <List
+              dataSource={notes}
+              renderItem={(item) => (
+                <List.Item>
+                  <List.Item.Meta
+                    avatar={<FileTextOutlined style={{ color: '#faad14' }} />}
+                    title={item.sellerId ? sellers.find(s => s.id === item.sellerId)?.name || 'Unknown seller' : 'Unknown'}
+                    description={
+                      <div>
+                        <Text>{item.note || item.details?.note || '—'}</Text>
+                        <br />
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          {item.createdAt ? dayjs(item.createdAt).format('DD MMM YYYY HH:mm') : '—'}
+                        </Text>
+                      </div>
+                    }
+                  />
+                </List.Item>
+              )}
+              locale={{ emptyText: 'No notes' }}
+            />
+          </TabPane>
         </Tabs>
       </div>
     );
   };
 
-  const activeLabel = activeFilter?.label || (activeFilter?.type === 'status' ? (STATUS_LABELS[activeFilter.value] || activeFilter.value) : activeFilter?.value);
+  const activeLabel = activeFilter?.label || 
+    (activeFilter?.type === 'status' ? (STATUS_LABELS[activeFilter.value] || activeFilter.value) : activeFilter?.value);
 
   if (!companyId) {
     return <Empty description="No company context found" style={{ marginTop: 80 }} />;
@@ -678,8 +729,8 @@ const LeadAnalyticsDashboard = () => {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
                 <div>
-                  <Title level={3} style={{ margin: 0, fontWeight: 600 }}>📈 Leads Analytics</Title>
-                  <Text type="secondary">Performance overview, trends, and seller interaction tracking</Text>
+                  <Title level={3} style={{ margin: 0, fontWeight: 600 }}>💼 Deals Analytics</Title>
+                  <Text type="secondary">Deal performance, win rates, revenue tracking, and seller insights</Text>
                 </div>
                 <Space wrap size={10}>
                   <Segmented
@@ -711,23 +762,30 @@ const LeadAnalyticsDashboard = () => {
                     icon={k.icon}
                     color={k.color}
                     suffix={k.suffix}
+                    subtitle={k.subtitle}
                     trend={k.trend}
-                    active={k.key === 'all' ? activeFilter?.type === 'all' : activeFilter?.type === 'status' && activeFilter.value === k.key}
-                    onClick={() => (k.key === 'all' ? toggleFilter('all', 'all', 'All Leads') : toggleFilter('status', k.key, STATUS_LABELS[k.key] || k.key))}
+                    active={k.key === 'all' ? activeFilter?.type === 'all' : 
+                           k.key === 'value' ? activeFilter?.type === 'value' :
+                           activeFilter?.type === 'status' && activeFilter.value === k.key}
+                    onClick={() => {
+                      if (k.key === 'all') toggleFilter('all', 'all', 'All Deals');
+                      else if (k.key === 'value') toggleFilter('value', 'value', 'All Deals');
+                      else toggleFilter('status', k.key, STATUS_LABELS[k.key] || k.key);
+                    }}
                   />
                 </Col>
               ))}
             </Row>
           </Col>
 
-          {/* TREND + STATUS PIE */}
+          {/* TREND CHART */}
           <Col xs={24} lg={16}>
             <ChartCard
-              title="Leads Over Time"
+              title="Deals Over Time"
               extra={
                 <Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>New vs Converted</Text>
-                  <Tooltip title="Shows lead creation and conversion trends over the selected period">
+                  <Text type="secondary" style={{ fontSize: 12 }}>Total vs Won</Text>
+                  <Tooltip title="Shows deal creation and won trends over the selected period">
                     <InfoCircleOutlined style={{ color: '#8c8c8c' }} />
                   </Tooltip>
                 </Space>
@@ -741,9 +799,9 @@ const LeadAnalyticsDashboard = () => {
                         <stop offset="5%" stopColor="#1677ff" stopOpacity={0.35} />
                         <stop offset="95%" stopColor="#1677ff" stopOpacity={0} />
                       </linearGradient>
-                      <linearGradient id="convGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#52c41a" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#52c41a" stopOpacity={0} />
+                      <linearGradient id="wonGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#faad14" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#faad14" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
@@ -751,15 +809,16 @@ const LeadAnalyticsDashboard = () => {
                     <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                     <RTooltip />
                     <Legend />
-                    <Area type="monotone" dataKey="total" name="New Leads" stroke="#1677ff" fill="url(#totalGrad)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="converted" name="Converted" stroke="#52c41a" fill="url(#convGrad)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="contacted" name="Contacted" stroke="#faad14" fill="rgba(250, 173, 20, 0.1)" strokeWidth={1.5} />
+                    <Area type="monotone" dataKey="total" name="Total Deals" stroke="#1677ff" fill="url(#totalGrad)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="won" name="Won" stroke="#faad14" fill="url(#wonGrad)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="proposal" name="Proposal" stroke="#722ed1" fill="rgba(114, 46, 209, 0.1)" strokeWidth={1.5} />
                   </AreaChart>
                 </ResponsiveContainer>
-              ) : <Empty description="No leads in this period" style={{ marginTop: 60 }} />}
+              ) : <Empty description="No deals in this period" style={{ marginTop: 60 }} />}
             </ChartCard>
           </Col>
 
+          {/* STATUS PIE */}
           <Col xs={24} lg={8}>
             <ChartCard title="Status Distribution">
               {statusPieData.length ? (
@@ -791,38 +850,9 @@ const LeadAnalyticsDashboard = () => {
             </ChartCard>
           </Col>
 
-          {/* INTEREST + SOURCE */}
+          {/* SOURCE BREAKDOWN */}
           <Col xs={24} lg={8}>
-            <ChartCard title="Interest Level" height={260}>
-              {periodLeads.length ? (
-                <ResponsiveContainer>
-                  <BarChart data={interestData} margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <RTooltip />
-                    <Bar
-                      dataKey="value"
-                      radius={[8, 8, 0, 0]}
-                      onClick={(d) => toggleFilter('interest', d.name, `${d.name} Interest`)}
-                      cursor="pointer"
-                    >
-                      {interestData.map((entry) => (
-                        <Cell
-                          key={entry.name}
-                          fill={entry.fill}
-                          opacity={activeFilter?.type === 'interest' && activeFilter.value !== entry.name ? 0.35 : 1}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <Empty description="No data" style={{ marginTop: 40 }} />}
-            </ChartCard>
-          </Col>
-
-          <Col xs={24} lg={8}>
-            <ChartCard title="Lead Source" height={260}>
+            <ChartCard title="Deal Source" height={260}>
               {sourceData.length ? (
                 <ResponsiveContainer>
                   <BarChart data={sourceData} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 0 }}>
@@ -833,14 +863,13 @@ const LeadAnalyticsDashboard = () => {
                     <Bar
                       dataKey="value"
                       radius={[0, 8, 8, 0]}
-                      fill="#722ed1"
                       onClick={(d) => toggleFilter('source', d.name, d.name)}
                       cursor="pointer"
                     >
                       {sourceData.map((entry) => (
                         <Cell
                           key={entry.name}
-                          fill="#722ed1"
+                          fill={entry.color || '#722ed1'}
                           opacity={activeFilter?.type === 'source' && activeFilter.value !== entry.name ? 0.35 : 1}
                         />
                       ))}
@@ -851,8 +880,9 @@ const LeadAnalyticsDashboard = () => {
             </ChartCard>
           </Col>
 
+          {/* CONVERSION FUNNEL */}
           <Col xs={24} lg={8}>
-            <ChartCard title="Conversion Funnel" height={260}>
+            <ChartCard title="Deal Funnel" height={260}>
               {funnelData[0]?.value ? (
                 <ResponsiveContainer>
                   <FunnelChart>
@@ -867,7 +897,64 @@ const LeadAnalyticsDashboard = () => {
             </ChartCard>
           </Col>
 
-          {/* MONTH OVER MONTH COMPARISON */}
+          {/* WIN RATE & VALUE */}
+          <Col xs={24} lg={8}>
+            <Card
+              bordered={false}
+              style={{ borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', height: '100%' }}
+              title={<span style={{ fontWeight: 600, fontSize: 14 }}><TrophyOutlined style={{ color: '#faad14', marginRight: 6 }} />Win Rate & Revenue</span>}
+            >
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <Statistic
+                    title="Win Rate"
+                    value={winRate.toFixed(1)}
+                    suffix="%"
+                    valueStyle={{ color: winRate >= 50 ? '#52c41a' : winRate >= 30 ? '#faad14' : '#ff4d4f' }}
+                    prefix={<PercentageOutlined />}
+                  />
+                  <div style={{ marginTop: 8 }}>
+                    <Progress
+                      percent={Math.round(winRate)}
+                      strokeColor={winRate >= 50 ? '#52c41a' : winRate >= 30 ? '#faad14' : '#ff4d4f'}
+                      size="small"
+                    />
+                  </div>
+                </Col>
+                <Col span={12}>
+                  <Statistic
+                    title="Won Value"
+                    value={`AED ${(wonValue / 1000).toFixed(1)}K`}
+                    prefix={<DollarOutlined />}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+              </Row>
+              <Divider style={{ margin: '12px 0' }} />
+              <Row gutter={[16, 8]}>
+                <Col span={8}>
+                  <div style={{ textAlign: 'center' }}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Won</Text>
+                    <div><Text strong style={{ color: '#52c41a' }}>{wonCount}</Text></div>
+                  </div>
+                </Col>
+                <Col span={8}>
+                  <div style={{ textAlign: 'center' }}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Lost</Text>
+                    <div><Text strong style={{ color: '#ff4d4f' }}>{lostCount}</Text></div>
+                  </div>
+                </Col>
+                <Col span={8}>
+                  <div style={{ textAlign: 'center' }}>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Proposal</Text>
+                    <div><Text strong style={{ color: '#722ed1' }}>{proposalCount}</Text></div>
+                  </div>
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+
+          {/* MONTH OVER MONTH */}
           <Col span={24}>
             <Card
               bordered={false}
@@ -883,9 +970,9 @@ const LeadAnalyticsDashboard = () => {
                     <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} domain={[0, 100]} />
                     <RTooltip />
                     <Legend />
-                    <Bar yAxisId="left" dataKey="total" name="Total Leads" fill="#1677ff" radius={[4, 4, 0, 0]} />
-                    <Bar yAxisId="left" dataKey="converted" name="Converted" fill="#52c41a" radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="rate" name="Conversion Rate %" stroke="#faad14" strokeWidth={2} dot={{ r: 4 }} />
+                    <Bar yAxisId="left" dataKey="total" name="Total Deals" fill="#1677ff" radius={[4, 4, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="won" name="Won" fill="#faad14" radius={[4, 4, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="rate" name="Win Rate %" stroke="#52c41a" strokeWidth={2} dot={{ r: 4 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -897,10 +984,10 @@ const LeadAnalyticsDashboard = () => {
             <Card
               bordered={false}
               style={{ borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
-              title={<span style={{ fontWeight: 600, fontSize: 14 }}><ThunderboltOutlined style={{ color: '#faad14', marginRight: 6 }} />Seller Performance & Interaction Tracking</span>}
+              title={<span style={{ fontWeight: 600, fontSize: 14 }}><ThunderboltOutlined style={{ color: '#faad14', marginRight: 6 }} />Seller Performance</span>}
               extra={
                 <Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Click a row to filter leads below</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Click a row to filter deals below</Text>
                   {selectedSellerForComparison && (
                     <Button size="small" onClick={() => setSelectedSellerForComparison(null)}>Clear</Button>
                   )}
@@ -913,7 +1000,7 @@ const LeadAnalyticsDashboard = () => {
                 rowKey="id"
                 size="middle"
                 pagination={false}
-                scroll={{ x: 1100 }}
+                scroll={{ x: 1200 }}
                 onRow={(record) => ({
                   onClick: () => {
                     toggleFilter('seller', record.id, record.name);
@@ -926,7 +1013,7 @@ const LeadAnalyticsDashboard = () => {
                 })}
                 columns={[
                   {
-                    title: 'Seller', dataIndex: 'name', key: 'name', fixed: 'left', width: 180,
+                    title: 'Seller', dataIndex: 'name', key: 'name', fixed: 'left', width: 160,
                     render: (text) => (
                       <Space>
                         <Avatar size={28} style={{ background: '#1677ff', fontSize: 12 }}>{(text || 'U')[0]?.toUpperCase()}</Avatar>
@@ -937,21 +1024,25 @@ const LeadAnalyticsDashboard = () => {
                   { title: 'Assigned', dataIndex: 'assignedCount', key: 'assignedCount', width: 90, sorter: (a, b) => a.assignedCount - b.assignedCount },
                   { title: 'Created', dataIndex: 'createdCount', key: 'createdCount', width: 90, sorter: (a, b) => a.createdCount - b.createdCount },
                   {
-                    title: 'Viewed / Revealed', dataIndex: 'viewedCount', key: 'viewedCount', width: 150,
-                    render: (v, r) => (
-                      <Space direction="vertical" size={0} style={{ width: '100%' }}>
-                        <Text style={{ fontSize: 12 }}><EyeOutlined style={{ marginRight: 4, color: '#1677ff' }} />{v} / {r.assignedCount}</Text>
-                        <Progress percent={Math.round(r.revealRate)} size="small" strokeColor="#1677ff" showInfo={false} />
-                      </Space>
-                    ),
-                    sorter: (a, b) => a.revealRate - b.revealRate,
+                    title: 'Opened', dataIndex: 'openedCount', key: 'openedCount', width: 90,
+                    render: (v) => <Tag color="blue">{v}</Tag>,
+                    sorter: (a, b) => a.openedCount - b.openedCount,
                   },
-                  { title: 'Contacted', dataIndex: 'contactedCount', key: 'contactedCount', width: 100, sorter: (a, b) => a.contactedCount - b.contactedCount },
                   {
-                    title: 'Converted', dataIndex: 'convertedCount', key: 'convertedCount', width: 110,
-                    render: (v) => <Tag color="green" style={{ borderRadius: 10 }}>{v}</Tag>,
-                    sorter: (a, b) => a.convertedCount - b.convertedCount,
+                    title: 'Proposal', dataIndex: 'proposalCount', key: 'proposalCount', width: 100,
+                    render: (v) => <Tag color="purple">{v}</Tag>,
+                    sorter: (a, b) => a.proposalCount - b.proposalCount,
+                  },
+                  {
+                    title: 'Won', dataIndex: 'wonCount', key: 'wonCount', width: 90,
+                    render: (v) => <Tag color="gold"><TrophyOutlined /> {v}</Tag>,
+                    sorter: (a, b) => a.wonCount - b.wonCount,
                     defaultSortOrder: 'descend',
+                  },
+                  {
+                    title: 'Lost', dataIndex: 'lostCount', key: 'lostCount', width: 90,
+                    render: (v) => <Tag color="red">{v}</Tag>,
+                    sorter: (a, b) => a.lostCount - b.lostCount,
                   },
                   {
                     title: 'Conversion Rate', dataIndex: 'conversionRate', key: 'conversionRate', width: 160,
@@ -960,7 +1051,7 @@ const LeadAnalyticsDashboard = () => {
                         <Progress
                           percent={Math.round(v)}
                           size="small"
-                          strokeColor={v >= 30 ? '#52c41a' : v >= 10 ? '#faad14' : '#f5222d'}
+                          strokeColor={v >= 50 ? '#52c41a' : v >= 30 ? '#faad14' : '#f5222d'}
                           style={{ width: 90 }}
                         />
                         <Text style={{ fontSize: 12 }}>{v.toFixed(0)}%</Text>
@@ -969,22 +1060,14 @@ const LeadAnalyticsDashboard = () => {
                     sorter: (a, b) => a.conversionRate - b.conversionRate,
                   },
                   {
-                    title: 'Avg Response', dataIndex: 'avgResponseHrs', key: 'avgResponseHrs', width: 130,
-                    render: (v) => v === null || v === undefined
-                      ? <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
-                      : <Text style={{ fontSize: 12 }}>{v < 1 ? `${Math.round(v * 60)}m` : `${v.toFixed(1)}h`}</Text>,
-                    sorter: (a, b) => (a.avgResponseHrs ?? 9999) - (b.avgResponseHrs ?? 9999),
+                    title: 'Avg Deal Value', dataIndex: 'avgDealValue', key: 'avgDealValue', width: 130,
+                    render: (v) => <Text strong style={{ color: '#52c41a' }}>AED {v.toFixed(0)}</Text>,
+                    sorter: (a, b) => a.avgDealValue - b.avgDealValue,
                   },
                   {
-                    title: 'Avg Conversion', dataIndex: 'avgConversionDays', key: 'avgConversionDays', width: 130,
-                    render: (v) => v === null || v === undefined
-                      ? <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
-                      : <Text style={{ fontSize: 12 }}>{v.toFixed(1)} days</Text>,
-                    sorter: (a, b) => (a.avgConversionDays ?? 9999) - (b.avgConversionDays ?? 9999),
-                  },
-                  {
-                    title: 'Not Interested', dataIndex: 'notInterestedCount', key: 'notInterestedCount', width: 120,
-                    render: (v) => <Text type="secondary" style={{ fontSize: 12 }}>{v}</Text>,
+                    title: 'Won Value', dataIndex: 'wonValue', key: 'wonValue', width: 130,
+                    render: (v) => <Text strong style={{ color: '#faad14' }}>AED {(v / 1000).toFixed(1)}K</Text>,
+                    sorter: (a, b) => a.wonValue - b.wonValue,
                   },
                 ]}
                 locale={{ emptyText: <Empty description="No seller activity in this period" /> }}
@@ -992,7 +1075,7 @@ const LeadAnalyticsDashboard = () => {
             </Card>
           </Col>
 
-          {/* FILTERED LEADS TABLE */}
+          {/* FILTERED DEALS TABLE */}
           <Col span={24}>
             <Card
               bordered={false}
@@ -1003,9 +1086,9 @@ const LeadAnalyticsDashboard = () => {
                 <Space>
                   <FilterOutlined style={{ color: '#1677ff' }} />
                   <Title level={5} style={{ margin: 0 }}>
-                    {activeFilter && activeFilter.type !== 'all' ? `Leads · ${activeLabel}` : 'All Leads (Period)'}
+                    {activeFilter && activeFilter.type !== 'all' ? `Deals · ${activeLabel}` : 'All Deals (Period)'}
                   </Title>
-                  <Badge count={filteredTableLeads.length} showZero style={{ backgroundColor: '#1677ff' }} />
+                  <Badge count={filteredTableDeals.length} showZero style={{ backgroundColor: '#1677ff' }} />
                 </Space>
                 <Space>
                   {activeFilter && (
@@ -1017,14 +1100,14 @@ const LeadAnalyticsDashboard = () => {
                 </Space>
               </div>
               <Table
-                dataSource={filteredTableLeads}
-                columns={leadColumns}
+                dataSource={filteredTableDeals}
+                columns={dealColumns}
                 rowKey="id"
                 size="middle"
-                scroll={{ x: 1000 }}
+                scroll={{ x: 1100 }}
                 pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
                 onRow={(record) => ({
-                  onClick: () => showLeadHistory(record),
+                  onClick: () => showDealHistory(record),
                   style: { cursor: 'pointer' },
                 })}
               />
@@ -1033,14 +1116,14 @@ const LeadAnalyticsDashboard = () => {
         </Row>
       </Spin>
 
-      {/* LEAD HISTORY DRAWER */}
+      {/* DEAL HISTORY DRAWER */}
       <Drawer
         title={
           <Space>
             <HistoryOutlined />
-            <span>Lead History</span>
-            {selectedLeadForHistory && (
-              <Tag color="blue">{selectedLeadForHistory.name || 'Unknown'}</Tag>
+            <span>Deal History</span>
+            {selectedDealForHistory && (
+              <Tag color="blue">{selectedDealForHistory.contact_name || 'Unknown'}</Tag>
             )}
           </Space>
         }
@@ -1052,22 +1135,22 @@ const LeadAnalyticsDashboard = () => {
           <Button
             size="small"
             icon={<ReloadOutlined spin={historyLoading} />}
-            onClick={() => selectedLeadForHistory && fetchLeadHistory([selectedLeadForHistory])}
+            onClick={() => selectedDealForHistory && fetchDealHistory([selectedDealForHistory])}
           >
             Refresh
           </Button>
         }
       >
-        {historyLoading && !selectedLeadHistory.length ? (
+        {historyLoading && !selectedDealForHistory ? (
           <div style={{ textAlign: 'center', padding: 60 }}>
             <Spin tip="Loading history..." />
           </div>
         ) : (
-          <HistoryDrawerContent lead={selectedLeadForHistory} history={selectedLeadHistory} />
+          <HistoryDrawerContent deal={selectedDealForHistory} history={dealHistory[selectedDealForHistory?.id] || []} />
         )}
       </Drawer>
     </div>
   );
 };
 
-export default LeadAnalyticsDashboard;
+export default DealAnalyticsDashboard;

@@ -20,7 +20,8 @@ import {
   GlobalOutlined,
   InstagramOutlined,
   FieldTimeOutlined,
-  BarChartOutlined
+  BarChartOutlined,
+  ContactsOutlined
   
 } from '@ant-design/icons';
 import { APP_PREFIX_PATH } from 'configs/AppConfig';
@@ -31,14 +32,41 @@ import { UserRoles } from 'models/UserModel';
  */
 const hrNavigation = [
   // HR Management (only this section for HR)
-  // Dashboard for HR
   {
     key: 'dashboards',
-    path: `${APP_PREFIX_PATH}/dashboards`,
     title: 'Dashboard',
     icon: DashboardOutlined,
     breadcrumb: false,
-    submenu: []
+    submenu: [
+{
+  key: 'dashboards',
+  path: `${APP_PREFIX_PATH}/dashboards`,
+  title: 'Dashboard',
+  icon: DashboardOutlined,
+  breadcrumb: true,
+  submenu: []
+},
+/*
+{
+  key: 'UnifiedPipelineDashboard',
+  path: `${APP_PREFIX_PATH}/Pipeline-Dashboard`,
+  title: 'Pipeline Dashboard',
+  icon: AppstoreOutlined,
+  breadcrumb: true,
+  submenu: []
+},
+*/
+{
+  key: 'seller-performance',
+  path: `${APP_PREFIX_PATH}/team-activity`,
+  title: 'Team Activity Log',
+  icon: TeamOutlined,
+  breadcrumb: true,
+  submenu: []
+},
+
+
+    ]
   },
   // Company Management
   {
@@ -225,6 +253,7 @@ const ceoNavigation = [
   breadcrumb: true,
   submenu: []
 },
+/*
 {
   key: 'UnifiedPipelineDashboard',
   path: `${APP_PREFIX_PATH}/Pipeline-Dashboard`,
@@ -233,9 +262,10 @@ const ceoNavigation = [
   breadcrumb: true,
   submenu: []
 },
+*/
 {
   key: 'seller-performance',
-  path: `${APP_PREFIX_PATH}/sales-dashboard`,
+  path: `${APP_PREFIX_PATH}/team-activity`,
   title: 'Team Activity Log',
   icon: TeamOutlined,
   breadcrumb: true,
@@ -243,9 +273,25 @@ const ceoNavigation = [
 },
 {
   key: 'leads-performance',
-  path: `${APP_PREFIX_PATH}/analytics`,
+  path: `${APP_PREFIX_PATH}/leads-performance`,
   title: 'Leads Dashboard',
-  icon: BarChartOutlined,
+  icon: UserOutlined, // or TeamOutlined, ProfileOutlined
+  breadcrumb: true,
+  submenu: []
+},
+{
+  key: 'contact-performance',
+  path: `${APP_PREFIX_PATH}/contact-performance`,
+  title: 'Contact Dashboard',
+  icon: ContactsOutlined, // or UserSwitchOutlined, AddressBookOutlined
+  breadcrumb: true,
+  submenu: []
+},
+{
+  key: 'deals-performance',
+  path: `${APP_PREFIX_PATH}/deals-performance`,
+  title: 'Deals Dashboard',
+  icon: DollarOutlined, // or ShoppingOutlined, TransactionOutlined
   breadcrumb: true,
   submenu: []
 }
