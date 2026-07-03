@@ -11,6 +11,44 @@ class InvoiceService extends BaseFirebaseService {
     return this.getAllByCompany(companyId, options);
   }
 
+  // Add this method to InvoiceService class
+async getInvoicesByPaymentMonth(companyId, year, month) {
+  try {
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month + 1, 0);
+    
+    let q = query(
+      collection(db, 'invoices'),
+      where('company_id', '==', companyId),
+      where('isDeleted', '==', false)
+    );
+
+    // Only filter by payment date if it exists
+    // For paid invoices, use paymentDate
+    // For pending invoices, they won't have a payment date
+    // So we filter all and then filter in memory
+    
+    const querySnapshot = await getDocs(q);
+    const invoices = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      // Only include invoices that have a payment date within the range
+      // or are pending (no payment date yet)
+      if (data.paymentDate) {
+        const paymentDate = data.paymentDate.toDate ? data.paymentDate.toDate() : new Date(data.paymentDate);
+        if (paymentDate >= startDate && paymentDate <= endDate) {
+          invoices.push(this.convertToModel({ id: doc.id, ...data }));
+        }
+      }
+    });
+    
+    return invoices;
+  } catch (error) {
+    console.error('Error getting invoices by payment month:', error);
+    throw error;
+  }
+}
+
   async createInvoice(invoiceData, items = []) {
     try {
       console.log('Creating invoice with data:', invoiceData); // Debug log

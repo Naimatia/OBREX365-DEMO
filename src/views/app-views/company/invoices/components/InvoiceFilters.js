@@ -61,7 +61,7 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
     fetchUsers();
   }, [companyId]);
 
-  // Set default filters on mount - THIS MONTH
+  // Set default filters on mount - THIS MONTH based on payment date
   useEffect(() => {
     if (isFirstRender.current) {
       const defaultValues = {
@@ -73,12 +73,13 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
         amountRange: 'all',
         search: undefined,
         sortBy: undefined,
+        filterType: 'paymentDate', // Default to payment date
       };
       
       form.setFieldsValue(defaultValues);
       isFirstRender.current = false;
       
-      // Apply default filters - THIS MONTH
+      // Apply default filters - THIS MONTH based on payment date
       onFilter(defaultValues);
     }
   }, [form, onFilter, currentYear, currentMonth]);
@@ -89,6 +90,7 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
       ...values,
       year: values.year || currentYear,
       month: values.month !== undefined && values.month !== '' ? values.month : currentMonth,
+      filterType: values.filterType || 'paymentDate', // Default to payment date
     };
     onFilter(filterValues);
   };
@@ -103,6 +105,7 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
       amountRange: 'all',
       search: undefined,
       sortBy: undefined,
+      filterType: 'paymentDate',
     };
     form.setFieldsValue(resetValues);
     onFilter(resetValues);
@@ -203,6 +206,26 @@ const InvoiceFilters = ({ onFilter, companyId, loading }) => {
                 <Option value="amountDesc">Amount (Highest)</Option>
                 <Option value="amountAsc">Amount (Lowest)</Option>
               </Select>
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Row gutter={16}>
+          <Col xs={24} sm={12} md={8}>
+            <Form.Item name="filterType" label="Filter By">
+              <Select>
+                <Option value="paymentDate">Payment Date</Option>
+                <Option value="creationDate">Creation Date</Option>
+              </Select>
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12} md={8}>
+            <Form.Item name="dateRange" label="Date Range (Optional)">
+              <RangePicker 
+                style={{ width: '100%' }} 
+                format="YYYY-MM-DD"
+                placeholder={['Start Date', 'End Date']}
+              />
             </Form.Item>
           </Col>
         </Row>

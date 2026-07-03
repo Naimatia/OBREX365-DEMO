@@ -101,6 +101,7 @@ useEffect(() => {
         department: 'all',
         creatorId: 'all',
         amountRange: 'all',
+        filterType: 'paymentDate', // Default to payment date
       });
       setInitialFiltersApplied(true);
     }
@@ -116,7 +117,6 @@ const applyFilters = (invoiceList, filterValues) => {
 
   let result = [...invoiceList];
 
-  
   // If no filter values or empty, return all invoices
   if (!filterValues || Object.keys(filterValues).length === 0) {
     setFilteredInvoices(result);
@@ -148,12 +148,16 @@ const applyFilters = (invoiceList, filterValues) => {
     result = result.filter(invoice => invoice.department === filterValues.department);
   }
 
+  // Determine which date to filter by
+  const usePaymentDate = filterValues.filterType === 'paymentDate';
+  
   // Apply year filter
   if (filterValues.year) {
     const year = parseInt(filterValues.year);
     result = result.filter(invoice => {
-      if (!invoice.CreationDate) return false;
-      const date = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
+      const dateField = usePaymentDate ? invoice.paymentDate : invoice.CreationDate;
+      if (!dateField) return false;
+      const date = dateField.toDate ? dateField.toDate() : new Date(dateField);
       return date.getFullYear() === year;
     });
     setChartYear(year);
@@ -163,9 +167,25 @@ const applyFilters = (invoiceList, filterValues) => {
   if (filterValues.month !== undefined && filterValues.month !== '' && filterValues.month !== null) {
     const month = parseInt(filterValues.month);
     result = result.filter(invoice => {
-      if (!invoice.CreationDate) return false;
-      const date = invoice.CreationDate.toDate ? invoice.CreationDate.toDate() : new Date(invoice.CreationDate);
+      const dateField = usePaymentDate ? invoice.paymentDate : invoice.CreationDate;
+      if (!dateField) return false;
+      const date = dateField.toDate ? dateField.toDate() : new Date(dateField);
       return date.getMonth() === month;
+    });
+  }
+
+  // Apply date range filter (NEW)
+  if (filterValues.dateRange && filterValues.dateRange.length === 2) {
+    const [startDate, endDate] = filterValues.dateRange;
+    result = result.filter(invoice => {
+      const dateField = usePaymentDate ? invoice.paymentDate : invoice.CreationDate;
+      if (!dateField) return false;
+      const date = dateField.toDate ? dateField.toDate() : new Date(dateField);
+      
+      // Check if date is within range
+      const start = startDate.startOf('day').toDate();
+      const end = endDate.endOf('day').toDate();
+      return date >= start && date <= end;
     });
   }
 
