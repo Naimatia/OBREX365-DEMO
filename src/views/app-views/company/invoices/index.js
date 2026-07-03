@@ -6,7 +6,8 @@ import {
 import { useSelector } from 'react-redux';
 import {
   FileProtectOutlined, PlusOutlined, ReloadOutlined,
-  WarningOutlined, DollarOutlined, ExclamationCircleOutlined
+  WarningOutlined, DollarOutlined, ExclamationCircleOutlined,
+  FileExcelOutlined
 } from '@ant-design/icons';
 import InvoiceService from 'services/firebase/InvoiceService';
 import UserService from 'services/firebase/UserService';
@@ -22,6 +23,7 @@ import InvoiceForm from './components/InvoiceForm';
 import InvoiceStatsDrawer from './components/InvoiceStatsDrawer';
 import InvoiceDetail from './components/InvoiceDetail';
 import { serverTimestamp } from 'configs/FirebaseConfig';  // Adjust path as needed
+import { exportInvoicesToExcel } from 'utils/excelExport'; 
 
 const { Title } = Typography;
 
@@ -74,6 +76,31 @@ const [initialFiltersApplied, setInitialFiltersApplied] = useState(false);
     }
   };
 
+   // Add this function to handle Excel export
+  const handleExportToExcel = () => {
+    if (!filteredInvoices || filteredInvoices.length === 0) {
+      message.warning('No invoices to export. Please adjust your filters.');
+      return;
+    }
+    
+    try {
+      // Get current filter values for the summary
+      const filterSummary = {
+        status: filters.status || 'all',
+        department: filters.department || 'all',
+        year: filters.year || 'all',
+        month: filters.month,
+        filterType: filters.filterType || 'creationDate',
+      };
+      
+      exportInvoicesToExcel(filteredInvoices, filterSummary);
+      message.success(`Successfully exported ${filteredInvoices.length} invoices to Excel`);
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      message.error('Failed to export invoices to Excel');
+    }
+  };
+  
   // Fetch users
   const fetchUsers = async () => {
     if (!companyId) return;
@@ -508,7 +535,7 @@ const handleDeleteInvoice = (invoice) => {
           </Col>
           <Col>
             <Space size={12}>
-              <Button
+             <Button
                 size="large"
                 style={{
                   background: 'rgba(255,255,255,0.2)',
@@ -517,10 +544,10 @@ const handleDeleteInvoice = (invoice) => {
                   backdropFilter: 'blur(10px)',
                   borderRadius: '8px'
                 }}
-                icon={<DollarOutlined />}
-                onClick={() => setIsStatsDrawerVisible(true)}
+                icon={<FileExcelOutlined />}
+                onClick={handleExportToExcel}
               >
-                Analytics
+                Export to Excel
               </Button>
               <Button
                 size="large"
