@@ -1,4 +1,4 @@
-// LeadsPage.js - Fixed version
+// LeadsPage.js - With Property Finder Integration
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -18,9 +18,10 @@ import {
   FilterOutlined,
   ReloadOutlined,
   UserOutlined,
+  ApiOutlined,
 } from '@ant-design/icons';
 
-import { db, collection, getDocs,where, query } from 'configs/FirebaseConfig';
+import { db, collection, getDocs, where, query } from 'configs/FirebaseConfig';
 import LeadService from 'services/firebase/LeadService';
 import { LeadStatus, LeadInterestLevel, LeadStatusLabels, LeadStatusColors } from 'models/LeadModel';
 import { serverTimestamp } from 'firebase/firestore';
@@ -111,7 +112,120 @@ const mapMetaLeadToModel = (metaLead, companyId) => {
     convertedContactId: null,
     convertedAt: null,
     source: 'facebook_meta',
-    // DO NOT set createdBy here - it will be set in the sync handler
+  };
+};
+
+// ─── Property Finder Lead mapper (UPDATED) ──────────────────────────────
+const mapPropertyFinderLeadToModel = (pfLead, companyId, userId) => {
+  const sender = pfLead.sender || {};
+  const contacts = sender.contacts || [];
+  
+  // Extract phone and email from contacts
+  let phone = '';
+  let email = '';
+  let whatsappUsername = '';
+  
+  contacts.forEach(contact => {
+    if (contact.type === 'phone') phone = contact.value || '';
+    if (contact.type === 'email') email = contact.value || '';
+    if (contact.type === 'whatsappUsername') whatsappUsername = contact.value || '';
+  });
+
+  // Determine status based on PF status
+  let status = LeadStatus.NEW;
+  if (pfLead.status) {
+    switch (pfLead.status.toLowerCase()) {
+      case 'replied':
+        status = LeadStatus.CONTACTED;
+        break;
+      case 'read':
+        status = LeadStatus.INTERESTED;
+        break;
+      case 'delivered':
+        status = LeadStatus.NEW;
+        break;
+      default:
+        status = LeadStatus.NEW;
+    }
+  }
+
+  // Safely extract listing and project data
+  const listing = pfLead.listing || {};
+  const project = pfLead.project || {};
+  const publicProfile = pfLead.publicProfile || {};
+
+  // Build lookingFor - USE THE VALUE FROM THE API
+  let lookingFor = pfLead.looking_for || null; // 👈 First try the API value
+  
+  // If not provided by API, build it manually
+  if (!lookingFor) {
+    if (listing.reference) {
+      lookingFor = listing.reference;
+    } else if (project.title?.en) {
+      lookingFor = project.title.en;
+    } else if (project.title?.ar) {
+      lookingFor = project.title.ar;
+    } else if (listing.id) {
+      lookingFor = `Listing: ${listing.id}`;
+    } else if (pfLead.entityType) {
+      lookingFor = pfLead.entityType;
+    }
+  }
+
+  // Build sourceDetails with only defined values
+  const sourceDetails = {
+    channel: pfLead.channel || 'whatsapp',
+    entityType: pfLead.entityType || 'listing',
+  };
+
+  if (listing.id) sourceDetails.listingId = listing.id;
+  if (listing.reference) sourceDetails.listingReference = listing.reference;
+  if (project.id) sourceDetails.projectId = project.id;
+  if (publicProfile.id) sourceDetails.publicProfileId = publicProfile.id;
+  if (pfLead.tags && pfLead.tags.length > 0) sourceDetails.tags = pfLead.tags;
+
+  return {
+    name: sender.name || 'Unknown',
+    email: email || pfLead.email || '',
+    phoneNumber: phone || pfLead.phone_number || '',
+    secondaryEmail: '',
+    phoneNumber2: '',
+    region: 'UAE',
+    status: status,
+    InterestLevel: LeadInterestLevel.MEDIUM,
+    Budget: null,
+    lookingFor: lookingFor, // 👈 Will be "Ahmed-Binghatti-Nova" or "Ahmed-Torino-"
+    RedirectedFrom: 'Property Finder',
+    company_id: companyId,
+    Notes: [],
+    CreationDate: pfLead.created_time ? new Date(pfLead.created_time) : new Date(),
+    propertyFinderLeadId: pfLead.lead_id || pfLead.id || null,
+    propertyFinderData: {
+      channel: pfLead.channel || null,
+      status: pfLead.status || null,
+      entityType: pfLead.entityType || null,
+      listing: listing.id ? listing : null,
+      project: project.id ? project : null,
+      publicProfile: publicProfile.id ? publicProfile : null,
+      responseLink: pfLead.responseLink || null,
+      tags: pfLead.tags || [],
+      sender: {
+        name: sender.name || null,
+        contacts: contacts.length > 0 ? contacts : null,
+        phone: phone || null,
+        email: email || null,
+        whatsappUsername: whatsappUsername || null
+      }
+    },
+    sourceDetails: sourceDetails,
+    source: 'property_finder',
+    createdBy: userId || null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    assignedAt: null,
+    assignedBy: null,
+    convertedContactId: null,
+    convertedAt: null,
   };
 };
 
@@ -185,6 +299,76 @@ const MetaSyncModal = ({ visible, onClose, syncing, syncResult, onSync }) => (
   </Modal>
 );
 
+// ─── Property Finder Sync Modal ─────────────────────────────────────────────
+const PropertyFinderSyncModal = ({ visible, onClose, syncing, syncResult, onSync }) => (
+  <Modal
+    title={
+      <Space>
+        <ApiOutlined style={{ color: '#0066CC', fontSize: 20 }} />
+        <span>Sync Property Finder Leads</span>
+      </Space>
+    }
+    open={visible}
+    onCancel={onClose}
+    footer={
+      syncResult ? (
+        <Button type="primary" onClick={onClose}>Done</Button>
+      ) : (
+        <Space>
+          <Button onClick={onClose} disabled={syncing}>Cancel</Button>
+          <Button
+            type="primary"
+            icon={<SyncOutlined spin={syncing} />}
+            loading={syncing}
+            onClick={onSync}
+            style={{ background: '#0066CC', borderColor: '#0066CC' }}
+          >
+            Sync Now
+          </Button>
+        </Space>
+      )
+    }
+    width={480}
+  >
+    {!syncing && !syncResult && (
+      <div style={{ textAlign: 'center', padding: '24px 0' }}>
+        <ApiOutlined style={{ fontSize: 48, color: '#0066CC', marginBottom: 16 }} />
+        <Title level={5} style={{ marginBottom: 8 }}>Pull Leads from Property Finder</Title>
+        <Text type="secondary">
+          This will fetch all leads from your Property Finder account and save new ones to your CRM.
+          Existing leads (matched by email, phone, or Property Finder ID) will be skipped automatically.
+        </Text>
+      </div>
+    )}
+    {syncing && (
+      <div style={{ textAlign: 'center', padding: '32px 0' }}>
+        <Spin size="large" />
+        <div style={{ marginTop: 16 }}>
+          <Text type="secondary">Fetching leads from Property Finder…</Text>
+        </div>
+      </div>
+    )}
+    {syncResult && (
+      <div style={{ padding: '8px 0' }}>
+        {syncResult.error ? (
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <CloseCircleOutlined style={{ fontSize: 40, color: '#ff4d4f', marginBottom: 12 }} />
+            <div><Text type="danger">{syncResult.error}</Text></div>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <CheckCircleOutlined style={{ fontSize: 40, color: '#52c41a', marginBottom: 12 }} />
+            <Title level={4} style={{ margin: 0 }}>{syncResult.saved} new leads imported</Title>
+            <Text type="secondary">
+              {syncResult.total} fetched · {syncResult.skipped} already existed · {syncResult.failed} failed
+            </Text>
+          </div>
+        )}
+      </div>
+    )}
+  </Modal>
+);
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const LeadsPage = () => {
   const initialFilters = { 
@@ -213,9 +397,15 @@ const LeadsPage = () => {
   const [bulkAssignVisible, setBulkAssignVisible] = useState(false);
   const [bulkLeadIds, setBulkLeadIds] = useState([]);
 
+  // Meta Sync States
   const [syncModalVisible, setSyncModalVisible] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+
+  // Property Finder Sync States
+  const [pfSyncModalVisible, setPfSyncModalVisible] = useState(false);
+  const [pfSyncing, setPfSyncing] = useState(false);
+  const [pfSyncResult, setPfSyncResult] = useState(null);
 
   const user = useSelector(state => state.auth.user);
   const companyId = user?.company_id;
@@ -452,78 +642,199 @@ const LeadsPage = () => {
     }
   };
 
-  // ─── Meta Sync ────────────────────────────────────────────────────────────
+  // ─── Helper Functions ────────────────────────────────────────────────────
   const normalizePhone = (phone) => {
     if (!phone) return null;
     return phone.toString().replace(/[^0-9+]/g, '').replace(/^00/, '+').trim();
   };
 
+  // Optimized function to fetch only lead identifiers
+  const getExistingLeadIdentifiers = async (companyId) => {
+    try {
+      const q = query(
+        collection(db, 'leads'),
+        where('company_id', '==', companyId)
+      );
+      
+      const snapshot = await getDocs(q);
+      
+      const metaIds = new Set();
+      const pfIds = new Set();
+      const emails = new Set();
+      const phones = new Set();
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.meta_lead_id) metaIds.add(data.meta_lead_id);
+        if (data.propertyFinderLeadId) pfIds.add(data.propertyFinderLeadId);
+        if (data.email) {
+          const email = data.email.toLowerCase().trim();
+          if (email) emails.add(email);
+        }
+        if (data.phoneNumber) {
+          const phone = normalizePhone(data.phoneNumber);
+          if (phone) phones.add(phone);
+        }
+      });
+      
+      return { metaIds, pfIds, emails, phones };
+    } catch (error) {
+      console.error('Error fetching lead identifiers:', error);
+      throw error;
+    }
+  };
+
+  // ─── Meta Sync ────────────────────────────────────────────────────────────
   const openSyncModal = () => { setSyncResult(null); setSyncModalVisible(true); };
 
-const handleMetaSync = async () => {
-  setSyncing(true);
-  setSyncResult(null);
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/facebook/leads?company_id=${companyId}&limit=200`);
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to fetch Meta leads');
-    }
-    const { leads: metaLeads = [] } = await res.json();
-    if (metaLeads.length === 0) { 
-      setSyncResult({ total: 0, saved: 0, skipped: 0, failed: 0 }); 
-      return; 
-    }
-
-    const existing = await LeadService.getLeadsByCompany(companyId);
-    const metaIds = new Set(existing.map(l => l.meta_lead_id).filter(Boolean));
-    const emails = new Set(existing.map(l => l.email?.toLowerCase().trim()).filter(Boolean));
-    const phones = new Set(existing.map(l => normalizePhone(l.phoneNumber)).filter(Boolean));
-
-    let saved = 0, skipped = 0, failed = 0;
-
-    // Get the current user's ID
-    const currentUserId = user?.uid || user?.id;
-
-    for (const ml of metaLeads) {
-      const email = (ml.email || ml.raw_fields?.email || '').toLowerCase().trim();
-      const phone = normalizePhone(ml.phone_number || ml.raw_fields?.phone_number);
-
-      if (metaIds.has(ml.lead_id) || (email && emails.has(email)) || (phone && phones.has(phone))) {
-        skipped++; 
-        continue;
+  const handleMetaSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    
+    try {
+      // Step 1: Fetch Meta leads from your backend
+      const res = await fetch(`${API_BASE_URL}/api/facebook/leads?company_id=${companyId}&limit=200`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to fetch Meta leads');
       }
-      try {
-        const metaLeadData = mapMetaLeadToModel(ml, companyId);
-        // Set the current user as the creator
-        metaLeadData.createdBy = currentUserId || 'unknown_user';
-        metaLeadData.source = 'facebook_meta';
+      const { leads: metaLeads = [] } = await res.json();
+      
+      if (metaLeads.length === 0) {
+        setSyncResult({ total: 0, saved: 0, skipped: 0, failed: 0 });
+        return;
+      }
+
+      // Step 2: Fetch ONLY identifiers from existing leads (optimized)
+      const existingIdentifiers = await getExistingLeadIdentifiers(companyId);
+      
+      const metaIds = existingIdentifiers.metaIds;
+      const emails = existingIdentifiers.emails;
+      const phones = existingIdentifiers.phones;
+
+      let saved = 0, skipped = 0, failed = 0;
+      const currentUserId = user?.uid || user?.id;
+
+      // Step 3: Process each lead
+      for (const ml of metaLeads) {
+        const email = (ml.email || ml.raw_fields?.email || '').toLowerCase().trim();
+        const phone = normalizePhone(ml.phone_number || ml.raw_fields?.phone_number);
+
+        // Check duplicates efficiently
+        if (metaIds.has(ml.lead_id) || (email && emails.has(email)) || (phone && phones.has(phone))) {
+          skipped++; 
+          continue;
+        }
         
-        await LeadService.create(metaLeadData);
-        if (email) emails.add(email);
-        if (phone) phones.add(phone);
-        metaIds.add(ml.lead_id);
-        saved++;
-      } catch (error) {
-        console.error('Error saving meta lead:', error);
-        failed++; 
+        try {
+          const metaLeadData = mapMetaLeadToModel(ml, companyId);
+          metaLeadData.createdBy = currentUserId || 'unknown_user';
+          metaLeadData.source = 'facebook_meta';
+          
+          await LeadService.create(metaLeadData);
+          
+          // Update sets for future checks in this batch
+          if (email) emails.add(email);
+          if (phone) phones.add(phone);
+          metaIds.add(ml.lead_id);
+          saved++;
+        } catch (error) {
+          console.error('Error saving meta lead:', error);
+          failed++; 
+        }
       }
-    }
 
-    setSyncResult({ total: metaLeads.length, saved, skipped, failed });
-    if (saved > 0) { 
-      message.success(`${saved} new Meta lead${saved > 1 ? 's' : ''} imported!`); 
-      fetchLeads(); 
-    } else if (skipped > 0) {
-      message.info(`All leads already exist (${skipped} skipped).`);
+      // Step 4: Update UI
+      setSyncResult({ total: metaLeads.length, saved, skipped, failed });
+      if (saved > 0) { 
+        message.success(`${saved} new Meta lead${saved > 1 ? 's' : ''} imported!`); 
+        fetchLeads(); 
+      } else if (skipped > 0) {
+        message.info(`All leads already exist (${skipped} skipped).`);
+      }
+      
+    } catch (err) {
+      setSyncResult({ error: err.message });
+      message.error('Sync failed: ' + err.message);
+    } finally {
+      setSyncing(false);
     }
-  } catch (err) {
-    setSyncResult({ error: err.message });
-    message.error('Sync failed: ' + err.message);
-  } finally {
-    setSyncing(false);
-  }
-};
+  };
+
+  // ─── Property Finder Sync ────────────────────────────────────────────────
+  const openPfSyncModal = () => { setPfSyncResult(null); setPfSyncModalVisible(true); };
+
+  const handlePropertyFinderSync = async () => {
+    setPfSyncing(true);
+    setPfSyncResult(null);
+    
+    try {
+      // Step 1: Fetch Property Finder leads from your backend
+      const res = await fetch(`${API_BASE_URL}/api/propertyfinder/leads?company_id=${companyId}&limit=100`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to fetch Property Finder leads');
+      }
+      const { leads: pfLeads = [] } = await res.json();
+      
+      if (pfLeads.length === 0) {
+        setPfSyncResult({ total: 0, saved: 0, skipped: 0, failed: 0 });
+        return;
+      }
+
+      // Step 2: Fetch ONLY identifiers from existing leads (optimized)
+      const existingIdentifiers = await getExistingLeadIdentifiers(companyId);
+      
+      const pfIds = existingIdentifiers.pfIds;
+      const emails = existingIdentifiers.emails;
+      const phones = existingIdentifiers.phones;
+
+      let saved = 0, skipped = 0, failed = 0;
+      const currentUserId = user?.uid || user?.id;
+
+      // Step 3: Process each lead
+      for (const pfLead of pfLeads) {
+        const email = (pfLead.email || '').toLowerCase().trim();
+        const phone = normalizePhone(pfLead.phone_number || pfLead.phoneNumber);
+        const pfId = pfLead.lead_id || pfLead.id;
+
+        // Check duplicates efficiently
+        if (pfIds.has(pfId) || (email && emails.has(email)) || (phone && phones.has(phone))) {
+          skipped++; 
+          continue;
+        }
+        
+        try {
+          const pfLeadData = mapPropertyFinderLeadToModel(pfLead, companyId, currentUserId);
+          await LeadService.create(pfLeadData);
+          
+          // Update sets for future checks in this batch
+          if (email) emails.add(email);
+          if (phone) phones.add(phone);
+          if (pfId) pfIds.add(pfId);
+          saved++;
+        } catch (error) {
+          console.error('Error saving Property Finder lead:', error);
+          failed++; 
+        }
+      }
+
+      // Step 4: Update UI
+      setPfSyncResult({ total: pfLeads.length, saved, skipped, failed });
+      if (saved > 0) { 
+        message.success(`${saved} new Property Finder lead${saved > 1 ? 's' : ''} imported!`); 
+        fetchLeads(); 
+      } else if (skipped > 0) {
+        message.info(`All leads already exist (${skipped} skipped).`);
+      }
+      
+    } catch (err) {
+      setPfSyncResult({ error: err.message });
+      message.error('Property Finder sync failed: ' + err.message);
+    } finally {
+      setPfSyncing(false);
+    }
+  };
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────
   const handleAddLead = async (values) => {
@@ -1077,6 +1388,21 @@ const handleMetaSync = async () => {
                   </Button>
                 </Tooltip>
 
+                <Tooltip title="Sync leads from Property Finder">
+                  <Button
+                    icon={<ApiOutlined />}
+                    onClick={openPfSyncModal}
+                    style={{ 
+                      background: '#0066CC', 
+                      borderColor: '#0066CC', 
+                      color: '#fff', 
+                      fontWeight: 600,
+                    }}
+                  >
+                    Sync PF Leads
+                  </Button>
+                </Tooltip>
+
                 <Button
                   icon={<UploadOutlined />}
                   onClick={() => document.getElementById('csv-upload').click()}
@@ -1199,7 +1525,7 @@ const handleMetaSync = async () => {
               isAdminView={isAdminView}
               companyId={companyId}
               userRole={userRole}
-              onViewHistory={handleViewHistory} // ← ADD THIS PROP
+              onViewHistory={handleViewHistory}
             />
           </Card>
         </Col>
@@ -1223,7 +1549,7 @@ const handleMetaSync = async () => {
         onAddNote={handleAddNote}
         onConvertToContact={handleConvertToContact}
         isHR={userRole === UserRoles.HR}
-        userRole={userRole} // ← ADD THIS PROP
+        userRole={userRole}
       />
 
       <AssignSellerForm
@@ -1259,6 +1585,14 @@ const handleMetaSync = async () => {
         syncing={syncing}
         syncResult={syncResult}
         onSync={handleMetaSync}
+      />
+
+      <PropertyFinderSyncModal
+        visible={pfSyncModalVisible}
+        onClose={() => setPfSyncModalVisible(false)}
+        syncing={pfSyncing}
+        syncResult={pfSyncResult}
+        onSync={handlePropertyFinderSync}
       />
     </div>
   );

@@ -23,7 +23,10 @@ import {
   LinkedinOutlined,
   InstagramOutlined,
   VideoCameraOutlined,
-  KeyOutlined
+  KeyOutlined,
+  ApiOutlined,
+  LockOutlined,
+  SafetyOutlined
 } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
 import companyService from 'services/CompanyService';
@@ -61,7 +64,12 @@ const CompanyForm = ({ onSuccess, initialValues = null, isEditing = false }) => 
         // Meta credentials
         facebookPageId: initialValues.facebookPageId || '',
         instagramAccountId: initialValues.instagramAccountId || '',
-        metaAccessToken: initialValues.metaAccessToken || ''
+        metaAccessToken: initialValues.metaAccessToken || '',
+        // Property Finder credentials
+        propertyFinderApiKey: initialValues.propertyFinderApiKey || '',
+        propertyFinderApiSecret: initialValues.propertyFinderApiSecret || '',
+        propertyFinderAccessToken: initialValues.propertyFinderAccessToken || '',
+        propertyFinderTokenExpiry: initialValues.propertyFinderTokenExpiry || null
       };
 
       form.setFieldsValue(formValues);
@@ -108,7 +116,12 @@ const CompanyForm = ({ onSuccess, initialValues = null, isEditing = false }) => 
       const companyData = {
         ...values,
         // Ensure social media links object exists
-        socialMediaLinks: values.socialMediaLinks || {}
+        socialMediaLinks: values.socialMediaLinks || {},
+        // Ensure Property Finder credentials are included
+        propertyFinderApiKey: values.propertyFinderApiKey || '',
+        propertyFinderApiSecret: values.propertyFinderApiSecret || '',
+        propertyFinderAccessToken: values.propertyFinderAccessToken || null,
+        propertyFinderTokenExpiry: values.propertyFinderTokenExpiry || null
       };
 
       if (isEditing && initialValues?.id) {
@@ -403,6 +416,83 @@ const CompanyForm = ({ onSuccess, initialValues = null, isEditing = false }) => 
           </Col>
         </Row>
 
+        {/* ==================== PROPERTY FINDER INTEGRATION ==================== */}
+        <Divider orientation="left">
+          <span><ApiOutlined /> Property Finder Integration</span>
+        </Divider>
+
+        <Alert
+          message="Property Finder API Connection"
+          description="Enter your Property Finder API credentials to sync leads and listing data from Property Finder."
+          type="info"
+          showIcon
+          style={{ marginBottom: 24 }}
+        />
+
+        <Row gutter={16}>
+          <Col xs={24} md={12}>
+            <Form.Item
+              label="Property Finder API Key"
+              name="propertyFinderApiKey"
+              tooltip="You can find this in PF Expert > Developer Resources > API Credentials"
+              rules={[
+                { required: false, message: 'API Key is required for Property Finder integration' }
+              ]}
+            >
+              <Input.Password
+                prefix={<ApiOutlined />}
+                placeholder="abcde.abcdefghijklmnopqrstuvwxyz01234567"
+                visibilityToggle
+              />
+            </Form.Item>
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              ⚠️ This is your unique client identifier on PF Expert.
+            </Text>
+          </Col>
+
+          <Col xs={24} md={12}>
+            <Form.Item
+              label="Property Finder API Secret"
+              name="propertyFinderApiSecret"
+              tooltip="Your client secret, used for authentication when requesting an access token"
+              rules={[
+                { required: false, message: 'API Secret is required for Property Finder integration' }
+              ]}
+            >
+              <Input.Password
+                prefix={<LockOutlined />}
+                placeholder="abcdefghijklmnopqrstuvwxyz012345"
+                visibilityToggle
+              />
+            </Form.Item>
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              ⚠️ Keep this secret secure. Never share it publicly.
+            </Text>
+          </Col>
+        </Row>
+
+        {/* Optional: Show current token status if editing */}
+        {isEditing && initialValues?.propertyFinderAccessToken && (
+          <Row gutter={16}>
+            <Col span={24}>
+              <Alert
+                message="Property Finder Connected"
+                description={
+                  <div>
+                    <p><SafetyOutlined /> Access token is configured and ready.</p>
+                    <p style={{ fontSize: '12px', color: '#666' }}>
+                      Token will auto-renew when expired.
+                    </p>
+                  </div>
+                }
+                type="success"
+                showIcon
+              />
+            </Col>
+          </Row>
+        )}
+
+        {/* ==================== SOCIAL MEDIA PROFILES ==================== */}
         <Divider orientation="left">Social Media Profiles</Divider>
 
         {/* Website */}
@@ -474,6 +564,38 @@ const CompanyForm = ({ onSuccess, initialValues = null, isEditing = false }) => 
           </Col>
         </Row>
 
+        {/* Integration Summary (if editing) */}
+        {isEditing && initialValues && (
+          <>
+            <Divider orientation="left">Integration Status</Divider>
+            <Row gutter={16}>
+              <Col span={24}>
+                <Alert
+                  message="Connected Services"
+                  description={
+                    <ul style={{ margin: '8px 0 0 0', paddingLeft: 20 }}>
+                      {initialValues.metaAccessToken && (
+                        <li>✅ Meta (Facebook/Instagram) connected</li>
+                      )}
+                      {!initialValues.metaAccessToken && (
+                        <li>❌ Meta (Facebook/Instagram) not connected</li>
+                      )}
+                      {initialValues.propertyFinderApiKey && initialValues.propertyFinderApiSecret && (
+                        <li>✅ Property Finder connected</li>
+                      )}
+                      {(!initialValues.propertyFinderApiKey || !initialValues.propertyFinderApiSecret) && (
+                        <li>❌ Property Finder not connected</li>
+                      )}
+                    </ul>
+                  }
+                  type="info"
+                  showIcon
+                />
+              </Col>
+            </Row>
+          </>
+        )}
+
         {/* Submit Button */}
         <Form.Item className="text-right">
           <Button
@@ -482,7 +604,7 @@ const CompanyForm = ({ onSuccess, initialValues = null, isEditing = false }) => 
             loading={loading}
             size="large"
           >
-            Create Company
+            {isEditing ? 'Update Company' : 'Create Company'}
           </Button>
         </Form.Item>
       </Form>
