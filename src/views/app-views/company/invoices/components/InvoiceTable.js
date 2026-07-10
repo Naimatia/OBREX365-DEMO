@@ -1,5 +1,5 @@
 // components/InvoiceTable.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Table, Tag, Card, Button, Space, Modal, Badge, Tooltip, message, DatePicker, Form, Input, Select } from 'antd';
 import {
   DollarOutlined,
@@ -24,6 +24,7 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
   const [markPaidModalVisible, setMarkPaidModalVisible] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [form] = Form.useForm();
+  const [processedOverdueIds, setProcessedOverdueIds] = useState(new Set());
 
   // Load creator information for invoices
   useEffect(() => {
@@ -49,11 +50,30 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
         }
       }));
       
-      setCreatorCache(newCache);
+      // Only update if there are new entries
+      if (Object.keys(newCache).length !== Object.keys(creatorCache).length) {
+        setCreatorCache(newCache);
+      }
     };
     
     loadCreators();
-  }, [invoices, creatorCache]);
+  }, [invoices, users]); // Remove creatorCache from dependencies
+
+  // Handle overdue invoices - moved from render to useEffect
+  useEffect(() => {
+    const overdueInvoices = invoices.filter(
+      invoice =>
+        invoice.Status === InvoiceStatus.PENDING &&
+        isInvoiceOverdue(invoice.DateLimit) &&
+        !processedOverdueIds.has(invoice.id)
+    );
+
+    overdueInvoices.forEach(invoice => {
+      // Mark as processed immediately to prevent duplicate processing
+      setProcessedOverdueIds(prev => new Set(prev).add(invoice.id));
+      handleMarkAsMissed(invoice);
+    });
+  }, [invoices]); // Only depend on invoices
 
   // Format date from Firestore timestamp
   const formatDate = (timestamp) => {
@@ -152,7 +172,6 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
 
   // Helper function to get payment date from invoice
   const getDefaultPaymentDate = (invoice) => {
-    // If invoice has a paymentDate, use it
     if (invoice.paymentDate) {
       try {
         let date;
@@ -170,7 +189,6 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
         console.error('Error parsing payment date:', error);
       }
     }
-    // Default to today
     return dayjs();
   };
 
@@ -178,7 +196,6 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
   const showMarkAsPaidModal = (invoice) => {
     setSelectedInvoice(invoice);
     
-    // Get the default payment date
     const defaultDate = getDefaultPaymentDate(invoice);
     
     form.setFieldsValue({
@@ -223,8 +240,8 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
         Status: InvoiceStatus.MISSED,
         LastUpdate: new Date()
       });
-      message.warning('Invoice marked as missed');
-      fetchInvoices();
+      console.log(`Invoice ${invoice.id} marked as missed`);
+      // Don't call fetchInvoices here to avoid loops - parent will refresh
     } catch (error) {
       console.error('Error marking invoice as missed:', error);
     } finally {
@@ -240,6 +257,15 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
     }
     window.open(url, '_blank');
   };
+
+  // Memoize sorted invoices to prevent re-sorting on every render
+  const sortedInvoices = useMemo(() => {
+    return [...invoices].sort((a, b) => {
+      const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
+      const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
+      return dateB - dateA;
+    });
+  }, [invoices]);
 
   // Set up table columns
   const columns = [
@@ -293,15 +319,27 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
         let color = 'default';
         let icon = null;
         
+        // Check for overdue status FIRST
+        if (status === InvoiceStatus.PENDING && isInvoiceOverdue(record.DateLimit)) {
+          color = 'error';
+          icon = <ExclamationCircleOutlined />;
+          return (
+            <Tooltip title="This invoice is overdue">
+              <Tag color={color} icon={icon}>
+                Overdue
+              </Tag>
+            </Tooltip>
+          );
+        }
+        
         switch(status) {
           case InvoiceStatus.PAID:
             color = 'success';
             icon = <CheckCircleOutlined />;
             break;
           case InvoiceStatus.PENDING:
-            color = isInvoiceOverdue(record.DateLimit) ? 'error' : 'processing';
-            icon = isInvoiceOverdue(record.DateLimit) ? 
-              <ExclamationCircleOutlined /> : <ClockCircleOutlined />;
+            color = 'processing';
+            icon = <ClockCircleOutlined />;
             break;
           case InvoiceStatus.MISSED:
             color = 'error';
@@ -315,17 +353,18 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
             color = 'default';
         }
 
+        // Check for due soon (only for pending that are not overdue)
         if (status === InvoiceStatus.PENDING && isInvoiceDueSoon(record.DateLimit)) {
           const daysRemaining = getDaysRemaining(record.DateLimit);
           return (
             <Space>
-              <Badge dot={true} color="red">
-                <Tag color={color} icon={icon}>
+              <Badge dot={true} color="orange">
+                <Tag color="warning" icon={icon}>
                   {status}
                 </Tag>
               </Badge>
               <Tooltip title={`Due in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`}>
-                <ExclamationOutlined style={{ color: '#ff4d4f' }} />
+                <ExclamationOutlined style={{ color: '#faad14' }} />
               </Tooltip>
             </Space>
           );
@@ -480,13 +519,8 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
       render: (_, record) => {
         const isLoading = processingId === record.id;
         
-        // Auto mark as missed if overdue
-        if (
-          record.Status === InvoiceStatus.PENDING && 
-          isInvoiceOverdue(record.DateLimit) && 
-          !isLoading
-        ) {
-          handleMarkAsMissed(record);
+        // Don't show actions for processing invoices
+        if (isLoading) {
           return <span>Processing...</span>;
         }
         
@@ -501,6 +535,24 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
                 loading={isLoading}
               >
                 Mark Paid
+              </Button>
+            )}
+            
+            {/* Show a "Mark Missed" button for overdue invoices */}
+            {record.Status === InvoiceStatus.PENDING && isInvoiceOverdue(record.DateLimit) && (
+              <Button 
+                danger
+                size="small"
+                icon={<StopOutlined />}
+                onClick={() => {
+                  Modal.confirm({
+                    title: 'Mark Invoice as Missed',
+                    content: `Are you sure you want to mark this overdue invoice as missed?`,
+                    onOk: () => handleMarkAsMissed(record)
+                  });
+                }}
+              >
+                Mark Missed
               </Button>
             )}
             
@@ -550,13 +602,6 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
     },
   ];
 
-  // Sort invoices by creation date (latest first) before displaying
-  const sortedInvoices = [...invoices].sort((a, b) => {
-    const dateA = a.CreationDate?.toDate?.() || new Date(a.CreationDate) || new Date(0);
-    const dateB = b.CreationDate?.toDate?.() || new Date(b.CreationDate) || new Date(0);
-    return dateB - dateA;
-  });
-
   return (
     <>
       <Card>
@@ -573,7 +618,7 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
         />
       </Card>
 
-      {/* Mark as Paid Modal with Date Picker - Allows any date */}
+      {/* Mark as Paid Modal */}
       <Modal
         title="Mark Invoice as Paid"
         open={markPaidModalVisible}
@@ -640,7 +685,6 @@ const InvoiceTable = ({ invoices = [], loading, fetchInvoices, users = [], onVie
               format="DD/MM/YYYY"
               placeholder="Select payment date"
               suffixIcon={<CalendarOutlined />}
-              // No disabledDate - allows any date (past, present, future)
               allowClear={false}
               size="large"
             />
