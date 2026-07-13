@@ -208,6 +208,28 @@ export const protectedRoutes = [
         component: React.lazy(() => import('views/app-views/social/instagram')),
         allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.MARKETING_MANAGER]
     },
+
+        {
+        key: 'listings',
+        path: `${APP_PREFIX_PATH}/property/listings`,
+        component: React.lazy(() => import('views/app-views/property/listings')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
+    },
+
+           {
+        key: 'leads',
+        path: `${APP_PREFIX_PATH}/property/leads`,
+        component: React.lazy(() => import('views/app-views/property/leads')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
+    },
+
+               {
+        key: 'statistics',
+        path: `${APP_PREFIX_PATH}/property/statistics`,
+        component: React.lazy(() => import('views/app-views/property/statistics')),
+        allowedRoles: [UserRoles.SUPER_ADMIN, UserRoles.CEO, UserRoles.HR]
+    },
+
     {
         key: 'scheduler',
         path: `${APP_PREFIX_PATH}/social/Post-Scheduler`,

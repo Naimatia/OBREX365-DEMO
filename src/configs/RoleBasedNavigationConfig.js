@@ -21,7 +21,10 @@ import {
   InstagramOutlined,
   FieldTimeOutlined,
   BarChartOutlined,
-  ContactsOutlined
+  ContactsOutlined,
+  TrophyOutlined,
+  UsergroupAddOutlined,
+  CompassOutlined
   
 } from '@ant-design/icons';
 import { APP_PREFIX_PATH } from 'configs/AppConfig';
@@ -191,6 +194,40 @@ const hrNavigation = [
       },
     ]
   },
+
+  
+{
+  key: 'property-finder',
+  title: 'Property Finder',
+  icon: CompassOutlined, // Property Finder's globe icon
+  breadcrumb: true,
+  submenu: [
+    {
+      key: 'statistics',
+      path: `${APP_PREFIX_PATH}/property/statistics`,
+      title: 'Agent Insights',
+      icon: TrophyOutlined, // Achievement/performance
+      breadcrumb: true,
+      submenu: []
+    },
+    {
+      key: 'listings',
+      path: `${APP_PREFIX_PATH}/property/listings`,
+      title: 'Listings Management',
+      icon: AppstoreOutlined, // Grid/listing view
+      breadcrumb: true,
+      submenu: []
+    },
+    {
+      key: 'leads',
+      path: `${APP_PREFIX_PATH}/property/leads`,
+      title: 'Leads Management',
+      icon: UsergroupAddOutlined, // Team/people for leads
+      breadcrumb: true,
+      submenu: []
+    }
+  ]
+},
    // Tools
   {
     key: 'tools',
@@ -465,6 +502,39 @@ const ceoNavigation = [
       }
     ]
   },
+
+{
+  key: 'property-finder',
+  title: 'Property Finder',
+  icon: CompassOutlined, // Property Finder's globe icon
+  breadcrumb: true,
+  submenu: [
+    {
+      key: 'statistics',
+      path: `${APP_PREFIX_PATH}/property/statistics`,
+      title: 'Agent Insights',
+      icon: TrophyOutlined, // Achievement/performance
+      breadcrumb: true,
+      submenu: []
+    },
+    {
+      key: 'listings',
+      path: `${APP_PREFIX_PATH}/property/listings`,
+      title: 'Listings Management',
+      icon: AppstoreOutlined, // Grid/listing view
+      breadcrumb: true,
+      submenu: []
+    },
+    {
+      key: 'leads',
+      path: `${APP_PREFIX_PATH}/property/leads`,
+      title: 'Leads Management',
+      icon: UsergroupAddOutlined, // Team/people for leads
+      breadcrumb: true,
+      submenu: []
+    }
+  ]
+},
 
   // Tools
   {
