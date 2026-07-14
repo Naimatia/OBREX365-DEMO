@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 
 const client = new OpenAI({
-  apiKey: process.env.REACT_APP_GROQ_API_KEY ,
+  apiKey: 'asojejcpcjj' ,
   baseURL: 'https://api.groq.com/openai/v1',
   dangerouslyAllowBrowser: true
 });

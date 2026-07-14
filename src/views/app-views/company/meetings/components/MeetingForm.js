@@ -1,17 +1,19 @@
+// MeetingForm.js - Updated to pass companyUsers to the service
+
 import React, { useEffect, useState } from 'react';
 import { 
   Form, Input, Button, DatePicker, TimePicker, Select, InputNumber,
-  Radio, Spin, Row, Col, Typography
+  Radio, Spin, Row, Col, Typography, message
 } from 'antd';
 import dayjs from 'dayjs';
 import {
   CalendarOutlined, ClockCircleOutlined, TeamOutlined, UserOutlined,
-  LinkOutlined, SaveOutlined, CloseOutlined
+  LinkOutlined, SaveOutlined, CloseOutlined, MailOutlined
 } from '@ant-design/icons';
 
 const { Option } = Select;
 const { TextArea } = Input;
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const MeetingForm = ({ 
   currentUser, 
@@ -24,6 +26,7 @@ const MeetingForm = ({
 }) => {
   const [form] = Form.useForm();
   const [meetingType, setMeetingType] = useState(initialValues?.Type || 'onSite');
+  const [sendingNotifications, setSendingNotifications] = useState(false);
 
   // Set form initial values when editing
   useEffect(() => {
@@ -46,50 +49,79 @@ const MeetingForm = ({
     }
   };
 
-  const handleSubmit = (values) => {
-     const date = values.meetingDate.format('YYYY-MM-DD');
-  const time = values.meetingTime.format('HH:mm');
+  const handleSubmit = async (values) => {
+    setSendingNotifications(true);
+    
+    try {
+      const date = values.meetingDate.format('YYYY-MM-DD');
+      const time = values.meetingTime.format('HH:mm');
+      const dateTime = dayjs(`${date} ${time}`, 'YYYY-MM-DD HH:mm');
 
-  const dateTime = dayjs(`${date} ${time}`, 'YYYY-MM-DD HH:mm');
+      // Separate internal users (IDs) and external participants (free text)
+      const internalUsers = [];
+      const externalParticipants = [];
 
-    // Separate internal users (IDs) and external participants (free text)
-    const internalUsers = [];
-    const externalParticipants = [];
+      (values.Users || []).forEach(item => {
+        // If it matches a company user ID → internal
+        if (companyUsers.some(user => user.id === item)) {
+          internalUsers.push(item);
+        } 
+        // Otherwise → external (free text)
+        else {
+          externalParticipants.push(item);
+        }
+      });
 
-    (values.Users || []).forEach(item => {
-      // If it matches a company user ID → internal
-      if (companyUsers.some(user => user.id === item)) {
-        internalUsers.push(item);
-      } 
-      // Otherwise → external (free text)
-      else {
-        externalParticipants.push(item);
+      const meetingData = {
+        Title: values.Title,
+        Description: values.Description || '',
+        DateTime: dateTime.toDate(),
+        Duration: values.Duration,
+        Type: values.Type,
+        Status: values.Status || 'Pending',
+        Users: internalUsers,
+        ExternalParticipants: externalParticipants,
+        MeetLink: values.Type === 'online' ? values.MeetLink : null,
+        company_id: currentUser.company_id,
+        creator_id: currentUser.uid
+      };
+
+      if (isEdit && initialValues) {
+        delete meetingData.creator_id;
       }
-    });
 
-    const meetingData = {
-      Title: values.Title,
-      Description: values.Description || '',
-      DateTime: dateTime.toDate(),
-      Duration: values.Duration,
-      Type: values.Type,
-      Status: values.Status || 'Pending',
-      Users: internalUsers,                    // Only real user IDs
-      ExternalParticipants: externalParticipants, // Free text names/emails
-      MeetLink: values.Type === 'online' ? values.MeetLink : null,
-      company_id: currentUser.company_id,
-      creator_id: currentUser.uid
-    };
-
-    if (isEdit && initialValues) {
-      delete meetingData.creator_id;
+      // Call onSave which will handle the meeting creation and notifications
+      await onSave(meetingData);
+      
+      // Show success message with notification info
+      message.success(
+        isEdit ? 'Meeting updated successfully!' : 'Meeting created and notifications sent!',
+        3
+      );
+      
+    } catch (error) {
+      console.error('Error saving meeting:', error);
+      message.error(`Failed to ${isEdit ? 'update' : 'create'} meeting: ${error.message}`);
+    } finally {
+      setSendingNotifications(false);
     }
+  };
 
-    onSave(meetingData);
+  // Show notification status
+  const renderNotificationStatus = () => {
+    if (sendingNotifications) {
+      return (
+        <div style={{ marginTop: 16, padding: 12, background: '#e6f7ff', borderRadius: 8 }}>
+          <Spin size="small" />
+          <Text style={{ marginLeft: 8 }}>Sending email notifications to participants...</Text>
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
-    <Spin spinning={loading}>
+    <Spin spinning={loading || sendingNotifications}>
       <div style={{ padding: '20px 0' }}>
         <Title level={4}>
           {isEdit ? 'Edit Meeting' : 'Add New Meeting'}
@@ -105,7 +137,7 @@ const MeetingForm = ({
             Duration: 60,
           }}
         >
-       <Row gutter={16}>
+          <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item
                 name="Title"
@@ -201,12 +233,18 @@ const MeetingForm = ({
               />
             </Form.Item>
           )}
-          {/* Participants Field */}
+
           <Form.Item
             name="Users"
             label="Participants"
             rules={[{ required: true, message: 'Please add at least one participant' }]}
-            extra="Select company users or type external names/emails and press Enter"
+            extra={
+              <div style={{ fontSize: '12px', color: '#666' }}>
+                <MailOutlined style={{ marginRight: 4 }} />
+                Select company users or type external names/emails and press Enter. 
+                Email notifications will be sent to all participants.
+              </div>
+            }
           >
             <Select
               mode="tags"
@@ -216,9 +254,17 @@ const MeetingForm = ({
             >
               {companyUsers.map(user => (
                 <Option key={user.id} value={user.id}>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <UserOutlined style={{ marginRight: 8 }} />
-                    {user.name} ({user.email || user.Role || ''})
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>
+                      <UserOutlined style={{ marginRight: 8 }} />
+                      {user.name}
+                    </span>
+                    {user.email && (
+                      <Text type="secondary" style={{ fontSize: '12px' }}>
+                        <MailOutlined style={{ marginRight: 4 }} />
+                        {user.email}
+                      </Text>
+                    )}
                   </div>
                 </Option>
               ))}
@@ -235,13 +281,35 @@ const MeetingForm = ({
             />
           </Form.Item>
 
-          <Form.Item>
+          {renderNotificationStatus()}
+
+          <div style={{ 
+            marginTop: 16, 
+            padding: 12, 
+            background: '#f0f5ff', 
+            borderRadius: 8,
+            border: '1px solid #d6e4ff'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <MailOutlined style={{ color: '#1890ff', marginRight: 8 }} />
+              <Text style={{ fontSize: '13px', color: '#666' }}>
+                Email notifications will be sent to all participants with valid email addresses when you create this meeting.
+              </Text>
+            </div>
+          </div>
+
+          <Form.Item style={{ marginTop: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <Button onClick={onCancel} icon={<CloseOutlined />}>
+              <Button onClick={onCancel} icon={<CloseOutlined />} disabled={sendingNotifications}>
                 Cancel
               </Button>
-              <Button type="primary" htmlType="submit" loading={loading} icon={<SaveOutlined />}>
-                {isEdit ? 'Update Meeting' : 'Create Meeting'}
+              <Button 
+                type="primary" 
+                htmlType="submit" 
+                loading={sendingNotifications}
+                icon={sendingNotifications ? null : <SaveOutlined />}
+              >
+                {isEdit ? 'Update Meeting' : 'Create Meeting & Send Notifications'}
               </Button>
             </div>
           </Form.Item>

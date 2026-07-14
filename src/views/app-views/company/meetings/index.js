@@ -1,4 +1,5 @@
-// @ts-nocheck
+// MeetingsPage.js - Updated with notification handling
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Card, 
@@ -10,14 +11,15 @@ import {
   Alert, 
   Row, 
   Col,
-  PageHeader 
+  notification
 } from 'antd';
 import { useSelector } from 'react-redux';
 import { 
   CalendarOutlined, 
   PlusOutlined, 
   TeamOutlined,
-  ExclamationCircleOutlined 
+  MailOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 
 // Import components
@@ -56,6 +58,7 @@ const MeetingsPage = () => {
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState(null);
   
   // Get current user from Redux store as backup
   const reduxUser = useSelector(state => state.auth.user);
@@ -64,13 +67,10 @@ const MeetingsPage = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       if (authUser) {
-        // Set user state
         setUser(authUser);
         
-        // Use reduxUser for additional info if available
         if (reduxUser) {
           let compId = null;
-          // Check various possible field names for company ID
           const possibleFields = ['company_id', 'companyId', 'company', 'companyID', 'organizationId', 'organization_id'];
           for (const field of possibleFields) {
             if (reduxUser && reduxUser[field]) {
@@ -87,14 +87,12 @@ const MeetingsPage = () => {
           }
         }
       } else {
-        // Not logged in
         setUser(null);
         setCompanyId(null);
       }
       setAuthLoading(false);
     });
     
-    // Cleanup
     return () => unsubscribe();
   }, [reduxUser]);
   
@@ -113,7 +111,6 @@ const MeetingsPage = () => {
     setError(null);
     
     try {
-      // Fetch meetings and users in parallel
       const [meetingsData, usersData] = await Promise.all([
         MeetingService.fetchMeetings(companyId),
         MeetingService.fetchCompanyUsers(companyId)
@@ -157,22 +154,53 @@ const MeetingsPage = () => {
     setFormLoading(true);
     
     try {
+      let result;
+      
       if (editMode && selectedMeeting) {
         // Update existing meeting
-        await MeetingService.updateMeeting(selectedMeeting.id, meetingData);
-        message.success('Meeting updated successfully');
+        result = await MeetingService.updateMeeting(
+          selectedMeeting.id, 
+          meetingData, 
+          companyUsers
+        );
+        
+        const sentCount = result.notificationResults?.filter(r => r.success).length || 0;
+        const totalCount = result.notificationResults?.length || 0;
+        
+        notification.success({
+          message: 'Meeting Updated',
+          description: `Meeting updated successfully. ${sentCount}/${totalCount} participants notified via email.`,
+          icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+          duration: 4
+        });
+        
       } else {
         // Create new meeting
-        await MeetingService.createMeeting(meetingData);
-        message.success('Meeting created successfully');
+        result = await MeetingService.createMeeting(meetingData, companyUsers);
+        
+        const sentCount = result.notificationResults?.results?.filter(r => r.success).length || 0;
+        const totalCount = result.notificationResults?.results?.length || 0;
+        
+        notification.success({
+          message: 'Meeting Created',
+          description: `Meeting created successfully! ${sentCount}/${totalCount} participants notified via email.`,
+          icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+          duration: 4
+        });
       }
       
       // Refresh data and close form
       await fetchMeetingsData();
       setFormVisible(false);
+      
     } catch (err) {
       console.error('Error saving meeting:', err);
-      message.error('Failed to save meeting. Please try again.');
+      
+      notification.error({
+        message: 'Error',
+        description: err.message || 'Failed to save meeting. Please try again.',
+        duration: 5
+      });
     } finally {
       setFormLoading(false);
     }
@@ -182,14 +210,52 @@ const MeetingsPage = () => {
   const handleDeleteMeeting = async (meetingId) => {
     try {
       await MeetingService.deleteMeeting(meetingId);
-      message.success('Meeting deleted successfully');
       
-      // Refresh data and close detail view
+      notification.success({
+        message: 'Meeting Deleted',
+        description: 'Meeting deleted successfully.',
+        duration: 3
+      });
+      
       await fetchMeetingsData();
       setDetailVisible(false);
     } catch (err) {
       console.error('Error deleting meeting:', err);
-      message.error('Failed to delete meeting. Please try again.');
+      notification.error({
+        message: 'Error',
+        description: 'Failed to delete meeting. Please try again.',
+        duration: 5
+      });
+    }
+  };
+
+  // Handle resend notifications
+  const handleResendNotifications = async (meeting) => {
+    try {
+      const result = await MeetingService.resendMeetingNotifications(
+        meeting.id, 
+        companyUsers
+      );
+      
+      const sentCount = result.notificationResults?.results?.filter(r => r.success).length || 0;
+      const totalCount = result.notificationResults?.results?.length || 0;
+      
+      notification.success({
+        message: 'Notifications Resent',
+        description: `Successfully resent ${sentCount}/${totalCount} notifications to participants.`,
+        icon: <MailOutlined style={{ color: '#1890ff' }} />,
+        duration: 4
+      });
+      
+      await fetchMeetingsData();
+      
+    } catch (err) {
+      console.error('Error resending notifications:', err);
+      notification.error({
+        message: 'Error',
+        description: err.message || 'Failed to resend notifications.',
+        duration: 5
+      });
     }
   };
   
@@ -237,6 +303,14 @@ const MeetingsPage = () => {
               Company Meetings
             </Title>
             <Text>Manage your company meetings and appointments</Text>
+            {meetings.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <Text type="secondary" style={{ fontSize: '13px' }}>
+                  <MailOutlined style={{ marginRight: 4 }} />
+                  Email notifications are automatically sent when meetings are created or updated
+                </Text>
+              </div>
+            )}
           </Col>
           
           {hasEditPermission() && (
@@ -314,6 +388,7 @@ const MeetingsPage = () => {
         onClose={() => setDetailVisible(false)}
         onEdit={hasEditPermission() ? handleEditMeeting : undefined}
         onDelete={hasEditPermission() ? handleDeleteMeeting : undefined}
+        onResendNotifications={hasEditPermission() ? handleResendNotifications : undefined}
         users={companyUsers}
         currentUser={{
           uid: user.uid,
