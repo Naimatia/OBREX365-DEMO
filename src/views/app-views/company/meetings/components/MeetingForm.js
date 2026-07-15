@@ -1,14 +1,15 @@
-// MeetingForm.js - Updated to pass companyUsers to the service
+// MeetingForm.js - Updated to only show employees from employees table
 
 import React, { useEffect, useState } from 'react';
 import { 
   Form, Input, Button, DatePicker, TimePicker, Select, InputNumber,
-  Radio, Spin, Row, Col, Typography, message
+  Radio, Spin, Row, Col, Typography, message, Tag
 } from 'antd';
 import dayjs from 'dayjs';
 import {
   CalendarOutlined, ClockCircleOutlined, TeamOutlined, UserOutlined,
-  LinkOutlined, SaveOutlined, CloseOutlined, MailOutlined
+  LinkOutlined, SaveOutlined, CloseOutlined, MailOutlined,
+  SendOutlined
 } from '@ant-design/icons';
 
 const { Option } = Select;
@@ -18,6 +19,7 @@ const { Title, Text } = Typography;
 const MeetingForm = ({ 
   currentUser, 
   companyUsers, 
+  employees, // Employees from the employees table
   initialValues, 
   onSave, 
   onCancel, 
@@ -28,19 +30,23 @@ const MeetingForm = ({
   const [meetingType, setMeetingType] = useState(initialValues?.Type || 'onSite');
   const [sendingNotifications, setSendingNotifications] = useState(false);
 
-  // Set form initial values when editing
   useEffect(() => {
     if (initialValues) {
+      // Filter initialValues.Users to only include employees that exist
+      const validEmployeeIds = initialValues.Users?.filter(id => 
+        employees.some(emp => emp.id === id)
+      ) || [];
+      
       form.setFieldsValue({
         ...initialValues,
         meetingDate: initialValues.DateTime ? dayjs(initialValues.DateTime) : null,
         meetingTime: initialValues.DateTime ? dayjs(initialValues.DateTime) : null,
-        Users: initialValues.Users || [],
+        Users: validEmployeeIds,
         ExternalParticipants: initialValues.ExternalParticipants || [],
       });
       setMeetingType(initialValues.Type || 'onSite');
     }
-  }, [initialValues, form]);
+  }, [initialValues, form, employees]);
 
   const handleTypeChange = (e) => {
     setMeetingType(e.target.value);
@@ -57,17 +63,16 @@ const MeetingForm = ({
       const time = values.meetingTime.format('HH:mm');
       const dateTime = dayjs(`${date} ${time}`, 'YYYY-MM-DD HH:mm');
 
-      // Separate internal users (IDs) and external participants (free text)
-      const internalUsers = [];
+      // Only employees from the employees table
+      const employeeParticipants = [];
       const externalParticipants = [];
 
       (values.Users || []).forEach(item => {
-        // If it matches a company user ID → internal
-        if (companyUsers.some(user => user.id === item)) {
-          internalUsers.push(item);
-        } 
-        // Otherwise → external (free text)
-        else {
+        // Check if it's an employee ID from the employees table
+        if (employees.some(emp => emp.id === item)) {
+          employeeParticipants.push(item);
+        } else {
+          // If not an employee, treat as external
           externalParticipants.push(item);
         }
       });
@@ -79,7 +84,7 @@ const MeetingForm = ({
         Duration: values.Duration,
         Type: values.Type,
         Status: values.Status || 'Pending',
-        Users: internalUsers,
+        Users: employeeParticipants, // Only employee IDs
         ExternalParticipants: externalParticipants,
         MeetLink: values.Type === 'online' ? values.MeetLink : null,
         company_id: currentUser.company_id,
@@ -90,12 +95,10 @@ const MeetingForm = ({
         delete meetingData.creator_id;
       }
 
-      // Call onSave which will handle the meeting creation and notifications
       await onSave(meetingData);
       
-      // Show success message with notification info
       message.success(
-        isEdit ? 'Meeting updated successfully!' : 'Meeting created and notifications sent!',
+        isEdit ? 'Meeting updated successfully!' : 'Meeting created and notifications sent to all participants!',
         3
       );
       
@@ -107,7 +110,6 @@ const MeetingForm = ({
     }
   };
 
-  // Show notification status
   const renderNotificationStatus = () => {
     if (sendingNotifications) {
       return (
@@ -118,6 +120,41 @@ const MeetingForm = ({
       );
     }
     return null;
+  };
+
+  // Get participant emails from employees table only
+  const getParticipantEmails = () => {
+    const emails = [];
+    const selectedUsers = form.getFieldValue('Users') || [];
+    
+    selectedUsers.forEach(userId => {
+      // Check in employees table only
+      const employee = employees.find(e => e.id === userId);
+      if (employee?.email) {
+        emails.push(employee.email);
+      }
+    });
+    
+    return emails;
+  };
+
+  // Get selected employee names for display
+  const getSelectedEmployees = () => {
+    const names = [];
+    const selectedUsers = form.getFieldValue('Users') || [];
+    
+    selectedUsers.forEach(userId => {
+      const employee = employees.find(e => e.id === userId);
+      if (employee) {
+        names.push({
+          name: employee.name,
+          role: employee.Role || 'Employee',
+          email: employee.email
+        });
+      }
+    });
+    
+    return names;
   };
 
   return (
@@ -240,29 +277,38 @@ const MeetingForm = ({
             rules={[{ required: true, message: 'Please add at least one participant' }]}
             extra={
               <div style={{ fontSize: '12px', color: '#666' }}>
-                <MailOutlined style={{ marginRight: 4 }} />
-                Select company users or type external names/emails and press Enter. 
-                Email notifications will be sent to all participants.
+                <TeamOutlined style={{ marginRight: 4 }} />
+                Select employees from the list below. Email notifications will be sent to all selected employees.
+                <br />
+                <Text type="secondary" style={{ fontSize: '11px' }}>
+                  Total employees available: {employees.length}
+                </Text>
               </div>
             }
           >
             <Select
-              mode="tags"
-              placeholder="Type name or email and press Enter"
+              mode="multiple"
+              placeholder="Select employees"
               style={{ width: '100%' }}
               suffixIcon={<TeamOutlined />}
+              optionFilterProp="children"
+              showSearch
             >
-              {companyUsers.map(user => (
-                <Option key={user.id} value={user.id}>
+              {/* Only employees from employees table */}
+              {employees.map(employee => (
+                <Option key={employee.id} value={employee.id}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span>
                       <UserOutlined style={{ marginRight: 8 }} />
-                      {user.name}
+                      {employee.name}
+                      <Tag size="small" style={{ marginLeft: 4, fontSize: '10px' }}>
+                        {employee.Role || 'Employee'}
+                      </Tag>
                     </span>
-                    {user.email && (
+                    {employee.email && (
                       <Text type="secondary" style={{ fontSize: '12px' }}>
                         <MailOutlined style={{ marginRight: 4 }} />
-                        {user.email}
+                        {employee.email}
                       </Text>
                     )}
                   </div>
@@ -270,6 +316,24 @@ const MeetingForm = ({
               ))}
             </Select>
           </Form.Item>
+
+          {/* Show selected employees with their roles */}
+          {getSelectedEmployees().length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary" style={{ fontSize: '13px' }}>
+                Selected Participants ({getSelectedEmployees().length}):
+              </Text>
+              <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {getSelectedEmployees().map((item, index) => (
+                  <Tag key={index} color="blue">
+                    {item.name}
+                    {item.role && ` (${item.role})`}
+                    {item.email && ` - ${item.email}`}
+                  </Tag>
+                ))}
+              </div>
+            </div>
+          )}
 
           <Form.Item
             name="Description"
@@ -290,11 +354,27 @@ const MeetingForm = ({
             borderRadius: 8,
             border: '1px solid #d6e4ff'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <MailOutlined style={{ color: '#1890ff', marginRight: 8 }} />
-              <Text style={{ fontSize: '13px', color: '#666' }}>
-                Email notifications will be sent to all participants with valid email addresses when you create this meeting.
-              </Text>
+            <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+              <MailOutlined style={{ color: '#1890ff', marginRight: 8, marginTop: 2 }} />
+              <div>
+                <Text style={{ fontSize: '13px', color: '#666' }}>
+                  <strong>📧 Email Notifications:</strong> All selected employees with valid email addresses will receive notifications.
+                  <br />
+                  <span style={{ fontSize: '12px' }}>
+                    Found <strong>{getParticipantEmails().length}</strong> employees with email addresses.
+                    {getParticipantEmails().length > 0 && (
+                      <span style={{ display: 'block', marginTop: 4 }}>
+                        Will send to: {getParticipantEmails().join(', ')}
+                      </span>
+                    )}
+                    {getParticipantEmails().length === 0 && (
+                      <span style={{ display: 'block', marginTop: 4, color: '#faad14' }}>
+                        ⚠️ No employees have email addresses. Please add emails to employee profiles.
+                      </span>
+                    )}
+                  </span>
+                </Text>
+              </div>
             </div>
           </div>
 
@@ -307,9 +387,14 @@ const MeetingForm = ({
                 type="primary" 
                 htmlType="submit" 
                 loading={sendingNotifications}
-                icon={sendingNotifications ? null : <SaveOutlined />}
+                icon={sendingNotifications ? null : <SendOutlined />}
               >
-                {isEdit ? 'Update Meeting' : 'Create Meeting & Send Notifications'}
+                {sendingNotifications 
+                  ? 'Sending...' 
+                  : isEdit 
+                    ? 'Update Meeting' 
+                    : 'Create Meeting & Send Notifications'
+                }
               </Button>
             </div>
           </Form.Item>

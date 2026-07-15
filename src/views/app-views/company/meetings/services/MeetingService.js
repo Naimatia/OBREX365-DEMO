@@ -1,4 +1,4 @@
-// MeetingService.js - Updated with email notification on create
+// MeetingService.js - Updated to handle employees from employees table
 
 import { 
   collection, 
@@ -14,19 +14,9 @@ import {
   Timestamp 
 } from 'firebase/firestore';
 import { db as firestore } from 'configs/FirebaseConfig';
-
-// Import the notification service
 import MeetingNotificationService from './MeetingNotificationService';
 
-/**
- * Service class for handling meeting-related operations with Firestore
- */
 class MeetingService {
-  /**
-   * Fetches all meetings for a specific company
-   * @param {string} companyId - The ID of the company
-   * @returns {Promise<Array>} - Array of meeting objects
-   */
   static async fetchMeetings(companyId) {
     try {
       const meetingsRef = collection(firestore, 'meetings');
@@ -41,8 +31,6 @@ class MeetingService {
 
       meetingsSnapshot.forEach((doc) => {
         const meetingData = doc.data();
-        
-        // Convert Firestore timestamps to JavaScript Date objects
         const dateTime = meetingData.DateTime instanceof Timestamp 
           ? meetingData.DateTime.toDate() 
           : new Date(meetingData.DateTime);
@@ -61,11 +49,6 @@ class MeetingService {
     }
   }
 
-  /**
-   * Fetches all users for a specific company (for meeting participant selection)
-   * @param {string} companyId - The ID of the company
-   * @returns {Promise<Array>} - Array of user objects
-   */
   static async fetchCompanyUsers(companyId) {
     try {
       const usersRef = collection(firestore, 'users');
@@ -96,14 +79,10 @@ class MeetingService {
   }
 
   /**
-   * Creates a new meeting in Firestore and sends email notifications
-   * @param {Object} meetingData - Meeting data to be saved
-   * @param {Array} companyUsers - List of all company users (for email lookup)
-   * @returns {Promise<Object>} - { meetingId: string, notificationResults: Array }
+   * Creates a new meeting with employee support
    */
-  static async createMeeting(meetingData, companyUsers = []) {
+  static async createMeeting(meetingData, companyUsers = [], employees = []) {
     try {
-      // Convert JavaScript Date to Firestore Timestamp
       const firestoreDateTime = Timestamp.fromDate(
         meetingData.DateTime instanceof Date 
           ? meetingData.DateTime 
@@ -115,7 +94,7 @@ class MeetingService {
         DateTime: firestoreDateTime,
         createdAt: Timestamp.now(),
         notificationSent: false,
-        notificationDate: null
+        notificationDate: null,
       };
 
       const meetingsRef = collection(firestore, 'meetings');
@@ -123,21 +102,22 @@ class MeetingService {
       
       console.log('✅ Meeting created with ID:', docRef.id);
 
-      // Prepare the meeting object with ID for email
       const newMeeting = {
         id: docRef.id,
         ...meetingData,
         DateTime: meetingData.DateTime
       };
 
-      // Send email notifications
       let notificationResults = [];
       try {
-        // Get all participants with their email addresses
+        // Get participants with emails from both employees and company users
         const participants = await MeetingService.getParticipantsWithEmails(
           meetingData, 
-          companyUsers
+          companyUsers,
+          employees // Pass employees array
         );
+
+        console.log('📧 Participants found:', participants);
 
         if (participants.length > 0) {
           console.log(`📧 Sending notifications to ${participants.length} participants...`);
@@ -148,7 +128,6 @@ class MeetingService {
             participants
           );
           
-          // Update meeting with notification status
           await updateDoc(docRef, {
             notificationSent: true,
             notificationDate: Timestamp.now(),
@@ -161,7 +140,6 @@ class MeetingService {
         }
       } catch (notificationError) {
         console.error('❌ Error sending notifications:', notificationError);
-        // Update meeting with error status
         await updateDoc(docRef, {
           notificationSent: false,
           notificationError: notificationError.message
@@ -178,49 +156,78 @@ class MeetingService {
     }
   }
 
-  /**
-   * Gets participants with their email addresses for notification
-   * @param {Object} meetingData - The meeting data
-   * @param {Array} companyUsers - List of all company users
-   * @returns {Promise<Array>} - Array of participant objects with name and email
-   */
-  static async getParticipantsWithEmails(meetingData, companyUsers = []) {
+  static async getParticipantsWithEmails(meetingData, companyUsers = [], employees = []) {
     try {
       const participants = [];
-      const userMap = new Map();
       
-      // Create a map of user IDs to user data for quick lookup
+      // Create maps for quick lookup
+      const userMap = new Map();
       companyUsers.forEach(user => {
         if (user.id) {
           userMap.set(user.id, user);
         }
       });
 
-      // Process internal participants (Users array contains user IDs)
+      const employeeMap = new Map();
+      employees.forEach(emp => {
+        if (emp.id) {
+          employeeMap.set(emp.id, emp);
+        }
+      });
+
+      console.log('📊 Employee map size:', employeeMap.size);
+      console.log('📊 User map size:', userMap.size);
+      console.log('📊 Users in meeting:', meetingData.Users);
+
+      // Process internal participants from meetingData.Users
       if (meetingData.Users && meetingData.Users.length > 0) {
         for (const userId of meetingData.Users) {
-          // Check if the user exists in the company users list
-          const user = userMap.get(userId);
-          if (user) {
-            const participantName = user.name || `${user.firstname || ''} ${user.lastname || ''}`.trim() || 'User';
+          let found = false;
+          
+          // First check in employees table
+          const employee = employeeMap.get(userId);
+          if (employee) {
+            console.log('✅ Found employee:', employee.name, employee.email);
             participants.push({
               id: userId,
-              name: participantName,
-              email: user.email || '',
-              role: user.Role || user.role || ''
+              name: employee.name || 'Employee',
+              email: employee.email || '',
+              role: employee.Role || 'Employee',
+              source: 'employees'
             });
-          } else {
-            // Try to fetch user from Firestore if not in the provided list
+            found = true;
+          }
+          
+          // If not found in employees, check in company users
+          if (!found) {
+            const user = userMap.get(userId);
+            if (user) {
+              console.log('✅ Found user:', user.name, user.email);
+              participants.push({
+                id: userId,
+                name: user.name || user.displayName || 'User',
+                email: user.email || '',
+                role: user.Role || user.role || 'User',
+                source: 'users'
+              });
+              found = true;
+            }
+          }
+          
+          // If still not found, try to fetch from Firestore
+          if (!found) {
             try {
               const userRef = doc(firestore, 'users', userId);
               const userSnap = await getDoc(userRef);
               if (userSnap.exists()) {
                 const userData = userSnap.data();
+                console.log('✅ Found user from direct fetch:', userData);
                 participants.push({
                   id: userId,
                   name: `${userData.firstname || ''} ${userData.lastname || ''}`.trim() || 'User',
                   email: userData.email || '',
-                  role: userData.Role || userData.role || ''
+                  role: userData.Role || userData.role || 'User',
+                  source: 'direct_fetch'
                 });
               }
             } catch (err) {
@@ -230,16 +237,16 @@ class MeetingService {
         }
       }
 
-      // Process external participants (ExternalParticipants contains free text names/emails)
+      // Process external participants
       if (meetingData.ExternalParticipants && meetingData.ExternalParticipants.length > 0) {
         for (const external of meetingData.ExternalParticipants) {
-          // Check if the external participant is an email
           const isEmail = external.includes('@');
           participants.push({
             id: `external_${Date.now()}_${Math.random()}`,
             name: isEmail ? external.split('@')[0] : external,
-            email: isEmail ? external : null, // Only send email if it's a valid email
-            isExternal: true
+            email: isEmail ? external : null,
+            isExternal: true,
+            source: 'external'
           });
         }
       }
@@ -247,7 +254,10 @@ class MeetingService {
       // Filter out participants without email addresses
       const participantsWithEmail = participants.filter(p => p.email && p.email.trim() !== '');
       
-      console.log(`📧 Found ${participantsWithEmail.length} participants with email addresses`);
+      console.log(`📧 Found ${participantsWithEmail.length} participants with email addresses:`, 
+        participantsWithEmail.map(p => ({ name: p.name, email: p.email, source: p.source }))
+      );
+      
       return participantsWithEmail;
     } catch (error) {
       console.error('Error getting participants with emails:', error);
@@ -255,16 +265,8 @@ class MeetingService {
     }
   }
 
-  /**
-   * Updates an existing meeting in Firestore
-   * @param {string} meetingId - ID of the meeting to update
-   * @param {Object} meetingData - Updated meeting data
-   * @param {Array} companyUsers - List of all company users
-   * @returns {Promise<Object>} - { notificationResults: Array }
-   */
-  static async updateMeeting(meetingId, meetingData, companyUsers = []) {
+  static async updateMeeting(meetingId, meetingData, companyUsers = [], employees = []) {
     try {
-      // Convert JavaScript Date to Firestore Timestamp if it exists
       let updatedData = { ...meetingData };
       
       if (meetingData.DateTime) {
@@ -283,7 +285,6 @@ class MeetingService {
       
       console.log('✅ Meeting updated with ID:', meetingId);
 
-      // Send update notifications
       let notificationResults = [];
       try {
         const updatedMeeting = {
@@ -294,7 +295,8 @@ class MeetingService {
         
         const participants = await MeetingService.getParticipantsWithEmails(
           meetingData, 
-          companyUsers
+          companyUsers,
+          employees
         );
 
         if (participants.length > 0) {
@@ -327,11 +329,6 @@ class MeetingService {
     }
   }
 
-  /**
-   * Deletes a meeting from Firestore
-   * @param {string} meetingId - ID of the meeting to delete
-   * @returns {Promise<void>}
-   */
   static async deleteMeeting(meetingId) {
     try {
       const meetingRef = doc(firestore, 'meetings', meetingId);
@@ -342,11 +339,6 @@ class MeetingService {
     }
   }
 
-  /**
-   * Fetches a single meeting by ID
-   * @param {string} meetingId - ID of the meeting to fetch
-   * @returns {Promise<Object|null>} - Meeting object or null if not found
-   */
   static async getMeetingById(meetingId) {
     try {
       const meetingRef = doc(firestore, 'meetings', meetingId);
@@ -354,8 +346,6 @@ class MeetingService {
       
       if (meetingSnap.exists()) {
         const meetingData = meetingSnap.data();
-        
-        // Convert Firestore timestamp to JavaScript Date
         const dateTime = meetingData.DateTime instanceof Timestamp 
           ? meetingData.DateTime.toDate() 
           : new Date(meetingData.DateTime);
@@ -374,13 +364,7 @@ class MeetingService {
     }
   }
 
-  /**
-   * Resend notifications for an existing meeting
-   * @param {string} meetingId - ID of the meeting
-   * @param {Array} companyUsers - List of all company users
-   * @returns {Promise<Object>} - { notificationResults: Array }
-   */
-  static async resendMeetingNotifications(meetingId, companyUsers = []) {
+  static async resendMeetingNotifications(meetingId, companyUsers = [], employees = []) {
     try {
       const meeting = await MeetingService.getMeetingById(meetingId);
       if (!meeting) {
@@ -404,7 +388,8 @@ class MeetingService {
 
       const participants = await MeetingService.getParticipantsWithEmails(
         meetingData, 
-        companyUsers
+        companyUsers,
+        employees
       );
 
       if (participants.length === 0) {
@@ -417,7 +402,6 @@ class MeetingService {
         participants
       );
 
-      // Update meeting with notification status
       const meetingRef = doc(firestore, 'meetings', meetingId);
       await updateDoc(meetingRef, {
         notificationSent: true,

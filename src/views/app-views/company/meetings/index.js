@@ -32,7 +32,8 @@ import MeetingService from './services/MeetingService';
 
 // Import Firebase
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from 'configs/FirebaseConfig';
+import { db, collection, getDocs, auth } from 'configs/FirebaseConfig';
+
 
 const { Title, Text } = Typography;
 const { confirm } = Modal;
@@ -62,6 +63,8 @@ const MeetingsPage = () => {
   
   // Get current user from Redux store as backup
   const reduxUser = useSelector(state => state.auth.user);
+
+  const [employees, setEmployees] = useState([]);
 
   // Check authentication and set user
   useEffect(() => {
@@ -96,6 +99,12 @@ const MeetingsPage = () => {
     return () => unsubscribe();
   }, [reduxUser]);
   
+  useEffect(() => {
+  if (companyId) {
+    fetchEmployees();
+  }
+}, [companyId]);
+
   // Fetch meetings data when company ID is available
   useEffect(() => {
     if (companyId) {
@@ -103,6 +112,36 @@ const MeetingsPage = () => {
     }
   }, [companyId]);
   
+
+  const fetchEmployees = useCallback(async () => {
+  if (!companyId) return;
+  
+  try {
+    const employeesRef = collection(db, 'employees');
+    const employeesSnapshot = await getDocs(employeesRef);
+    const employeesList = employeesSnapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      .filter(employee => {
+        const employeeCompanyId = employee.company_id;
+        if (typeof employeeCompanyId === 'object' && employeeCompanyId?.path) {
+          return employeeCompanyId.path.includes(companyId);
+        }
+        return employeeCompanyId === companyId ||
+          employeeCompanyId === `companies/${companyId}` ||
+          employeeCompanyId === `/companies/${companyId}`;
+      });
+    
+    setEmployees(employeesList);
+    console.log('Fetched employees:', employeesList.length);
+  } catch (err) {
+    console.error('Error fetching employees:', err);
+  }
+}, [companyId]);
+
+
   // Fetch meetings and users data
   const fetchMeetingsData = useCallback(async () => {
     if (!companyId) return;
@@ -149,62 +188,67 @@ const MeetingsPage = () => {
     setDetailVisible(true);
   };
   
-  // Handle save meeting (create or update)
-  const handleSaveMeeting = async (meetingData) => {
-    setFormLoading(true);
+
+const handleSaveMeeting = async (meetingData) => {
+  setFormLoading(true);
+  
+  try {
+    let result;
     
-    try {
-      let result;
+    if (editMode && selectedMeeting) {
+      // Update existing meeting - pass employees
+      result = await MeetingService.updateMeeting(
+        selectedMeeting.id, 
+        meetingData, 
+        companyUsers,
+        employees // <-- ADD THIS
+      );
       
-      if (editMode && selectedMeeting) {
-        // Update existing meeting
-        result = await MeetingService.updateMeeting(
-          selectedMeeting.id, 
-          meetingData, 
-          companyUsers
-        );
-        
-        const sentCount = result.notificationResults?.filter(r => r.success).length || 0;
-        const totalCount = result.notificationResults?.length || 0;
-        
-        notification.success({
-          message: 'Meeting Updated',
-          description: `Meeting updated successfully. ${sentCount}/${totalCount} participants notified via email.`,
-          icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-          duration: 4
-        });
-        
-      } else {
-        // Create new meeting
-        result = await MeetingService.createMeeting(meetingData, companyUsers);
-        
-        const sentCount = result.notificationResults?.results?.filter(r => r.success).length || 0;
-        const totalCount = result.notificationResults?.results?.length || 0;
-        
-        notification.success({
-          message: 'Meeting Created',
-          description: `Meeting created successfully! ${sentCount}/${totalCount} participants notified via email.`,
-          icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-          duration: 4
-        });
-      }
+      const sentCount = result.notificationResults?.filter(r => r.success).length || 0;
+      const totalCount = result.notificationResults?.length || 0;
       
-      // Refresh data and close form
-      await fetchMeetingsData();
-      setFormVisible(false);
-      
-    } catch (err) {
-      console.error('Error saving meeting:', err);
-      
-      notification.error({
-        message: 'Error',
-        description: err.message || 'Failed to save meeting. Please try again.',
-        duration: 5
+      notification.success({
+        message: 'Meeting Updated',
+        description: `Meeting updated successfully. ${sentCount}/${totalCount} participants notified via email.`,
+        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+        duration: 4
       });
-    } finally {
-      setFormLoading(false);
+      
+    } else {
+      // Create new meeting - pass employees
+      result = await MeetingService.createMeeting(
+        meetingData, 
+        companyUsers,
+        employees // <-- ADD THIS
+      );
+      
+      const sentCount = result.notificationResults?.results?.filter(r => r.success).length || 0;
+      const totalCount = result.notificationResults?.results?.length || 0;
+      
+      notification.success({
+        message: 'Meeting Created',
+        description: `Meeting created successfully! ${sentCount}/${totalCount} participants notified via email.`,
+        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+        duration: 4
+      });
     }
-  };
+    
+    // Refresh data and close form
+    await fetchMeetingsData();
+    setFormVisible(false);
+    
+  } catch (err) {
+    console.error('Error saving meeting:', err);
+    
+    notification.error({
+      message: 'Error',
+      description: err.message || 'Failed to save meeting. Please try again.',
+      duration: 5
+    });
+  } finally {
+    setFormLoading(false);
+  }
+};
   
   // Handle delete meeting
   const handleDeleteMeeting = async (meetingId) => {
@@ -229,35 +273,35 @@ const MeetingsPage = () => {
     }
   };
 
-  // Handle resend notifications
-  const handleResendNotifications = async (meeting) => {
-    try {
-      const result = await MeetingService.resendMeetingNotifications(
-        meeting.id, 
-        companyUsers
-      );
-      
-      const sentCount = result.notificationResults?.results?.filter(r => r.success).length || 0;
-      const totalCount = result.notificationResults?.results?.length || 0;
-      
-      notification.success({
-        message: 'Notifications Resent',
-        description: `Successfully resent ${sentCount}/${totalCount} notifications to participants.`,
-        icon: <MailOutlined style={{ color: '#1890ff' }} />,
-        duration: 4
-      });
-      
-      await fetchMeetingsData();
-      
-    } catch (err) {
-      console.error('Error resending notifications:', err);
-      notification.error({
-        message: 'Error',
-        description: err.message || 'Failed to resend notifications.',
-        duration: 5
-      });
-    }
-  };
+const handleResendNotifications = async (meeting) => {
+  try {
+    const result = await MeetingService.resendMeetingNotifications(
+      meeting.id, 
+      companyUsers,
+      employees // <-- ADD THIS
+    );
+    
+    const sentCount = result.notificationResults?.results?.filter(r => r.success).length || 0;
+    const totalCount = result.notificationResults?.results?.length || 0;
+    
+    notification.success({
+      message: 'Notifications Resent',
+      description: `Successfully resent ${sentCount}/${totalCount} notifications to participants.`,
+      icon: <MailOutlined style={{ color: '#1890ff' }} />,
+      duration: 4
+    });
+    
+    await fetchMeetingsData();
+    
+  } catch (err) {
+    console.error('Error resending notifications:', err);
+    notification.error({
+      message: 'Error',
+      description: err.message || 'Failed to resend notifications.',
+      duration: 5
+    });
+  }
+};
   
   // Determine if user has permission to add/edit meetings (CEO or HR)
   const hasEditPermission = () => {
@@ -367,34 +411,38 @@ const MeetingsPage = () => {
         destroyOnClose
         maskClosable={false}
       >
-        <MeetingForm
-          currentUser={{
-            uid: user.uid,
-            company_id: companyId
-          }}
-          companyUsers={companyUsers}
-          initialValues={selectedMeeting}
-          onSave={handleSaveMeeting}
-          onCancel={() => setFormVisible(false)}
-          loading={formLoading}
-          isEdit={editMode}
-        />
+
+<MeetingForm
+  currentUser={{
+    uid: user.uid,
+    company_id: companyId
+  }}
+  companyUsers={companyUsers}
+  employees={employees}
+  initialValues={selectedMeeting}
+  onSave={handleSaveMeeting}
+  onCancel={() => setFormVisible(false)}
+  loading={formLoading}
+  isEdit={editMode}
+/>
       </Modal>
       
       {/* Meeting detail drawer */}
-      <MeetingDetail
-        meeting={selectedMeeting}
-        visible={detailVisible}
-        onClose={() => setDetailVisible(false)}
-        onEdit={hasEditPermission() ? handleEditMeeting : undefined}
-        onDelete={hasEditPermission() ? handleDeleteMeeting : undefined}
-        onResendNotifications={hasEditPermission() ? handleResendNotifications : undefined}
-        users={companyUsers}
-        currentUser={{
-          uid: user.uid,
-          company_id: companyId
-        }}
-      />
+<MeetingDetail
+  meeting={selectedMeeting}
+  visible={detailVisible}
+  onClose={() => setDetailVisible(false)}
+  onEdit={hasEditPermission() ? handleEditMeeting : undefined}
+  onDelete={hasEditPermission() ? handleDeleteMeeting : undefined}
+  onResendNotifications={hasEditPermission() ? handleResendNotifications : undefined}
+  users={companyUsers}
+  employees={employees} // <-- ADD THIS
+  currentUser={{
+    uid: user.uid,
+    company_id: companyId,
+    Role: reduxUser?.Role
+  }}
+/>
     </div>
   );
 };

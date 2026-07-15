@@ -1,3 +1,5 @@
+// MeetingDetail.js - Updated to show participants from employees table
+
 import React from 'react';
 import {
   Drawer,
@@ -20,7 +22,9 @@ import {
   LinkOutlined,
   GlobalOutlined,
   EnvironmentOutlined,
-  ScheduleOutlined
+  ScheduleOutlined,
+  TeamOutlined,
+  MailOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
@@ -35,7 +39,8 @@ const MeetingDetail = ({
   onClose,
   onEdit,
   onDelete,
-  users = [],
+  users = [], // Company users (fallback)
+  employees = [], // Employees from employees table
   currentUser
 }) => {
   if (!meeting || !visible) return null;
@@ -54,6 +59,14 @@ const MeetingDetail = ({
     }
   };
 
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'Completed': return <Tag color="green">Completed</Tag>;
+      case 'Cancelled': return <Tag color="red">Cancelled</Tag>;
+      default: return <Tag color="blue">Pending</Tag>;
+    }
+  };
+
   const getMeetingType = () => {
     if (meeting.Type === 'online') {
       return <Space><GlobalOutlined /> Online Meeting</Space>;
@@ -61,30 +74,134 @@ const MeetingDetail = ({
     return <Space><EnvironmentOutlined /> On-Site Meeting</Space>;
   };
 
-  // Internal Participants (real users from company)
-  const internalParticipants = users.filter(user => 
-    meeting.Users && meeting.Users.includes(user.id)
-  );
+  // Get participants from employees table (primary) and users (fallback)
+  const getParticipants = () => {
+    const participants = [];
+    const meetingUserIds = meeting.Users || [];
 
-  // External Participants (free text names/emails)
-  const externalParticipants = meeting.ExternalParticipants || [];
+    meetingUserIds.forEach(userId => {
+      // First try to find in employees table
+      const employee = employees.find(emp => emp.id === userId);
+      if (employee) {
+        participants.push({
+          id: userId,
+          name: employee.name || 'Employee',
+          email: employee.email || '',
+          role: employee.Role || 'Employee',
+          source: 'employees',
+          isOrganizer: userId === meeting.creator_id
+        });
+        return;
+      }
 
+      // Fallback to company users
+      const user = users.find(u => u.id === userId);
+      if (user) {
+        participants.push({
+          id: userId,
+          name: user.name || user.displayName || 'User',
+          email: user.email || '',
+          role: user.Role || 'User',
+          source: 'users',
+          isOrganizer: userId === meeting.creator_id
+        });
+      }
+    });
+
+    return participants;
+  };
+
+  // Get external participants
+  const getExternalParticipants = () => {
+    return meeting.ExternalParticipants || [];
+  };
+
+  // Get organizer
+  const getOrganizer = () => {
+    const allParticipants = getParticipants();
+    return allParticipants.find(p => p.isOrganizer);
+  };
+
+  const participants = getParticipants();
+  const externalParticipants = getExternalParticipants();
+  const organizer = getOrganizer();
+
+  // Check if current user can edit/delete
   const isCreator = meeting.creator_id === currentUser?.uid;
+  const canEdit = isCreator || currentUser?.Role?.toLowerCase() === 'ceo' || currentUser?.Role?.toLowerCase() === 'hr';
+
+  // Get participant display with role badge
+  const getParticipantDisplay = (participant) => {
+    const roleColor = participant.role === 'CEO' ? 'gold' : 
+                      participant.role === 'Manager' ? 'cyan' : 
+                      participant.role === 'Agent' ? 'blue' : 'default';
+    
+    return (
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        padding: '8px 12px',
+        background: participant.isOrganizer ? '#e6f7ff' : 'transparent',
+        borderRadius: '6px',
+        marginBottom: '4px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <Avatar 
+            icon={<UserOutlined />} 
+            style={{ 
+              marginRight: '12px', 
+              backgroundColor: participant.isOrganizer ? '#1890ff' : '#d9d9d9' 
+            }} 
+          />
+          <div>
+            <Text strong>{participant.name}</Text>
+            {participant.role && (
+              <Tag color={roleColor} style={{ marginLeft: '8px' }}>
+                {participant.role}
+              </Tag>
+            )}
+            {participant.isOrganizer && (
+              <Tag color="blue" style={{ marginLeft: '4px' }}>Organizer</Tag>
+            )}
+            {participant.source === 'employees' && (
+              <Tag color="green" style={{ marginLeft: '4px' }}>Employee</Tag>
+            )}
+            <div>
+              {participant.email && (
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  <MailOutlined style={{ marginRight: 4 }} />
+                  {participant.email}
+                </Text>
+              )}
+            </div>
+          </div>
+        </div>
+        {participant.isOrganizer && (
+          <Badge status="processing" text="Organizer" />
+        )}
+      </div>
+    );
+  };
 
   return (
     <Drawer
       title={
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>Meeting Details</div>
-          <Badge status={getStatusColor(meeting.Status)} text={meeting.Status} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <div>
+            <Title level={4} style={{ margin: 0 }}>{meeting.Title}</Title>
+          </div>
+          <div>
+            {getStatusBadge(meeting.Status)}
+          </div>
         </div>
       }
-      width={520}
+      width={560}
       open={visible}
       onClose={onClose}
       footer={
         <div style={{ textAlign: 'right' }}>
-          {isCreator && (
+          {canEdit && (
             <>
               <Popconfirm
                 title="Are you sure you want to delete this meeting?"
@@ -111,12 +228,13 @@ const MeetingDetail = ({
       }
     >
       <div className="meeting-details">
-        <Title level={4}>{meeting.Title}</Title>
-        
+        {/* Meeting Info */}
         <Descriptions bordered column={1} size="small" className="mb-4">
           <Descriptions.Item label={<><ScheduleOutlined /> Date & Time</>}>
             <CalendarOutlined /> {meetingTime} to {endTime}
-            <div><ClockCircleOutlined /> {meeting.Duration} minutes</div>
+            <div style={{ marginTop: 4 }}>
+              <ClockCircleOutlined /> {meeting.Duration} minutes
+            </div>
           </Descriptions.Item>
           
           <Descriptions.Item label="Meeting Type">
@@ -133,71 +251,101 @@ const MeetingDetail = ({
           
           {meeting.Description && (
             <Descriptions.Item label="Description">
-              {meeting.Description}
+              <div style={{ whiteSpace: 'pre-wrap' }}>
+                {meeting.Description}
+              </div>
             </Descriptions.Item>
           )}
         </Descriptions>
 
-        {/* ==================== INTERNAL PARTICIPANTS ==================== */}
+        {/* Participants Section */}
         <Divider orientation="left">
-          Internal Participants ({internalParticipants.length})
+          <Space>
+            <TeamOutlined />
+            Participants ({participants.length + externalParticipants.length})
+          </Space>
         </Divider>
-        
-        <div className="participants-list" style={{ marginBottom: 24 }}>
-          {internalParticipants.map(user => (
-            <div key={user.id} style={{ marginBottom: '12px', display: 'flex', alignItems: 'center' }}>
-              <Avatar 
-                icon={<UserOutlined />} 
-                style={{ 
-                  marginRight: '12px', 
-                  backgroundColor: user.id === meeting.creator_id ? '#1890ff' : '#d9d9d9' 
-                }} 
-              />
-              <div>
-                <Text strong>{user.name}</Text>
-                {user.id === meeting.creator_id && (
-                  <Tag color="blue" style={{ marginLeft: '8px' }}>Organizer</Tag>
-                )}
-                {user.Role && <div><Text type="secondary">{user.Role}</Text></div>}
-              </div>
-            </div>
-          ))}
 
-          {internalParticipants.length === 0 && (
+        {/* Internal Participants - From Employees Table */}
+        {participants.length > 0 ? (
+          <div className="participants-list" style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: '13px' }}>
+                Internal Participants ({participants.length})
+              </Text>
+            </div>
+            {participants.map(participant => (
+              <div key={participant.id}>
+                {getParticipantDisplay(participant)}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ marginBottom: 16, padding: '12px', background: '#f5f5f5', borderRadius: '8px' }}>
             <Text type="secondary">No internal participants</Text>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* ==================== EXTERNAL PARTICIPANTS ==================== */}
-        <Divider orientation="left">
-          External Participants ({externalParticipants.length})
-        </Divider>
-        
-        <div className="participants-list">
-          {externalParticipants.map((name, index) => (
-            <div key={index} style={{ marginBottom: '12px', display: 'flex', alignItems: 'center' }}>
-              <Avatar 
-                icon={<UserOutlined />} 
-                style={{ marginRight: '12px', backgroundColor: '#fa8c16' }} 
-              />
-              <div>
-                <Text strong>{name}</Text>
-                {name.includes('@') && <div><Text type="secondary">{name}</Text></div>}
-                <Tag color="orange" style={{ marginLeft: 8 }}>External</Tag>
-              </div>
+        {/* External Participants */}
+        {externalParticipants.length > 0 && (
+          <div className="participants-list" style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 8 }}>
+              <Text type="secondary" style={{ fontSize: '13px' }}>
+                External Participants ({externalParticipants.length})
+              </Text>
             </div>
-          ))}
+            {externalParticipants.map((name, index) => (
+              <div key={`external-${index}`} style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                padding: '8px 12px',
+                background: '#fff7e6',
+                borderRadius: '6px',
+                marginBottom: '4px'
+              }}>
+                <Avatar 
+                  icon={<UserOutlined />} 
+                  style={{ marginRight: '12px', backgroundColor: '#fa8c16' }} 
+                />
+                <div>
+                  <Text strong>{name}</Text>
+                  {name.includes('@') && (
+                    <div>
+                      <Text type="secondary" style={{ fontSize: '12px' }}>
+                        <MailOutlined style={{ marginRight: 4 }} />
+                        {name}
+                      </Text>
+                    </div>
+                  )}
+                  <Tag color="orange" style={{ marginLeft: 8 }}>External</Tag>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
-          {externalParticipants.length === 0 && (
-            <Text type="secondary">No external participants</Text>
-          )}
-        </div>
+        {/* Organizer Info */}
+        {organizer && (
+          <div style={{ 
+            marginTop: 16, 
+            padding: '12px 16px', 
+            background: '#f0f5ff', 
+            borderRadius: '8px',
+            border: '1px solid #d6e4ff'
+          }}>
+            <Text type="secondary" style={{ fontSize: '13px' }}>
+              <CalendarOutlined style={{ marginRight: 4 }} />
+              Organized by: <strong>{organizer.name}</strong>
+              {organizer.email && ` (${organizer.email})`}
+            </Text>
+          </div>
+        )}
 
+        {/* Meeting Metadata */}
         <Divider />
-        
-        <div className="meeting-meta text-right">
-          <Text type="secondary">
-            Created by: {users.find(u => u.id === meeting.creator_id)?.name || 'Unknown'}
+        <div className="meeting-meta">
+          <Text type="secondary" style={{ fontSize: '12px' }}>
+            Created: {meeting.createdAt ? dayjs(meeting.createdAt.toDate()).format('MMM DD, YYYY HH:mm') : 'N/A'}
           </Text>
         </div>
       </div>
