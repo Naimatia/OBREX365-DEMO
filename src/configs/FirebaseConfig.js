@@ -16,7 +16,9 @@ import { getFunctions, httpsCallable } from "firebase/functions";
   appId: "1:533694845345:web:f24951b7421fd2f72c3be0",
   measurementId: "G-299NPEWH88"
 };
-*/
+
+
+
 // Your web app's Firebase configuration from bardawil account
 const firebaseConfig = {
   apiKey: "AIzaSyBL64wkLYf4aDfKwc1RVlSeHG6UwIfBN4M",
@@ -26,6 +28,18 @@ const firebaseConfig = {
   messagingSenderId: "1096846535143",
   appId: "1:1096846535143:web:52e37d8c9c690c133cb542"
 };
+*/
+
+// Your web app's Firebase configuration Jojo Moujib
+const firebaseConfig = {
+  apiKey: "AIzaSyB0F7RXYDb7hXvM42OfUPxUqK7vvYWwfgQ",
+  authDomain: "obrex-365.firebaseapp.com",
+  projectId: "obrex-365",
+  storageBucket: "obrex-365.firebasestorage.app",
+  messagingSenderId: "24894412926",
+  appId: "1:24894412926:web:c3a8b5553f52d15a1ba02f"
+};
+
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
