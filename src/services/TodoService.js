@@ -1,3 +1,5 @@
+// services/TodoService.js
+
 import { 
   collection, 
   addDoc, 
@@ -14,6 +16,7 @@ import {
   Timestamp 
 } from 'firebase/firestore';
 import { db } from 'configs/FirebaseConfig';
+import UserService from 'services/firebase/UserService';
 
 /**
  * Service for managing todolist in Firestore
@@ -257,72 +260,61 @@ const TodoService = {
 
   /**
    * Get all company users for assignee selection (CEO/HR can assign to anyone)
+   * Uses UserService to exclude joker account
    * @param {string} companyId - Company ID
    * @returns {Promise<Array>} List of company users
    */
   async getCompanyUsers(companyId) {
     try {
-      const q = query(
-        collection(db, 'users'),
-        where('company_id', '==', companyId)
-      );
+      // Use UserService which automatically excludes the joker account
+      const users = await UserService.getTeamMembers(companyId);
       
-      const querySnapshot = await getDocs(q);
-      const users = [];
-      
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        users.push({
-          id: doc.id,
-          uid: doc.id,
-          name: `${data.firstname} ${data.lastname}`,
-          email: data.email,
-          role: data.Role,
-          firstname: data.firstname,
-          lastname: data.lastname
-        });
-      });
-      
-      return users;
+      return users.map(user => ({
+        id: user.id,
+        uid: user.id,
+        name: user.displayName || `${user.firstname || ''} ${user.lastname || ''}`.trim() || user.email || 'Unnamed User',
+        email: user.email || '',
+        role: user.Role,
+        firstname: user.firstname || '',
+        lastname: user.lastname || '',
+        ...user
+      }));
     } catch (error) {
       console.error('Error getting company users:', error);
-      throw error;
+      return [];
     }
   },
 
   /**
    * Get all sellers for a company (for assignee selection)
+   * Uses UserService to exclude joker account
    * @param {string} companyId - Company ID
    * @returns {Promise<Array>} List of sellers
    */
   async getCompanySellers(companyId) {
     try {
-      const q = query(
-        collection(db, 'users'),
-        where('company_id', '==', companyId),
-        where('Role', 'in', ['Seller', 'seller'])
-      );
+      // Get all team members then filter by seller roles
+      const allUsers = await UserService.getTeamMembers(companyId);
       
-      const querySnapshot = await getDocs(q);
-      const sellers = [];
+      const sellerRoles = ['Seller', 'seller', 'Sales Executive', 'Agent', 'Sales Representative'];
       
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        sellers.push({
-          id: doc.id,
-          uid: doc.id,
-          name: `${data.firstname} ${data.lastname}`,
-          email: data.email,
-          role: data.Role,
-          firstname: data.firstname,
-          lastname: data.lastname
-        });
-      });
+      const sellers = allUsers
+        .filter(user => sellerRoles.includes(user.Role) || user.Role?.toLowerCase() === 'seller')
+        .map(user => ({
+          id: user.id,
+          uid: user.id,
+          name: user.displayName || `${user.firstname || ''} ${user.lastname || ''}`.trim() || user.email || 'Unnamed User',
+          email: user.email || '',
+          role: user.Role,
+          firstname: user.firstname || '',
+          lastname: user.lastname || '',
+          ...user
+        }));
       
       return sellers;
     } catch (error) {
       console.error('Error getting sellers:', error);
-      throw error;
+      return [];
     }
   },
 

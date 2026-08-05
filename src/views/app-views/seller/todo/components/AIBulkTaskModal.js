@@ -1,9 +1,11 @@
+// components/AIBulkTaskModal.js
+
 import React, { useState } from 'react';
 import {
     Modal, Select, Input, Button, Card, Row, Col, Typography, Tag, message,
-    DatePicker, Popconfirm, Space
+    DatePicker, Popconfirm, Space, Avatar
 } from 'antd';
-import { DeleteOutlined, SaveOutlined, RobotOutlined } from '@ant-design/icons';
+import { DeleteOutlined, SaveOutlined, RobotOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import TodoService from 'services/TodoService';
 import DeepSeekService from 'services/DeepSeekService';
@@ -23,6 +25,9 @@ const AIBulkTaskModal = ({
     const [aiPrompt, setAiPrompt] = useState('');
     const [editingTasks, setEditingTasks] = useState([]);
     const [aiGenerating, setAiGenerating] = useState(false);
+
+    // Check if current user is joker for additional permissions
+    const isJoker = currentUser?.isJoker === true || (currentUser?.isOwner === true && currentUser?.Role === 'CEO');
 
     const handleGenerate = async () => {
         if (!aiPrompt.trim()) return message.warning("Please describe the work");
@@ -69,11 +74,11 @@ const AIBulkTaskModal = ({
                 const todoData = {
                     ToDo: task.title,
                     Description: task.description || '',
-                    Priority: task.priority || 'Medium', // Still saved in backend if needed
+                    Priority: task.priority || 'Medium',
                     DateLimit: task.suggestedDueDate ? task.suggestedDueDate.toDate() : null,
                     assignee: selectedUserForAI.id,
                     Status: task.status || 'ToDo',
-                    company_id: currentUser?.company_id,
+                    company_id: currentUser?.company_id || currentUser?.companyId,
                     user_id: currentUser?.uid || currentUser?.id,
                 };
 
@@ -95,6 +100,7 @@ const AIBulkTaskModal = ({
                 <Space>
                     <RobotOutlined style={{ color: '#1890ff' }} />
                     AI Bulk Task Generator
+                    
                 </Space>
             }
             open={open}
@@ -106,6 +112,9 @@ const AIBulkTaskModal = ({
             {!selectedUserForAI ? (
                 <div>
                     <Title level={5}>Select Team Member</Title>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                        {sellers.length === 0 ? 'No team members found in your company' : `Select a user from your company (${sellers.length} available)`}
+                    </Text>
                     <Select
                         style={{ width: '100%', marginBottom: 20 }}
                         placeholder="Choose who to assign tasks to"
@@ -113,18 +122,29 @@ const AIBulkTaskModal = ({
                             const user = sellers.find(s => s.id === value);
                             setSelectedUserForAI(user);
                         }}
+                        showSearch
+                        optionFilterProp="children"
+                        disabled={sellers.length === 0}
                     >
                         {sellers.map(s => (
                             <Option key={s.id} value={s.id}>
-                                {s.name} ({s.email})
+                                <Space>
+                                    <Avatar size="small" icon={<UserOutlined />} />
+                                    {s.name}
+                                    {s.Role && <Text type="secondary" style={{ fontSize: '11px' }}>({s.Role})</Text>}
+                                </Space>
                             </Option>
                         ))}
                     </Select>
+                    {sellers.length === 0 && (
+                        <Text type="danger">No team members available. Please add team members first.</Text>
+                    )}
                 </div>
             ) : (
                 <div>
                     <Text strong>
                         Creating tasks for: <Tag color="blue">{selectedUserForAI.name}</Tag>
+                        {selectedUserForAI.Role && <Tag color="geekblue">{selectedUserForAI.Role}</Tag>}
                     </Text>
 
                     <TextArea

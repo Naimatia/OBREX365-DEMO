@@ -5,8 +5,9 @@ import {
   Switch, Divider, Button, Space, message 
 } from 'antd';
 import { UserOutlined, PhoneOutlined, MailOutlined, DollarOutlined, TeamOutlined } from '@ant-design/icons';
-import { db, collection, getDocs } from 'configs/FirebaseConfig';
+import { db, collection, getDocs, query, where } from 'configs/FirebaseConfig';
 import dayjs from 'dayjs';
+import { useSelector } from 'react-redux';
 
 const { Option } = Select;
 
@@ -36,6 +37,11 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Get current user and company ID from Redux
+  const currentUser = useSelector(state => state.auth.user);
+  const companyId = currentUser?.company_id || currentUser?.companyId || '';
 
   useEffect(() => {
     if (visible) {
@@ -48,21 +54,56 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         };
         form.setFieldsValue(formattedValues);
       }
-      fetchUsers();
+      // Fetch users only when modal is visible and we have a company ID
+      if (companyId) {
+        fetchCompanyUsers();
+      }
     }
-  }, [visible, isEditing, initialValues, form]);
+  }, [visible, isEditing, initialValues, form, companyId]);
 
-  const fetchUsers = async () => {
+  /**
+   * Fetch only users that belong to the current company
+   * Excludes the joker account (isJoker: true)
+   */
+  const fetchCompanyUsers = async () => {
+    if (!companyId) {
+      console.warn('No company ID available, skipping user fetch');
+      setUsers([]);
+      return;
+    }
+
+    setLoadingUsers(true);
     try {
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      const usersList = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      // Query users collection filtering by company_id
+      const usersRef = collection(db, 'users');
+      const q = query(
+        usersRef, 
+        where('company_id', '==', companyId)
+      );
+      
+      const usersSnapshot = await getDocs(q);
+      const usersList = usersSnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        // Filter out the joker account
+        .filter(user => user.isJoker !== true)
+        // Sort by name
+        .sort((a, b) => {
+          const nameA = (a.displayName || a.firstname || a.email || '').toLowerCase();
+          const nameB = (b.displayName || b.firstname || b.email || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+
+      console.log(`Found ${usersList.length} users for company ${companyId}`);
       setUsers(usersList);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('Error fetching company users:', error);
       message.error('Failed to load users');
+      setUsers([]);
+    } finally {
+      setLoadingUsers(false);
     }
   };
 
@@ -75,7 +116,8 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         JoiningDate: values.JoiningDate ? values.JoiningDate.toDate() : new Date(),
         Salary: Number(values.Salary || 0),
         DateSalary: Number(values.DateSalary || 1),
-        user_id: values.user_id || null
+        user_id: values.user_id || null,
+        company_id: companyId, // Ensure employee is linked to the company
       };
       console.log('Submitting employee data:', formattedValues);
       await onSubmit(formattedValues);
@@ -118,6 +160,7 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         }}
       >
         <Divider>Basic Information</Divider>
+        
         <Form.Item
           name="name"
           label="Full Name"
@@ -125,6 +168,7 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         >
           <Input prefix={<UserOutlined />} placeholder="Enter employee name" />
         </Form.Item>
+
         <Form.Item
           name="Role"
           label="Role"
@@ -136,24 +180,48 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
             ))}
           </Select>
         </Form.Item>
+
         <Form.Item
           name="user_id"
           label="Associated User Account (Optional)"
+          tooltip="Link this employee to an existing user account. Only users from your company are shown."
         >
           <Select 
             placeholder="Select user account" 
             allowClear
             showSearch
+            loading={loadingUsers}
             optionFilterProp="children"
+            filterOption={(input, option) => {
+              const children = option?.children?.toString?.() || '';
+              return children.toLowerCase().includes(input.toLowerCase());
+            }}
+            notFoundContent={loadingUsers ? 'Loading users...' : 'No users found in your company'}
           >
-            {users.map(user => (
-              <Option key={user.id} value={user.id}>
-                {user.displayName || user.email}
-              </Option>
-            ))}
+            {users.map(user => {
+              // Get display name from various possible fields
+              const displayName = user.displayName || 
+                                 `${user.firstname || ''} ${user.lastname || ''}`.trim() || 
+                                 user.email || 
+                                 'Unnamed User';
+              
+              // Get email for subtitle
+              const email = user.email || '';
+              
+              return (
+                <Option key={user.id} value={user.id}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: 500 }}>{displayName}</span>
+                    {email && <span style={{ fontSize: '11px', color: '#888' }}>{email}</span>}
+                  </div>
+                </Option>
+              );
+            })}
           </Select>
         </Form.Item>
+
         <Divider>Contact Information</Divider>
+
         <Form.Item
           name="email"
           label="Email"
@@ -164,6 +232,7 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         >
           <Input prefix={<MailOutlined />} placeholder="Enter email address" />
         </Form.Item>
+
         <Form.Item
           name="phoneNumber"
           label="Phone Number"
@@ -171,7 +240,9 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         >
           <Input prefix={<PhoneOutlined />} placeholder="Enter phone number" />
         </Form.Item>
+
         <Divider>Employment Details</Divider>
+
         <Form.Item
           name="JoiningDate"
           label="Joining Date"
@@ -179,6 +250,7 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
         >
           <DatePicker style={{ width: '100%' }} />
         </Form.Item>
+
         <Form.Item
           name="Status"
           label="Current Status"
@@ -190,7 +262,9 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
             ))}
           </Select>
         </Form.Item>
+
         <Divider>Salary Information</Divider>
+
         <Form.Item
           name="Salary"
           label="Monthly Salary"
@@ -205,6 +279,7 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
             placeholder="Enter monthly salary amount"
           />
         </Form.Item>
+
         <Form.Item
           name="DateSalary"
           label="Salary Day (1-31)"
@@ -220,6 +295,23 @@ const EmployeeForm = ({ visible, onCancel, onSubmit, isEditing, initialValues })
             placeholder="Day of month when salary is paid"
           />
         </Form.Item>
+
+        {/* Display company context info */}
+        <Divider />
+        <div style={{ 
+          fontSize: '12px', 
+          color: '#888', 
+          background: '#f5f5f5', 
+          padding: '8px 12px', 
+          borderRadius: '4px',
+          marginTop: '-8px'
+        }}>
+          <TeamOutlined style={{ marginRight: '6px' }} />
+          Employees will be associated with your current company: 
+          <strong style={{ marginLeft: '4px' }}>
+            {currentUser?.companyName || companyId || 'Unknown Company'}
+          </strong>
+        </div>
       </Form>
     </Modal>
   );

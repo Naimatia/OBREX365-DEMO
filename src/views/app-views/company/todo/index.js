@@ -1,3 +1,5 @@
+// pages/ToDoPage.js
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Row, Col, Button, Modal, Statistic, Typography, Space,
@@ -11,8 +13,9 @@ import { useSelector } from 'react-redux';
 
 import KanbanBoard from '../../seller/todo/components/KanbanBoard';
 import TodoForm from '../../seller/todo/components/TodoForm';
-import AIBulkTaskModal from '../../seller/todo/components/AIBulkTaskModal'; // ← Import the modal we created
+import AIBulkTaskModal from '../../seller/todo/components/AIBulkTaskModal';
 import TodoService from 'services/TodoService';
+import UserService from 'services/firebase/UserService';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -32,30 +35,56 @@ const ToDoPage = () => {
   const [isAIBulkModalVisible, setIsAIBulkModalVisible] = useState(false);
 
   const user = useSelector(state => state.auth.user);
+  const companyId = user?.company_id || user?.companyId || '';
+
+  // Check if user is the joker account
+  const isJoker = user?.isJoker === true || (user?.isOwner === true && user?.Role === 'CEO');
 
   // Fetch Data
   const fetchTodos = useCallback(async () => {
-    if (!user?.company_id) return;
+    if (!companyId) return;
     setLoading(true);
     try {
-      const data = await TodoService.getCompanyTodos(user.company_id);
+      const data = await TodoService.getCompanyTodos(companyId);
       setTodos(data || []);
     } catch (err) {
       message.error('Failed to load todos');
     } finally {
       setLoading(false);
     }
-  }, [user?.company_id]);
+  }, [companyId]);
 
+  /**
+   * Fetch only users that belong to the current company
+   * Excludes the joker account (isJoker: true)
+   */
   const fetchSellers = useCallback(async () => {
-    if (!user?.company_id) return;
+    if (!companyId) return;
     try {
-      const users = await TodoService.getCompanyUsers(user.company_id);
-      setSellers(users);
+      // Use UserService to get team members (automatically excludes joker)
+      const users = await UserService.getTeamMembers(companyId);
+      
+      // Format users for display
+      const formattedUsers = users.map(u => ({
+        id: u.id,
+        name: u.displayName || `${u.firstname || ''} ${u.lastname || ''}`.trim() || u.email || 'Unnamed User',
+        email: u.email || '',
+        firstname: u.firstname || '',
+        lastname: u.lastname || '',
+        Role: u.Role,
+        ...u
+      }));
+      
+      // Sort by name
+      formattedUsers.sort((a, b) => a.name.localeCompare(b.name));
+      
+      console.log(`Found ${formattedUsers.length} team members for company ${companyId}`);
+      setSellers(formattedUsers);
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching team members:', err);
+      message.error('Failed to load team members');
     }
-  }, [user?.company_id]);
+  }, [companyId]);
 
   useEffect(() => {
     fetchTodos();
@@ -82,6 +111,9 @@ const ToDoPage = () => {
     setEditingTodo(null);
   };
 
+  // Check if user can manage tasks (Joker, CEO, or HR)
+  const canManageTasks = isJoker || ['CEO', 'HR'].includes(user?.Role);
+
   return (
     <div style={{ padding: '20px 24px' }}>
       {/* Header */}
@@ -96,26 +128,29 @@ const ToDoPage = () => {
           </Col>
           <Col>
             <Space>
-              {['CEO', 'HR'].includes(user?.Role) && (
+              {canManageTasks && (
                 <Button
                   type="dashed"
                   onClick={() => setIsAIBulkModalVisible(true)}
+                  icon={<RobotOutlined />}
                 >
-                  ✨ AI Bulk Tasks
+                  AI Bulk Tasks
                 </Button>
               )}
 
-              <Button
-                type="primary"
-                size="large"
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  setEditingTodo(null);
-                  setIsModalVisible(true);
-                }}
-              >
-                Assign New Task
-              </Button>
+              {canManageTasks && (
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={<PlusOutlined />}
+                  onClick={() => {
+                    setEditingTodo(null);
+                    setIsModalVisible(true);
+                  }}
+                >
+                  Assign New Task
+                </Button>
+              )}
             </Space>
           </Col>
         </Row>
@@ -138,11 +173,20 @@ const ToDoPage = () => {
               style={{ width: '100%' }}
               value={filterAssignee}
               onChange={setFilterAssignee}
+              placeholder="Filter by assignee"
+              showSearch
+              optionFilterProp="children"
             >
               <Option value="all">All Assignees</Option>
               {sellers.map(s => (
                 <Option key={s.id} value={s.id}>
-                  {s.name}
+                  <Space>
+                    <Avatar size="small" style={{ backgroundColor: '#1890ff' }}>
+                      {s.name?.charAt(0)?.toUpperCase() || 'U'}
+                    </Avatar>
+                    {s.name}
+                    {s.Role && <Text type="secondary" style={{ fontSize: '11px' }}>({s.Role})</Text>}
+                  </Space>
                 </Option>
               ))}
             </Select>
@@ -157,24 +201,40 @@ const ToDoPage = () => {
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}>
           <Card>
-            <Statistic title="Total Tasks" value={todos.length} />
+            <Statistic 
+              title="Total Tasks" 
+              value={todos.length} 
+              prefix={<TeamOutlined />}
+            />
           </Card>
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic title="In Progress" value={todos.filter(t => t.Status === 'InProgress').length} />
+            <Statistic 
+              title="In Progress" 
+              value={todos.filter(t => t.Status === 'InProgress' || t.Status === 'In Progress').length} 
+              valueStyle={{ color: '#1890ff' }}
+            />
           </Card>
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic title="Completed" value={todos.filter(t => t.Status === 'Done').length} />
+            <Statistic 
+              title="Completed" 
+              value={todos.filter(t => t.Status === 'Done' || t.Status === 'Completed').length} 
+              valueStyle={{ color: '#52c41a' }}
+            />
           </Card>
         </Col>
         <Col span={6}>
           <Card>
             <Statistic
               title="Overdue"
-              value={todos.filter(t => t.DateLimit && new Date(t.DateLimit) < new Date() && t.Status !== 'Done').length}
+              value={todos.filter(t => {
+                const dueDate = t.DateLimit || t.DueDate;
+                return dueDate && new Date(dueDate) < new Date() && 
+                       t.Status !== 'Done' && t.Status !== 'Completed';
+              }).length}
               valueStyle={{ color: '#ff4d4f' }}
             />
           </Card>
@@ -195,8 +255,10 @@ const ToDoPage = () => {
                 setIsModalVisible(true);
               }}
               onTodoDelete={async (id) => {
-                await TodoService.deleteTodo(id);
-                fetchTodos();
+                if (window.confirm('Are you sure you want to delete this task?')) {
+                  await TodoService.deleteTodo(id);
+                  fetchTodos();
+                }
               }}
               sellers={sellers}
               currentUser={user}

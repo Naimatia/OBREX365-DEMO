@@ -1,18 +1,18 @@
+// components/NavCompanySwitcher.js
 import React, { useState, useEffect } from 'react';
-import { DownOutlined, CheckOutlined, SwapOutlined } from '@ant-design/icons';
+import { CheckOutlined, SwapOutlined } from '@ant-design/icons';
 import { Dropdown, Modal, message } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux'; // <-- ADD useSelector
+import { useDispatch, useSelector } from 'react-redux';
 import { signOut as reduxSignOut } from 'store/slices/authSlice';
 import NavItem from './NavItem';
 import { SPACER } from 'constants/ThemeConstant';
 import Flex from 'components/shared-components/Flex';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db, auth } from 'configs/FirebaseConfig';
+import { db } from 'configs/FirebaseConfig';
 import UserService from 'services/firebase/UserService';
 import { baseTheme } from 'configs/ThemeConfig';
 
-// Format Firestore Timestamp
 const formatDate = (timestamp) => {
   if (!timestamp || !timestamp.toDate) return '';
   const date = timestamp.toDate();
@@ -25,7 +25,6 @@ const formatDate = (timestamp) => {
   }) + ' UTC+' + (-date.getTimezoneOffset() / 60);
 };
 
-// Company Menu Item
 const CompanyMenuItem = ({ company, isActive, onClick }) => {
   return (
     <Flex
@@ -55,16 +54,16 @@ const NavCompanySwitcher = ({ mode }) => {
   const [currentCompany, setCurrentCompany] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Use Redux user instead of auth.currentUser
   const user = useSelector(state => state.auth.user);
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  const isOwner = user?.isOwner === true;
+  // Check if user is the joker account
+  const isJoker = user?.isJoker === true || (user?.isOwner === true && user?.Role === 'CEO');
 
-  // Load companies only if owner
+  // Load companies only if joker
   useEffect(() => {
-    if (!user || !isOwner) {
+    if (!user || !isJoker) {
       setCompanies([]);
       setCurrentCompany(null);
       return;
@@ -90,9 +89,8 @@ const NavCompanySwitcher = ({ mode }) => {
     };
 
     loadCompanies();
-  }, [user, isOwner]);
+  }, [user, isJoker]);
 
-  // Confirm → Update → Sign out → Redirect
   const confirmSwitch = (company) => {
     Modal.confirm({
       title: `Switch to ${company.name}?`,
@@ -110,22 +108,17 @@ const NavCompanySwitcher = ({ mode }) => {
         try {
           message.loading('Updating company...', 1.5);
 
-          // 1. Update company_id
+          // Update company_id for joker account
           await UserService.changeUserCompanyId(user.id || user.uid, company.id);
-
-          // 2. Firebase sign-out
+          
+          // Sign out
           await UserService.signOut();
-
-          // 3. Redux sign-out
           dispatch(reduxSignOut());
-
-          // 4. Clear localStorage
           localStorage.removeItem('user');
 
           message.destroy();
           message.success('Company updated. Redirecting to login…', 2);
 
-          // 5. Redirect
           setTimeout(() => {
             navigate('/auth/login', { replace: true });
           }, 500);
@@ -148,8 +141,8 @@ const NavCompanySwitcher = ({ mode }) => {
     ),
   }));
 
-  // Only hide if NOT owner (after login)
-  if (!isOwner) return null;
+  // Only show for joker account
+  if (!isJoker) return null;
 
   return (
     <Dropdown
